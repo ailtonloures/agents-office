@@ -30,6 +30,7 @@ import { PromptBar } from '../ui/promptBar';
 import { doorAt, roomCwd } from '../ui/sessionBinding';
 import { UiOverlay } from '../ui/uiOverlay';
 import { DeskScreens } from '../world/deskScreens';
+import { DoorAnimator } from '../world/doors';
 import { LayoutInputBuilder } from '../world/layoutInput';
 import { Lighting } from '../world/lighting';
 import { isWallProp, PROP_DEFS, type PropPlacement, propDepthBias } from '../world/props';
@@ -118,6 +119,7 @@ export class OfficeScene extends Phaser.Scene {
   private decor!: RoomDecor;
   private lighting!: Lighting;
   private screens!: DeskScreens;
+  private doors!: DoorAnimator;
   private reveals: Reveal[] = [];
   /** Props on screen, by `id@x,y`. */
   private props = new Map<string, Phaser.GameObjects.Image>();
@@ -157,6 +159,7 @@ export class OfficeScene extends Phaser.Scene {
     this.decor = new RoomDecor(this);
     this.lighting = new Lighting(this, this.propsActive);
     this.screens = new DeskScreens(this);
+    this.doors = new DoorAnimator(this, SKIN_KEYS.props, DEPTH.wallProps);
     const { width, height } = this.scale;
     this.vignette = this.add
       .image(0, 0, ensureVignette(this.textures, width, height))
@@ -459,7 +462,7 @@ export class OfficeScene extends Phaser.Scene {
     if (!opened) this.showToast('TERMINAL FECHADO', 0xe8c14a);
   }
 
-  /** The Hall of Fame mural is the wall tile right above the lobby's `hall-of-fame` spot. */
+  /** The Hall of Fame mural hangs on the wall right above the lobby's `hall-of-fame` spot. */
   private isBoardTile(tile: { x: number; y: number }): boolean {
     return this.layout.pois.some(
       (poi) => poi.type === 'hall-of-fame' && poi.tile.x === tile.x && poi.tile.y - 1 === tile.y,
@@ -589,6 +592,10 @@ export class OfficeScene extends Phaser.Scene {
       if (!this.hasProp(prop) || isWallProp(prop.id)) continue;
       for (let i = 0; i < PROP_DEFS[prop.id].w; i += 1) cells.add(`${prop.x + i},${prop.y}`);
     }
+    // The animated doors replace the `door` tile.
+    if (this.propsActive && DoorAnimator.frameCount(this.skin.props?.frames) > 0) {
+      for (const door of layout.doors) cells.add(`${door.tile.x},${door.tile.y}`);
+    }
     return cells;
   }
 
@@ -695,6 +702,7 @@ export class OfficeScene extends Phaser.Scene {
     this.decor.sync(layout, this.built);
     this.lighting.sync(layout);
     this.screens.sync(layout, this.propsActive ? this.skin.props?.frames : undefined);
+    this.doors.sync(layout, this.propsActive ? this.skin.props?.frames : undefined);
 
     const rooms = new Set(layout.rooms.map((room) => room.id));
     if (this.built) {
@@ -866,6 +874,7 @@ export class OfficeScene extends Phaser.Scene {
     this.lighting.update(delta, glows);
     // Characters never step onto the player (they queue), so the player only checks furniture/NPCs.
     player.update(delta, this.heldDirection(), this.motionWorld(), this.dialog.isOpen);
+    this.doors.update(delta, [...this.controller.positions(), player.motion.position()]);
     this.dialog.update(delta);
     this.prompt.show(this.currentPrompt(facingId, model));
     // Facing someone, the prompt names them: the player's own tag would only cover their card.
@@ -898,6 +907,7 @@ export class OfficeScene extends Phaser.Scene {
         ...room.bounds,
         sign: this.layout.signs.find((sign) => sign.roomId === room.id)?.text ?? '',
       })),
+      doors: this.doors.states(),
     });
   }
 

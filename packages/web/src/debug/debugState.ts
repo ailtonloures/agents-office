@@ -61,6 +61,8 @@ export interface DebugState {
     approachDoor(roomId: string): boolean;
   };
   rooms: { id: string; name: string; x: number; y: number; w: number; h: number; sign: string }[];
+  /** Automatic door of each room (by room id): closed, sliding, or open. */
+  doors: Record<string, 'open' | 'closed' | 'moving'>;
 }
 
 declare global {
@@ -90,6 +92,7 @@ export function createDebugState(): DebugState {
     dialog: { open: false, targetId: undefined, pages: [] },
     permissions: { queue: [] },
     rooms: [],
+    doors: {},
   };
 }
 
@@ -111,5 +114,6 @@ export function updateDebugState(state: DebugState, next: Partial<DebugState>): 
   if (next.ui !== undefined) state.ui = next.ui;
   if (next.dialog !== undefined) state.dialog = next.dialog;
   if (next.permissions !== undefined) state.permissions = next.permissions;
+  if (next.doors !== undefined) state.doors = next.doors;
   if (next.rooms !== undefined) state.rooms = next.rooms;
 }

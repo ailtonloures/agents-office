@@ -805,3 +805,86 @@ test('16. minimizing and opening the terminal resize the canvas at most once and
     await page.evaluate(() => document.activeElement?.classList.contains('xterm-helper-textarea')),
   ).toBe(true);
 });
+
+test('17. the room door opens for the player walking through it and closes once they walk away', async ({
+  page,
+}) => {
+  await openOffice(page, daemon.url);
+  const feeder = createFeeder(daemon.projectsDir, FIXTURE);
+  feeder.next(4);
+  await expect
+    .poll(async () => (await characters(page)).filter((c) => c.role === 'lead').length)
+    .toBe(1);
+  const roomId = await page.evaluate(() => window.__office?.rooms[0]?.id ?? '');
+  expect(roomId).not.toBe('');
+  const door = () => page.evaluate((id) => window.__office?.doors[id], roomId);
+  const player = () =>
+    page.evaluate(() => window.__office?.player ?? { x: 0, y: 0, facing: '', moving: false });
+  // The Tech Lead walked in through the door: wait until it shut behind them.
+  await expect.poll(door, { timeout: 20_000 }).toBe('closed');
+
+  // Every rendered frame: the player's row and the door, to check the door is open while the
+  // player is inside its opening (the 3 wall rows down to the room's first row).
+  await page.evaluate(() => {
+    const w = window as unknown as { __doorSamples: { y: number; door?: string }[] };
+    w.__doorSamples = [];
+    const sample = () => {
+      const office = window.__office;
+      const id = office?.rooms[0]?.id ?? '';
+      w.__doorSamples.push({ y: office?.player.y ?? 0, door: office?.doors[id] });
+      requestAnimationFrame(sample);
+    };
+    requestAnimationFrame(sample);
+  });
+
+  expect(await page.evaluate((id) => window.__office?.actions?.approachDoor(id), roomId)).toBe(
+    true,
+  );
+  await expect.poll(async () => (await player()).moving).toBe(false);
+  const outside = await player();
+  // Walk in: from the corridor through the 3 wall rows into the room's first row.
+  await holdUntil(page, 'ArrowDown', 'y', outside.y + 4);
+  expect(await door()).toBe('open');
+  await shot(page, '17-1-inside-the-room');
+  const crossing = (
+    await page.evaluate(
+      () => (window as unknown as { __doorSamples: { y: number; door?: string }[] }).__doorSamples,
+    )
+  ).filter((s) => s.y >= outside.y + 1 && s.y <= outside.y + 4);
+  expect(crossing.length).toBeGreaterThan(0);
+  expect(crossing.filter((s) => s.door !== 'open')).toEqual([]);
+
+  // Walk back out to the corridor and away from the door: it closes.
+  await holdUntil(page, 'ArrowUp', 'y', outside.y);
+  expect(await door()).toBe('open');
+  await expect.poll(async () => (await player()).moving).toBe(false);
+  await holdUntil(page, 'ArrowLeft', 'x', outside.x - 3);
+  await expect.poll(door, { timeout: 5_000 }).toBe('closed');
+});
+
+/**
+ * Holds the arrow `key` until the player's `axis` reaches `target` (walking that way), checked on
+ * every rendered frame (expect.poll is too coarse: the player walks a tile every 200 ms).
+ */
+async function holdUntil(
+  page: import('@playwright/test').Page,
+  key: 'ArrowUp' | 'ArrowDown' | 'ArrowLeft',
+  axis: 'x' | 'y',
+  target: number,
+): Promise<void> {
+  const forward = key === 'ArrowDown';
+  await page.keyboard.down(key);
+  try {
+    await page.waitForFunction(
+      ({ axis, target, forward }) => {
+        const value = window.__office?.player[axis];
+        if (value === undefined) return false;
+        return forward ? value >= target : value <= target;
+      },
+      { axis, target, forward },
+      { polling: 'raf', timeout: 5_000 },
+    );
+  } finally {
+    await page.keyboard.up(key);
+  }
+}

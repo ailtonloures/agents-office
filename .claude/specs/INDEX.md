@@ -53,6 +53,10 @@ PRD: [agents-office.prd.md](../prds/agents-office.prd.md)
 | 047 | Terminal sem corte no rodapé | high | done | bugfix, web, terminal, layout, testing | — |
 | 048 | Scrollbars finos globais | medium | done | feature, web, ui, testing | — |
 | 049 | Barra de abas sem scrollbar nativa | high | done | bugfix, web, terminal, ui, testing | 048 |
+| 050 | Porta atravessável em duas camadas e timing de abertura | high | done | enhancement, web, world, art, doors, testing | 008 |
+| 051 | Parede com profundidade | high | done | enhancement, web, art, walls, lighting | 050 |
+| 052 | Helpers de volume e contraste dos materiais | medium | done | refactor, web, art, skin-generator | — |
+| 053 | Redesenho dos móveis com volume | high | done | enhancement, web, art, props, lighting | 051, 052 |
 
 Fases do PRD: 001–002 = Fase 0 (spike) · 003–011 = Fase 1 (MVP) · 006, 012 = parte da Fase 2. Replay, minimapa e Tauri (Fase 3) ficam fora deste lote.
 
@@ -75,3 +79,5 @@ PRD das mesas liberadas: [mesas-liberadas-agente-sai.prd.md](../prds/mesas-liber
 PRD sem flash ao redimensionar: [sem-flash-ao-redimensionar.prd.md](../prds/sem-flash-ao-redimensionar.prd.md) (044–046; 045 depende de 044, 046 de 044).
 
 PRD do terminal sem corte e scrollbars: [terminal-sem-corte-scrollbars.prd.md](../prds/terminal-sem-corte-scrollbars.prd.md) (047–049; 049 depende de 048).
+
+PRD do cenário com volume: [cenario-volume-portas-moveis.prd.md](../prds/cenario-volume-portas-moveis.prd.md) (050–053; 051 depende de 050, 053 de 051 e 052; 052 é independente).

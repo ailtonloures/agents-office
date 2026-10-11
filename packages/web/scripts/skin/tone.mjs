@@ -35,16 +35,23 @@ export const alpha = (color, a) =>
  * Six tones of one material, from the lit top edge to the deepest crease. Same factors the
  * character factory derives (shade 0.84 / 0.72, lighten 0.2 / 0.25), with a cool tint in the
  * shadows so they never turn muddy.
+ *
+ * `contrast` (default 1, the exact tones above) pushes `hi`/`light` and `shade`/`deep` away from
+ * `base`: the lighten amounts are multiplied by it and the shade factors raised to it, so 1.3
+ * gives brighter edges and darker shadow sides for furniture that must read against the floor.
+ * `base` and `mid` never change. The characters always use the default.
  */
-export function ramp(base) {
+export function ramp(base, { contrast = 1 } = {}) {
   const cool = '#2a3350';
+  const up = (amount) => Math.min(1, amount * contrast);
+  const down = (factor) => factor ** contrast;
   return {
-    hi: lighten(base, 0.45),
-    light: lighten(base, 0.2),
+    hi: lighten(base, up(0.45)),
+    light: lighten(base, up(0.2)),
     base,
     mid: mix(shade(base, 0.9), cool, 0.04),
-    shade: mix(shade(base, 0.78), cool, 0.1),
-    deep: mix(shade(base, 0.6), cool, 0.18),
+    shade: mix(shade(base, down(0.78)), cool, 0.1),
+    deep: mix(shade(base, down(0.6)), cool, 0.18),
   };
 }
 

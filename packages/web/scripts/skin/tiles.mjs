@@ -1,7 +1,8 @@
 // Tileset of the default skin: a light, modern tech office in a 3/4 top-down view. Calm floors
 // (honey-oak herringbone in the rooms, polished concrete, pale oak in the lobby), off-white walls with a
-// slate top, pale wood desks, graphite tech and soft contact shadows under every piece.
+// light slab on top, pale wood desks, graphite tech and soft contact shadows under every piece.
 import { art, createCanvas, px, rect } from './canvas.mjs';
+import { mix, shade } from './tone.mjs';
 
 export const TILE = 16;
 
@@ -45,22 +46,16 @@ export const EXTRA_TILE_IDS = [
   'wall-bottom',
   'wall-corner-tl',
   'wall-corner-tr',
+  'wall-top',
+  'wall-mid',
+  'window-top',
 ];
 export const TILE_IDS = [...CORE_TILE_IDS, ...EXTRA_TILE_IDS];
 export const TILE_COLUMNS = 8;
 
 const C = {
-  // walls: off-white face, slate top
-  wall: '#eceef2',
-  wallS: '#e0e3e9',
-  wallD: '#cdd2db',
-  wallHi: '#f8f9fb',
-  capTop: '#6f7a95',
+  // slate band of the reception counter
   cap: '#646f8a',
-  capLo: '#4b546d',
-  capHi: '#8b95ad',
-  skirt: '#4b5266',
-  skirtHi: '#666e84',
   // polished concrete
   c0: '#d6d3cd',
   c1: '#cfccc5',
@@ -106,7 +101,7 @@ function ao(c, x, y, x0, x1, row = 14) {
 // --------------------------------------------------------------------------- floors
 
 /** Tiny deterministic hash for speckles. */
-const noise = (i, j, seed) => ((i * 73856093) ^ (j * 19349663) ^ (seed * 83492791)) >>> 0;
+export const noise = (i, j, seed) => ((i * 73856093) ^ (j * 19349663) ^ (seed * 83492791)) >>> 0;
 
 /**
  * Pale oak boards, four per tile, long enough that a tile shows at most one butt joint: low
@@ -193,98 +188,235 @@ const drawFloor = {
 
 // --------------------------------------------------------------------------- walls
 
+/**
+ * A top wall is {@link WALL_ROWS} tiles high (48 px, 1.5x a character). `v` is the pixel row across
+ * the whole wall (0..47), from the top down:
+ * - v0-7, the slab (the wall's thickness seen from above, in a light warm grey): a dark back edge
+ *   (v0), the lit top plane (v1-4), a bright front edge (v5) and the slab's darker front face
+ *   (v6-7). A dark top reads as a border; a light top with an edge reads as volume.
+ * - v8-11, the slab's shadow fading on the plaster; then the plaster face, bright up high and
+ *   darkening towards the chair rail (v29-31).
+ * - v32-41, blue-grey wainscot panels, the last 3 rows in ambient occlusion above the skirting.
+ * - v42-47, the skirting board, darkening where it meets the floor.
+ */
+export const WALL_ROWS = 3;
+const WALL_H = WALL_ROWS * 16;
+export const SLAB_H = 8;
+const RAIL = 29;
+const SKIRT = WALL_H - 6;
+/** Slab tones, shared by the top wall, the side bands, the bottom wall and the door reveal. */
+export const SLAB_BACK = '#5f5a54';
+export const SLAB_TOP = '#e2dcd1';
+const SLAB_SPECK = '#d6cfc3';
+export const SLAB_EDGE = '#f9f6f0';
+export const SLAB_FACE = '#a59e93';
+export const SLAB_FACE_LO = '#8d867b';
+const UNDER_SLAB = ['#a9adb7', '#c1c5ce', '#d3d6dd', '#dfe2e7'];
+/** Plaster from just under the slab shadow (bright) down to the chair rail (darker). */
+const PLASTER_TOP = '#eef0f3';
+const PLASTER_LOW = '#d9dde4';
+const PLASTER_V0 = SLAB_H + UNDER_SLAB.length;
+const PLASTER = Array.from({ length: RAIL - PLASTER_V0 }, (_, k) =>
+  mix(PLASTER_TOP, PLASTER_LOW, (k / (RAIL - PLASTER_V0 - 1)) ** 1.3),
+);
+const WAINSCOT = '#bcc5d3';
+const WAINSCOT_HI = '#ccd3de';
+const WAINSCOT_LO = '#a8b1c2';
+/** Ambient occlusion on the 3 wainscot rows above the skirting (mixed towards `C.ao`). */
+const WAINSCOT_AO = [0.08, 0.16, 0.27];
+const SKIRT_TONES = ['#6a7187', '#4b5266', '#4b5266', '#40465a', '#383e51', '#2b3040'];
+/** Colors that get the low-contrast speckle (one shade darker), see {@link plasterShade}. */
+const SPECKLE = new Map([
+  [SLAB_TOP, SLAB_SPECK],
+  [WAINSCOT, '#b4bdcc'],
+  ...PLASTER.map((color) => [color, shade(color, 0.972)]),
+]);
+
+/** Color of pixel (i, v) of a top wall (v = row across the whole wall, 0..47). */
+export function faceColor(v, i) {
+  if (v === 0) return SLAB_BACK;
+  if (v <= 4) return SLAB_TOP;
+  if (v === 5) return SLAB_EDGE;
+  if (v === 6) return SLAB_FACE;
+  if (v === 7) return SLAB_FACE_LO;
+  if (v < PLASTER_V0) return UNDER_SLAB[v - SLAB_H];
+  if (v < RAIL) return PLASTER[v - PLASTER_V0];
+  // Chair rail at ~1 m: lit top, shadowed underside.
+  if (v === RAIL) return '#f6f7f9';
+  if (v === RAIL + 1) return '#d9dde4';
+  if (v === RAIL + 2) return '#9ba4b6';
+  // Lower wall: blue-grey wainscot panels (8 px wide, lit left edge, shaded right edge), in the
+  // skirting's occlusion on the last rows.
+  if (v < SKIRT) {
+    const panel = i % 8 === 7 ? WAINSCOT_LO : i % 8 === 0 ? WAINSCOT_HI : WAINSCOT;
+    const k = v - (SKIRT - WAINSCOT_AO.length);
+    return k < 0 ? panel : mix(panel, C.ao, WAINSCOT_AO[k]);
+  }
+  return SKIRT_TONES[v - SKIRT];
+}
+
+/** Low-contrast speckle (one shade darker) on the slab top, plaster and wainscot only. */
+export function plasterShade(color) {
+  return SPECKLE.get(color) ?? color;
+}
+
+/** Row `row` (0 = top) of a top wall face, full width. */
+function faceRow(c, x, y, row) {
+  for (let j = 0; j < 16; j++) {
+    const v = row * 16 + j;
+    for (let i = 0; i < 16; i++) {
+      const base = faceColor(v, i);
+      const n = noise(i, v, 41) % 17;
+      px(c, x + i, y + j, n === 0 ? plasterShade(base) : base);
+    }
+  }
+}
+
+/** Old one-row wall face (still used by tiles that are drawn on a single row). */
 function wallFace(c, x, y) {
-  rect(c, x, y, 16, 1, C.capHi);
-  rect(c, x, y + 1, 16, 2, C.capTop);
-  rect(c, x, y + 3, 16, 1, C.capLo);
-  // Off-white face, darker right under the slab (ambient occlusion).
-  rect(c, x, y + 4, 16, 1, C.wallD);
-  rect(c, x, y + 5, 16, 1, C.wallS);
-  rect(c, x, y + 6, 16, 7, C.wall);
-  rect(c, x, y + 9, 16, 1, C.wallHi);
-  // Skirting board.
-  rect(c, x, y + 13, 16, 1, C.wallS);
-  rect(c, x, y + 14, 16, 1, C.skirtHi);
-  rect(c, x, y + 15, 16, 1, C.skirt);
+  faceRow(c, x, y, 1);
+}
+
+/** Speckled slab top: `SLAB_TOP` with a few `SLAB_SPECK` pixels (seeded by the pixel). */
+const slabTop = (i, v, seed) => (noise(i, v, seed) % 13 === 0 ? SLAB_SPECK : SLAB_TOP);
+
+/**
+ * Column `k` (0..7) of a side wall's band in the slab material, lit from the top-left: the dark
+ * outer edge, a 1 px lit edge on the left, the top plane and a 2 px face in shade on the right.
+ */
+function bandColor(k, left, i, v) {
+  const outer = left ? 0 : 7;
+  if (k === outer) return SLAB_BACK;
+  const lit = left ? 1 : 0;
+  if (k === lit) return SLAB_EDGE;
+  const face = left ? 6 : 5;
+  if (k === face) return SLAB_FACE;
+  if (k === face + 1) return SLAB_FACE_LO;
+  return slabTop(i, v, 53);
 }
 
 /**
- * Top of a side wall seen from above: a slim slate band on the tile's outer edge (left or right),
- * the rest left transparent so the floor shows, with a soft occlusion on the floor beside it.
+ * Top of a side wall seen from above: an 8 px band of the slab on the tile's outer edge (left or
+ * right), the rest left transparent so what is under it shows (the floor, or the top wall's face
+ * on the face rows), with a soft occlusion beside it. Two neighbouring rooms make one 16 px wall.
  */
-function sideBand(c, x, y, left, h = 16) {
-  const bx = left ? x : x + 10;
-  rect(c, bx, y, 6, h, C.cap);
-  rect(c, bx + 1, y, 4, h, C.capTop);
-  rect(c, left ? bx : bx + 5, y, 1, h, C.capLo);
-  rect(c, left ? bx + 5 : bx, y, 1, h, C.capHi);
-  const ao = [`${C.ao}30`, `${C.ao}18`, `${C.ao}0a`];
-  ao.forEach((color, i) => {
-    rect(c, left ? x + 6 + i : x + 9 - i, y, 1, h, color);
+function sideBand(c, x, y, left, h = 16, y0 = 0) {
+  const bx = left ? x : x + 8;
+  for (let j = y0; j < y0 + h; j++) {
+    for (let k = 0; k < 8; k++) px(c, bx + k, y + j, bandColor(k, left, bx - x + k, j));
+  }
+  const shade = [`${C.ao}38`, `${C.ao}1e`, `${C.ao}0c`];
+  shade.forEach((color, i) => {
+    rect(c, left ? x + 8 + i : x + 7 - i, y + y0, 1, h, color);
   });
 }
 
+/**
+ * Corner of a top wall: its first row with the side wall's band running up into the slab. On the
+ * slab rows the band joins the top plane (no front edge across it), so the top reads as one piece;
+ * on the right corner the slab's front edge turns down into the band's lit edge.
+ */
+function corner(c, x, y, left) {
+  faceRow(c, x, y, 0);
+  sideBand(c, x, y, left, 16 - SLAB_H + 2, SLAB_H - 2);
+  const bx = left ? x : x + 8;
+  for (let v = 0; v < SLAB_H - 2; v++) {
+    for (let k = 0; k < 8; k++) {
+      const i = bx - x + k;
+      let color = slabTop(i, v, 41);
+      if (v === 0 || k === (left ? 0 : 7)) color = SLAB_BACK;
+      else if ((left && k === 1) || (!left && k === 0 && v === SLAB_H - 3)) color = SLAB_EDGE;
+      px(c, bx + k, y + v, color);
+    }
+  }
+}
+
+/** Glass of a window two rows high (rows 0 and 1 of the wall), `v` measured from the wall top. */
+const GLASS_TOP = 10;
+const GLASS_BOTTOM = 26;
+function windowPart(c, x, y, row) {
+  faceRow(c, x, y, row);
+  const sky = ['#6aa8d8', '#78b3e0', '#86bde6', '#94c6ea', '#a2ceee', '#b0d6f1', '#bedef4'];
+  for (let j = 0; j < 16; j++) {
+    const v = row * 16 + j;
+    if (v < GLASS_TOP - 2 || v > GLASS_BOTTOM + 3) continue;
+    if (v < GLASS_TOP) {
+      // Frame head with the reveal (inner shadow) under it.
+      rect(c, x + 1, y + j, 14, 1, v === GLASS_TOP - 2 ? C.l1 : C.l0);
+      continue;
+    }
+    if (v <= GLASS_BOTTOM) {
+      rect(c, x + 1, y + j, 1, 1, C.l0);
+      rect(c, x + 14, y + j, 1, 1, C.l1);
+      const t = Math.floor(((v - GLASS_TOP) / (GLASS_BOTTOM - GLASS_TOP + 1)) * sky.length);
+      rect(c, x + 2, y + j, 12, 1, sky[t]);
+      // Reveal: the frame's depth throws a 1 px shadow on the glass, top and left.
+      if (v === GLASS_TOP) rect(c, x + 2, y + j, 12, 1, '#4f86b4');
+      px(c, x + 2, y + j, '#5d93c0');
+      // Mullion.
+      rect(c, x + 7, y + j, 2, 1, C.l0);
+      px(c, x + 8, y + j, C.l2);
+      continue;
+    }
+    // Sill: sticks out of the wall (lighter top, darker front) and throws a shadow.
+    if (v === GLASS_BOTTOM + 1) rect(c, x, y + j, 16, 1, '#ffffff');
+    else if (v === GLASS_BOTTOM + 2) rect(c, x, y + j, 16, 1, C.l2);
+    else rect(c, x + 1, y + j, 14, 1, AO1);
+  }
+  // A hazy skyline on the lower panes and two diagonal reflections.
+  if (row === 1) {
+    const sv = GLASS_BOTTOM - 16 - 3;
+    art(c, x + 2, y + sv, ['...##.......', '.#.##..#.##.', '##.###.####.', '############'], {
+      '#': '#a3c3db',
+    });
+    rect(c, x + 7, y + sv, 2, 4, C.l0);
+    px(c, x + 8, y + sv, C.l2);
+  }
+  for (let i = 0; i < 6; i++) {
+    const v = GLASS_TOP + 3 + i;
+    if (Math.floor(v / 16) === row) px(c, x + 9 - i + 3, y + (v % 16), '#e4f2fc');
+  }
+  for (let i = 0; i < 4; i++) {
+    const v = GLASS_TOP + 8 + i;
+    if (Math.floor(v / 16) === row) px(c, x + 6 - i, y + (v % 16), '#e4f2fc');
+  }
+}
+
 const drawWall = {
-  wall: wallFace,
+  'wall-top': (c, x, y) => faceRow(c, x, y, 0),
+  'wall-mid': (c, x, y) => faceRow(c, x, y, 1),
+  wall: (c, x, y) => faceRow(c, x, y, 2),
   'wall-side-l': (c, x, y) => sideBand(c, x, y, true),
   'wall-side-r': (c, x, y) => sideBand(c, x, y, false),
   'wall-bottom'(c, x, y) {
-    // Top of the wall (same slate as the sides), then the building's outer facade.
-    rect(c, x, y, 16, 6, C.capTop);
-    rect(c, x, y, 16, 1, C.capHi);
-    rect(c, x, y + 5, 16, 1, C.capLo);
-    rect(c, x, y + 6, 16, 10, '#3d4459');
-    rect(c, x, y + 6, 16, 1, '#2c3245');
-    rect(c, x, y + 7, 16, 1, '#353c50');
-    rect(c, x + 7, y + 8, 1, 8, '#363d51');
-    rect(c, x, y + 15, 16, 1, '#2c3245');
+    // The slab on top of the wall (same anatomy as the top wall's v0-7), then the building's outer
+    // facade: in shade under the slab's lip, a vertical joint and a dark base line.
+    for (let v = 0; v < SLAB_H; v++) {
+      for (let i = 0; i < 16; i++)
+        px(c, x + i, y + v, v >= 1 && v <= 4 ? slabTop(i, v, 59) : faceColor(v, i));
+    }
+    const facade = ['#5b564f', '#6f695f', '#78726a', '#7b756c', '#7d776e', '#7d776e', '#79736a'];
+    facade.forEach((color, k) => {
+      rect(c, x, y + SLAB_H + k, 16, 1, color);
+    });
+    rect(c, x + 7, y + SLAB_H + 1, 1, 6, '#655f57');
+    rect(c, x + 8, y + SLAB_H + 1, 1, 6, '#878177');
+    rect(c, x, y + 15, 16, 1, '#46423c');
   },
-  'wall-corner-tl'(c, x, y) {
-    wallFace(c, x, y);
-    sideBand(c, x, y + 4, true, 12);
-    rect(c, x, y, 6, 4, C.capTop);
-    rect(c, x, y, 6, 1, C.capHi);
-  },
-  'wall-corner-tr'(c, x, y) {
-    wallFace(c, x, y);
-    sideBand(c, x, y + 4, false, 12);
-    rect(c, x + 10, y, 6, 4, C.capTop);
-    rect(c, x + 10, y, 6, 1, C.capHi);
-  },
+  'wall-corner-tl': (c, x, y) => corner(c, x, y, true),
+  'wall-corner-tr': (c, x, y) => corner(c, x, y, false),
   'wall-cap'(c, x, y) {
-    rect(c, x, y, 16, 16, C.cap);
-    rect(c, x, y, 16, 1, C.capHi);
-    rect(c, x, y + 1, 16, 1, C.capTop);
-    rect(c, x, y + 15, 16, 1, C.capLo);
+    // A whole tile of slab seen from above: back edge, top plane, lit front edge, front face.
+    for (let v = 0; v < 16; v++) {
+      for (let i = 0; i < 16; i++) px(c, x + i, y + v, slabTop(i, v, 61));
+    }
+    rect(c, x, y, 16, 1, SLAB_BACK);
+    rect(c, x, y + 13, 16, 1, SLAB_EDGE);
+    rect(c, x, y + 14, 16, 1, SLAB_FACE);
+    rect(c, x, y + 15, 16, 1, SLAB_FACE_LO);
   },
-  window(c, x, y) {
-    wallFace(c, x, y);
-    // Slim white frame, a sky gradient with a hazy skyline, two reflections and a sill.
-    rect(c, x + 1, y + 4, 14, 10, C.l0);
-    const sky = [
-      '#7dbbe6',
-      '#8ac3ea',
-      '#98cbee',
-      '#a7d3f1',
-      '#b5daf3',
-      '#c2e1f5',
-      '#cde6f6',
-      '#d6ebf7',
-    ];
-    sky.forEach((color, j) => {
-      rect(c, x + 2, y + 5 + j, 12, 1, color);
-    });
-    art(c, x + 2, y + 9, ['...##.......', '.#.##..#.##.', '##.###.####.', '############'], {
-      '#': '#a9c8de',
-    });
-    for (let i = 0; i < 4; i++) px(c, x + 3 + i, y + 9 - i, '#eaf6ff');
-    for (let i = 0; i < 3; i++) px(c, x + 10 + i, y + 11 - i, '#eaf6ff');
-    rect(c, x + 7, y + 5, 2, 8, C.l0);
-    rect(c, x + 8, y + 5, 1, 8, C.l1);
-    rect(c, x + 2, y + 5, 12, 1, '#6aa6d4');
-    rect(c, x, y + 13, 16, 1, C.l0);
-    rect(c, x + 1, y + 14, 14, 1, AO1);
-  },
+  'window-top': (c, x, y) => windowPart(c, x, y, 0),
+  window: (c, x, y) => windowPart(c, x, y, 1),
   whiteboard(c, x, y) {
     wallFace(c, x, y);
     rect(c, x + 1, y + 4, 14, 9, '#a9b1c2');
@@ -360,9 +492,9 @@ const drawWall = {
     wallFace(c, x, y);
   },
   door(c, x, y) {
-    rect(c, x, y, 16, 1, C.capHi);
-    rect(c, x, y + 1, 16, 2, C.capTop);
-    rect(c, x, y + 3, 16, 1, C.capLo);
+    rect(c, x, y, 16, 1, SLAB_BACK);
+    rect(c, x, y + 1, 16, 2, SLAB_TOP);
+    rect(c, x, y + 3, 16, 1, SLAB_FACE);
     // Graphite frame around a glass door with a reflection and a long handle.
     rect(c, x + 1, y + 4, 14, 12, C.g1);
     rect(c, x + 2, y + 5, 12, 11, '#a9c6da');

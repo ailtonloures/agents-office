@@ -42,6 +42,9 @@ export const EXTRA_TILE_IDS = [
   'wall-bottom',
   'wall-corner-tl',
   'wall-corner-tr',
+  'wall-top',
+  'wall-mid',
+  'window-top',
 ] as const;
 export const TILE_IDS = [...CORE_TILE_IDS, ...EXTRA_TILE_IDS] as const;
 export type CoreTileId = (typeof CORE_TILE_IDS)[number];
@@ -74,6 +77,9 @@ export const TILE_FALLBACK: Record<ExtraTileId, TileId> = {
   'wall-bottom': 'wall-cap',
   'wall-corner-tl': 'wall',
   'wall-corner-tr': 'wall',
+  'wall-top': 'wall',
+  'wall-mid': 'wall',
+  'window-top': 'wall-top',
 };
 
 export const POSE_IDS = ['sit-type', 'read', 'phone', 'sleep'] as const;

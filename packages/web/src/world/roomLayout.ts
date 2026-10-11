@@ -3,10 +3,24 @@ import { isWallProp, PROP_DEFS, type PropId, type PropPlacement } from './props'
 
 /** Width of a room (and of the lobby), in tiles. */
 export const CHUNK = 16;
+/**
+ * Rows a top (north) wall takes: its face is seen from the front, so it is drawn this many tiles
+ * high (48 px, 1.5x a character) - `wall-top` (cap + face), `wall-mid`, then `wall` (skirting).
+ */
+export const WALL_ROWS = 3;
+/** Extra rows a top wall takes compared with a one-row wall. */
+const WALL_EXTRA = WALL_ROWS - 1;
 /** Height of each kind of chunk, in tiles. A room is its chunks stacked top to bottom. */
-export const CHUNK_HEIGHT = { entrance: 7, 'lead-desk': 8, 'cubicles-4': 5, utility: 8 } as const;
-/** Height of the corridor band above the rooms (wall, 3 floor rows, wall shared with the rooms). */
-export const CORRIDOR_HEIGHT = 4;
+export const CHUNK_HEIGHT = {
+  entrance: 7 + WALL_EXTRA,
+  'lead-desk': 8,
+  'cubicles-4': 5,
+  utility: 8,
+} as const;
+/** Height of the corridor band above the rooms (its top wall and 3 floor rows). */
+export const CORRIDOR_HEIGHT = WALL_ROWS + 3;
+/** Tiles of a top wall, from its top row down to the row on the floor line. */
+export const TOP_WALL_ROWS = ['wall-top', 'wall-mid', 'wall'] as const satisfies readonly TileId[];
 /** Max characters shown on a room sign. */
 export const SIGN_MAX_CHARS = 14;
 /** Number of desks in a `cubicles-*` chunk (one row of three workstations). */
@@ -66,9 +80,9 @@ export interface Poi {
 
 export interface Door {
   roomId: string;
-  /** The door tile (walkable), in the room's top wall. */
+  /** The door tile (walkable): the bottom row of the room's top wall, open on all its rows. */
   tile: Tile;
-  /** Corridor tile right outside the door. */
+  /** Corridor tile right outside the door (just above the wall). */
   outside: Tile;
 }
 
@@ -224,23 +238,40 @@ class Builder {
     }
   }
 
+  /** A top wall face {@link WALL_ROWS} high over columns `x0..x1`, starting at row `y`. */
+  topWall(x0: number, x1: number, y: number): void {
+    for (let x = x0; x <= x1; x += 1) {
+      TOP_WALL_ROWS.forEach((tile, i) => {
+        setCell(this.walls, x, y + i, tile);
+      });
+    }
+  }
+
   /**
-   * Wall ring around `rect`: the top row shows the wall face (corners framed by the side walls),
-   * the sides and the bottom show the top of the wall.
+   * Paints the top wall face on the floor layer under the side wall at column `x`, on the face rows
+   * below the top row `y`: the side wall's band is drawn over it and leaves the face showing.
+   */
+  faceUnderSide(x: number, y: number): void {
+    for (let i = 1; i < WALL_ROWS; i += 1) setCell(this.floor, x, y + i, TOP_WALL_ROWS[i] ?? null);
+  }
+
+  /**
+   * Wall ring around `rect`: the top {@link WALL_ROWS} rows show the wall face (corners framed by
+   * the side walls), the sides and the bottom show the top of the wall.
    */
   wallRing(rect: Rect): void {
     const right = rect.x + rect.w - 1;
     const bottom = rect.y + rect.h - 1;
-    for (let x = rect.x; x <= right; x += 1) {
-      setCell(this.walls, x, rect.y, 'wall');
-      setCell(this.walls, x, bottom, 'wall-bottom');
-    }
+    this.topWall(rect.x, right, rect.y);
+    for (let x = rect.x; x <= right; x += 1) setCell(this.walls, x, bottom, 'wall-bottom');
     setCell(this.walls, rect.x, rect.y, 'wall-corner-tl');
     setCell(this.walls, right, rect.y, 'wall-corner-tr');
     for (let y = rect.y + 1; y < bottom; y += 1) {
       setCell(this.walls, rect.x, y, 'wall-side-l');
       setCell(this.walls, right, y, 'wall-side-r');
     }
+    this.faceUnderSide(rect.x, rect.y);
+    this.faceUnderSide(right, rect.y);
   }
 
   /** Places a prop with its left tile at (x, y) and writes its fallback tiles under it. */
@@ -296,30 +327,35 @@ function buildRoom(
     const prop = (id: PropId, lx: number, ly: number): void => b.prop(id, x0 + lx, top + ly);
 
     if (kind === 'entrance') {
-      // Door in the top wall, the plaque (drawn by the scene) to its left, decor to its right.
-      setCell(b.walls, x0 + 8, top, null);
-      put(b.furniture, 8, 0, 'door');
-      prop('art-wide', 10, 0);
-      put(b.walls, 12, 0, 'window');
-      put(b.walls, 13, 0, 'window');
-      const door = at(8, 0);
-      doors.push({ roomId: project.id, tile: door, outside: { x: door.x, y: door.y - 1 } });
-      signs.push({ roomId: project.id, text: truncateSign(project.name), tile: at(4, 0) });
-      b.pois.push({ type: 'window', tile: at(12, 1), roomId: project.id });
-      prop('plant-tall', 1, 1);
-      prop('plant-fig', 14, 1);
+      // Door through the whole top wall, the plaque (drawn by the scene) to its left, decor to its
+      // right at eye level (the middle row of the wall). `in_` maps a row under a one-row wall to
+      // the row under the taller wall.
+      const in_ = (ly: number): number => ly + WALL_EXTRA;
+      for (let i = 0; i < WALL_ROWS; i += 1) setCell(b.walls, x0 + 8, top + i, null);
+      put(b.furniture, 8, WALL_EXTRA, 'door');
+      prop('art-wide', 10, 1);
+      put(b.walls, 12, 0, 'window-top');
+      put(b.walls, 13, 0, 'window-top');
+      put(b.walls, 12, 1, 'window');
+      put(b.walls, 13, 1, 'window');
+      const door = at(8, WALL_EXTRA);
+      doors.push({ roomId: project.id, tile: door, outside: { x: door.x, y: top - 1 } });
+      signs.push({ roomId: project.id, text: truncateSign(project.name), tile: at(4, 1) });
+      b.pois.push({ type: 'window', tile: at(12, in_(1)), roomId: project.id });
+      prop('plant-tall', 1, in_(1));
+      prop('plant-fig', 14, in_(1));
       // Lounge nook on the left (sofa, armchair, coffee table), shelving on the right.
-      prop('floor-lamp', 1, 3);
-      prop('sofa', 2, 3);
-      prop('armchair', 4, 3);
-      prop('side-table', 5, 3);
-      prop('coffee-table', 2, 4);
-      prop('bookshelf', 11, 4);
-      prop('bookshelf', 13, 4);
+      prop('floor-lamp', 1, in_(3));
+      prop('sofa', 2, in_(3));
+      prop('armchair', 4, in_(3));
+      prop('side-table', 5, in_(3));
+      prop('coffee-table', 2, in_(4));
+      prop('bookshelf', 11, in_(4));
+      prop('bookshelf', 13, in_(4));
       b.zones.push({
         kind: 'rug',
         roomId: project.id,
-        rect: { x: x0 + 1, y: top + 3, w: 6, h: 3 },
+        rect: { x: x0 + 1, y: top + in_(3), w: 6, h: 3 },
       });
     } else if (kind === 'lead-desk') {
       // Executive desks side by side: each Tech Lead sits below the monitors, on an accent rug.
@@ -430,15 +466,20 @@ export function layoutBuilding(projects: readonly LayoutProjectInput[]): Buildin
   const height = Math.max(lobbyHeight, CORRIDOR_HEIGHT + Math.max(0, ...roomHeights));
   const b = new Builder(width, height);
 
-  // Lobby: x 0..15, y 0..19, with the Hall of Fame board, a reception counter and the spawn.
+  // Lobby: x 0..15, with the Hall of Fame board, a reception counter and the spawn. Its content
+  // sits under the tall top wall (`ly` rows below a one-row wall).
   const lobby: Rect = { x: 0, y: 0, w: CHUNK, h: lobbyHeight };
+  const ly = (y: number): number => y + WALL_EXTRA;
   b.fillFloor(lobby, 'wood');
   b.wallRing(lobby);
-  setCell(b.walls, 8, 0, 'board');
-  b.pois.push({ type: 'hall-of-fame', tile: { x: 8, y: 1 } });
-  for (const x of [2, 3, 12, 13]) setCell(b.walls, x, 0, 'window');
-  b.prop('art-wide', 5, 0);
-  b.prop('tv', 10, 0);
+  setCell(b.walls, 8, 1, 'board');
+  b.pois.push({ type: 'hall-of-fame', tile: { x: 8, y: WALL_ROWS } });
+  for (const x of [2, 3, 12, 13]) {
+    setCell(b.walls, x, 0, 'window-top');
+    setCell(b.walls, x, 1, 'window');
+  }
+  b.prop('art-wide', 5, 1);
+  b.prop('tv', 10, 1);
   for (const [id, x, y] of [
     ['reception', 3, 6],
     ['plant-fig', 2, 6],
@@ -457,35 +498,41 @@ export function layoutBuilding(projects: readonly LayoutProjectInput[]): Buildin
     ['side-table', 4, 18],
     ['side-table', 11, 18],
   ] as const) {
-    b.prop(id, x, y);
+    b.prop(id, x, ly(y));
   }
-  b.zones.push({ kind: 'lobby', rect: { x: 4, y: 8, w: 8, h: 8 } });
+  b.zones.push({ kind: 'lobby', rect: { x: 4, y: ly(8), w: 8, h: 8 } });
 
   const doors: Door[] = [];
   const signs: Sign[] = [];
   const rooms: RoomInfo[] = [];
 
   if (ordered.length > 0) {
-    // Corridor: floor rows 1..3 from the lobby to the last room; the rooms' top walls close it.
-    b.fillFloor({ x: CHUNK, y: 1, w: width - CHUNK, h: CORRIDOR_HEIGHT - 1 }, 'hall');
-    for (let x = CHUNK; x < width; x += 1) setCell(b.walls, x, 0, 'wall');
-    setCell(b.walls, CHUNK - 1, 0, 'wall');
+    // Corridor: a tall top wall, then floor rows from the lobby to the last room; the rooms' top
+    // walls close it.
+    b.fillFloor(
+      { x: CHUNK, y: WALL_ROWS, w: width - CHUNK, h: CORRIDOR_HEIGHT - WALL_ROWS },
+      'hall',
+    );
+    b.topWall(CHUNK - 1, width - 1, 0);
     setCell(b.walls, width - 1, 0, 'wall-corner-tr');
     for (let y = 1; y < CORRIDOR_HEIGHT; y += 1) setCell(b.walls, width - 1, y, 'wall-side-r');
-    for (let y = 1; y < CORRIDOR_HEIGHT; y += 1) setCell(b.walls, CHUNK - 1, y, null);
-    // The wall segment of the lobby's right wall that was opened keeps its floor.
+    b.faceUnderSide(width - 1, 0);
+    // The segment of the lobby's right wall that opens on the corridor keeps its floor.
+    for (let y = WALL_ROWS; y < CORRIDOR_HEIGHT; y += 1) setCell(b.walls, CHUNK - 1, y, null);
   }
 
   ordered.forEach((project, index) => {
     const x0 = CHUNK * (1 + index);
     rooms.push(buildRoom(b, project, x0, CORRIDOR_HEIGHT, doors, signs));
-    // Corridor decor in front of the room.
-    setCell(b.walls, x0 + 3, 0, 'window');
-    setCell(b.walls, x0 + 4, 0, 'window');
-    b.prop(index % 2 === 0 ? 'whiteboard' : 'art-wide', x0 + 10, 0);
-    setCell(b.walls, x0 + 13, 0, index % 2 === 0 ? 'clock' : 'poster');
-    b.prop('plant-tall', x0 + 1, 1);
-    b.prop(index % 2 === 0 ? 'plant' : 'plant-fig', x0 + 14, 1);
+    // Corridor decor in front of the room, at eye level on the corridor's top wall.
+    for (const x of [x0 + 3, x0 + 4]) {
+      setCell(b.walls, x, 0, 'window-top');
+      setCell(b.walls, x, 1, 'window');
+    }
+    b.prop(index % 2 === 0 ? 'whiteboard' : 'art-wide', x0 + 10, 1);
+    setCell(b.walls, x0 + 13, 1, index % 2 === 0 ? 'clock' : 'poster');
+    b.prop('plant-tall', x0 + 1, WALL_ROWS);
+    b.prop(index % 2 === 0 ? 'plant' : 'plant-fig', x0 + 14, WALL_ROWS);
   });
 
   const roomBounds: Record<string, Rect> = {};
@@ -505,6 +552,6 @@ export function layoutBuilding(projects: readonly LayoutProjectInput[]): Buildin
     signs,
     zones: b.zones,
     lobby,
-    spawn: { x: 8, y: 9 },
+    spawn: { x: 8, y: 9 + WALL_EXTRA },
   };
 }

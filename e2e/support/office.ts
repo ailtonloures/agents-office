@@ -20,6 +20,8 @@ declare global {
       overview: boolean;
       hud: { text: string };
       rooms: { id: string; w: number; h: number }[];
+      /** Automatic door of each room (by room id). */
+      doors: Record<string, 'open' | 'closed' | 'moving'>;
       /** Screen-fixed UI in game pixels and the cameras that draw it (spec 037). */
       ui: {
         screen: { width: number; height: number };

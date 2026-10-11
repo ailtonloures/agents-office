@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import type { BuildingLayout, Tile } from './roomLayout';
+import { type BuildingLayout, type Tile, WALL_ROWS } from './roomLayout';
 
 const TILE = 16;
 export const LIGHT_DEPTH = { ceiling: 1.55, shadow: 1.6, window: 1.8, glow: 3.5 } as const;
@@ -40,8 +40,11 @@ export function ensureParticleTextures(textures: Phaser.Textures.TextureManager)
     }
   }
 }
-/** Rows of the soft shadow a wall casts on the floor right below it (alpha per row). */
-const WALL_SHADOW = [0.22, 0.13, 0.07, 0.03] as const;
+/**
+ * Rows of the soft shadow a wall casts on the floor right below it (alpha per row): 6 rows, so
+ * the tall wall (slab, face, skirting) sits on the floor with some weight.
+ */
+const WALL_SHADOW = [0.32, 0.2, 0.12, 0.07, 0.035, 0.015] as const;
 /** Walls seen from above (no face): they cast no shadow on the floor below them. */
 const TOP_ONLY_WALLS = new Set(['wall-cap', 'wall-side-l', 'wall-side-r', 'wall-bottom']);
 /** Same depth formula as the characters (feet line), so lights sit right on top of their prop. */
@@ -165,8 +168,13 @@ export class Lighting {
     for (let y = 0; y < layout.height; y += 1) {
       for (let x = 0; x < layout.width; x += 1) {
         const wall = at(walls, x, y);
-        if (wall === 'window' && at(floor, x, y + 1)) {
-          add(WINDOW_KEY, x * TILE + TILE / 2, (y + 1) * TILE, LIGHT_DEPTH.window);
+        if (wall === 'window') {
+          // The light falls on the floor right below the (tall) wall the window is in.
+          let base = y + 1;
+          while (at(walls, x, base)) base += 1;
+          if (at(floor, x, base)) {
+            add(WINDOW_KEY, x * TILE + TILE / 2, base * TILE, LIGHT_DEPTH.window);
+          }
         }
         if (at(furniture, x, y) === 'lamp') {
           add(LAMP_KEY, x * TILE + TILE / 2, y * TILE + this.offsets.lamp, glowDepth(y));
@@ -176,7 +184,7 @@ export class Lighting {
 
     // Soft pools of light from the ceiling over the lobby and every room.
     for (const area of [layout.lobby, ...layout.rooms.map((room) => room.bounds)]) {
-      for (let ty = area.y + 3; ty < area.y + area.h - 1; ty += CEILING_STEP.y) {
+      for (let ty = area.y + WALL_ROWS + 1; ty < area.y + area.h - 1; ty += CEILING_STEP.y) {
         for (const tx of [area.x + 4, area.x + 12]) {
           this.lights.push(
             this.scene.add

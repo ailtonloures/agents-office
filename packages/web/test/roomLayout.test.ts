@@ -10,6 +10,8 @@ import {
   type Rect,
   SIGN_MAX_CHARS,
   type Tile,
+  TOP_WALL_ROWS,
+  WALL_ROWS,
 } from '../src/world/roomLayout';
 
 function project(id: string, firstSeen: number, agentsPerSession: number[]): LayoutProjectInput {
@@ -181,8 +183,8 @@ describe('layoutBuilding', () => {
         expect(taken.has(cell), `${prop.id} overlaps at ${cell}`).toBe(false);
         taken.add(cell);
         if (isWallProp(prop.id)) {
-          // Hangs on a top wall face.
-          expect(layout.layers.walls[prop.y]?.[x]).toBe('wall');
+          // Hangs at eye level, on the middle row of a top wall face.
+          expect(layout.layers.walls[prop.y]?.[x]).toBe('wall-mid');
         } else {
           expect(layout.layers.floor[prop.y]?.[x]).not.toBeNull();
           expect(layout.layers.walls[prop.y]?.[x]).toBeNull();
@@ -208,7 +210,29 @@ describe('layoutBuilding', () => {
     expect(walls[y + 1]?.[x + w - 1]).toBe('wall-side-r');
     expect(walls[y + h - 1]?.[x + 1]).toBe('wall-bottom');
     // The lobby's top-right corner opens onto the corridor, whose far end is a corner.
-    expect(walls[0]?.[CHUNK - 1]).toBe('wall');
+    expect(walls[0]?.[CHUNK - 1]).toBe('wall-top');
     expect(walls[0]?.[layout.width - 1]).toBe('wall-corner-tr');
+  });
+
+  it('raises top walls WALL_ROWS high, blocking, with the door open on every row', () => {
+    const layout = layoutBuilding([project('p', 1, [1])]);
+    const { x, y } = rect(layout, 'p');
+    const walls = layout.layers.walls;
+    expect(TOP_WALL_ROWS).toHaveLength(WALL_ROWS);
+    TOP_WALL_ROWS.forEach((tile, i) => {
+      expect(walls[y + i]?.[x + 2]).toBe(tile);
+      expect(layout.collision[y + i]?.[x + 2]).toBe(true);
+      // Corridor's top wall too.
+      expect(walls[i]?.[x + 6]).toBe(tile);
+    });
+    expect(layout.collision[y + WALL_ROWS]?.[x + 2]).toBe(false);
+    const door = layout.doors[0];
+    if (!door) throw new Error('no door');
+    expect(door.tile).toEqual({ x: x + 8, y: y + WALL_ROWS - 1 });
+    expect(door.outside).toEqual({ x: x + 8, y: y - 1 });
+    for (let i = 0; i < WALL_ROWS; i += 1) {
+      expect(walls[y + i]?.[door.tile.x]).toBeNull();
+      expect(layout.collision[y + i]?.[door.tile.x]).toBe(false);
+    }
   });
 });

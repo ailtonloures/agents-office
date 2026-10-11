@@ -1,5 +1,5 @@
 import type { OfficeModel } from '@agents-office/shared';
-import type { BuildingLayout, Door, Tile } from '../world/roomLayout';
+import { type BuildingLayout, type Door, type Tile, WALL_ROWS } from '../world/roomLayout';
 import { STATUS_LABEL } from './dialogContent';
 
 // Pure helpers that tie the office model to the desktop shell: which terminal tab runs which
@@ -7,7 +7,9 @@ import { STATUS_LABEL } from './dialogContent';
 
 /** The room door at `tile` (the tile an avatar faces from the corridor or from inside). */
 export function doorAt(layout: BuildingLayout, tile: Tile): Door | undefined {
-  return layout.doors.find((door) => door.tile.x === tile.x && door.tile.y === tile.y);
+  return layout.doors.find(
+    (door) => door.tile.x === tile.x && tile.y <= door.tile.y && tile.y > door.tile.y - WALL_ROWS,
+  );
 }
 
 /** Working directory of the room's project, for the picker (undefined when not known yet). */

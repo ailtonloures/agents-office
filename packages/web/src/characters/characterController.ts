@@ -202,6 +202,19 @@ export class CharacterController {
     return new Set(this.chars.keys());
   }
 
+  /** Where every character on screen is right now, in tiles (fractional while walking). */
+  positions(): Tile[] {
+    return [...this.chars.values()]
+      .filter((c) => c.spawned)
+      .map((c) => {
+        const t = c.to ? Math.min(1, c.stepMs / STEP_MS) : 0;
+        return {
+          x: c.tile.x + ((c.to?.x ?? c.tile.x) - c.tile.x) * t,
+          y: c.tile.y + ((c.to?.y ?? c.tile.y) - c.tile.y) * t,
+        };
+      });
+  }
+
   debugCharacters(model: OfficeModel): DebugCharacter[] {
     return [...this.chars.values()]
       .filter((c) => c.spawned)
