@@ -42,6 +42,7 @@ import {
   TAB_BAR_HEIGHT,
   tabTitle,
   toggleCollapsed,
+  wheelScrollTabs,
 } from './terminalTabs';
 
 export const TERMINAL_PANEL_KEY = 'agents-office.terminalPanel';
@@ -49,14 +50,14 @@ const SCROLLBACK = 5000;
 
 const CSS = `
 #ao-terminal{box-sizing:border-box;flex:none;display:flex;flex-direction:column;position:relative;background:#0d1020;
-  border-top:2px solid #3a3f5c;font:12px monospace;color:#f0e6b8;min-height:0;min-width:0}
-#ao-terminal[data-dock="left"]{border-top:0;border-right:2px solid #3a3f5c;order:-1}
-#ao-terminal[data-dock="right"]{border-top:0;border-left:2px solid #3a3f5c}
+  border-top:2px solid #3a3f5c;font:12px monospace;color:#f0e6b8;min-height:0;min-width:0;overflow:hidden;max-height:100%}
+#ao-terminal[data-dock="left"]{border-top:0;border-right:2px solid #3a3f5c;order:-1;max-height:none;max-width:100%}
+#ao-terminal[data-dock="right"]{border-top:0;border-left:2px solid #3a3f5c;max-height:none;max-width:100%}
 #ao-terminal[hidden]{display:none}
 #ao-terminal[data-focus="terminal"]{border-color:#f0c040}
-#ao-terminal .ao-term-resizer{position:absolute;left:0;right:0;top:-5px;height:8px;cursor:ns-resize;z-index:2}
-#ao-terminal[data-dock="left"] .ao-term-resizer{top:0;bottom:0;left:auto;right:-5px;width:8px;height:auto;cursor:ew-resize}
-#ao-terminal[data-dock="right"] .ao-term-resizer{top:0;bottom:0;left:-5px;right:auto;width:8px;height:auto;cursor:ew-resize}
+#ao-terminal .ao-term-resizer{position:absolute;left:0;right:0;top:0;height:6px;cursor:ns-resize;z-index:2}
+#ao-terminal[data-dock="left"] .ao-term-resizer{top:0;bottom:0;left:auto;right:0;width:6px;height:auto;cursor:ew-resize}
+#ao-terminal[data-dock="right"] .ao-term-resizer{top:0;bottom:0;left:0;right:auto;width:6px;height:auto;cursor:ew-resize}
 #ao-terminal[data-collapsed="true"] .ao-term-resizer{display:none}
 #ao-terminal[data-collapsed="true"]:not([data-dock="bottom"]) .ao-term-bar>:not(.ao-term-toggle){display:none}
 #ao-terminal[data-collapsed="true"]:not([data-dock="bottom"]) .ao-term-toggle{flex:1;padding:0}
@@ -65,8 +66,11 @@ const CSS = `
 #ao-terminal .ao-term-dock[data-active="true"]{color:#f0c040}
 #ao-terminal .ao-term-bar{flex:none;height:${TAB_BAR_HEIGHT - 2}px;display:flex;align-items:stretch;
   background:#1b1d2a;overflow:hidden}
-#ao-terminal .ao-term-tabs{display:flex;flex:1;overflow-x:auto;min-width:0}
-#ao-terminal .ao-term-tab{display:flex;align-items:center;gap:6px;padding:0 4px 0 10px;cursor:pointer;
+#ao-terminal .ao-term-tabs{display:flex;flex:1 1 0;overflow-x:auto;min-width:0;scrollbar-width:none}
+#ao-terminal .ao-term-tabs::-webkit-scrollbar{display:none}
+#ao-terminal .ao-term-focus,#ao-terminal .ao-term-docks,#ao-terminal .ao-term-toggle,
+#ao-terminal .ao-term-bar>.ao-term-btn{flex:none}
+#ao-terminal .ao-term-tab{flex:none;display:flex;align-items:center;gap:6px;padding:0 4px 0 10px;cursor:pointer;
   color:#9aa0bd;border-right:1px solid #2a2d44;white-space:nowrap;border-bottom:2px solid transparent}
 #ao-terminal .ao-term-tab[data-active="true"]{color:#f0e6b8;background:#0d1020;border-bottom-color:#f0c040}
 #ao-terminal .ao-term-tab[data-state="exited"] .ao-term-tab-title{opacity:.6}
@@ -77,7 +81,7 @@ const CSS = `
 #ao-terminal[data-focus="terminal"] .ao-term-focus{color:#f0c040}
 #ao-terminal .ao-term-body{position:relative;flex:1;min-height:0}
 #ao-terminal[data-collapsed="true"] .ao-term-body{display:none}
-#ao-terminal .ao-term{position:absolute;inset:0;padding:4px 0 0 6px;box-sizing:border-box}
+#ao-terminal .ao-term{position:absolute;inset:0;padding:4px 0 4px 6px;box-sizing:border-box}
 #ao-terminal .ao-term[hidden]{display:none}
 #ao-terminal .ao-term-ended{position:absolute;left:0;right:0;bottom:0;z-index:3;display:flex;gap:8px;
   align-items:center;padding:6px 10px;background:#2a2d44;border-top:2px solid #f0c040}
@@ -263,6 +267,9 @@ export function mountTerminalPanel(
   const confirmEl = el('div', 'ao-term-confirm', 'terminal-confirm');
   confirmEl.hidden = true;
   const body = el('div', 'ao-term-body');
+  tabsEl.addEventListener('wheel', (event) => {
+    if (wheelScrollTabs(tabsEl, event.deltaY)) event.preventDefault();
+  });
   bar.append(tabsEl, focusLabel, vscodeBtn, docksEl, toggleBtn);
   root.append(resizer, bar, confirmEl, body);
   options.gameParent.after(root);
@@ -396,6 +403,11 @@ export function mountTerminalPanel(
     );
     for (const [id, view] of views) {
       view.host.hidden = id !== model.activeId || model.collapsed;
+    }
+    // jsdom has no scrollIntoView; real browsers keep the active tab visible without touching the page scroll.
+    const activeNode = tabsEl.querySelector<HTMLElement>('.ao-term-tab[data-active="true"]');
+    if (typeof activeNode?.scrollIntoView === 'function') {
+      activeNode.scrollIntoView({ inline: 'nearest', block: 'nearest' });
     }
     renderConfirm();
     applyOwner();
@@ -680,6 +692,18 @@ export function mountTerminalPanel(
   };
   window.addEventListener('resize', onWindowResize);
 
+  // The body can change size without a window resize (dock switch, close confirmation, layout);
+  // refit once per frame so the last row is never cut.
+  let observeFrame = 0;
+  const bodyObserver =
+    typeof ResizeObserver === 'undefined'
+      ? undefined
+      : new ResizeObserver(() => {
+          cancelAnimationFrame(observeFrame);
+          observeFrame = requestAnimationFrame(fitActive);
+        });
+  bodyObserver?.observe(body);
+
   // Rehydrate: sessions that survived a reload of the window come back with their history.
   void bridge
     .list()
@@ -731,6 +755,8 @@ export function mountTerminalPanel(
       offExit();
       document.removeEventListener('keydown', onKeydown, true);
       window.removeEventListener('resize', onWindowResize);
+      bodyObserver?.disconnect();
+      cancelAnimationFrame(observeFrame);
       for (const view of views.values()) view.term.dispose();
       root.remove();
     },

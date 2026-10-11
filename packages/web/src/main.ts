@@ -10,6 +10,7 @@ import { externalBridgeOf, openInVSCodeWithToast } from './ui/externalOpen';
 import { mountLostSessions } from './ui/lostSessions';
 import { officeCwds, pickerBridgesOf } from './ui/projectPicker';
 import { mountProjectPicker } from './ui/projectPickerPanel';
+import { installScrollbars } from './ui/scrollbars';
 import { activityByTerminal, claudeSessionByTerminal } from './ui/sessionBinding';
 import { hooksBridgeOf } from './ui/settingsLogic';
 import { mountSettingsPanel } from './ui/settingsPanel';
@@ -17,6 +18,7 @@ import { mountTerminalPanel } from './ui/terminalPanel';
 import { terminalBridgeOf } from './ui/terminalTabs';
 import { mountZoomControls } from './ui/zoomControls';
 
+installScrollbars();
 const query = new URLSearchParams(window.location.search);
 const debugCharacters = query.get('debug') === 'characters';
 const demo = query.has('demo');

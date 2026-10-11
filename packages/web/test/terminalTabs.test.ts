@@ -33,6 +33,7 @@ import {
   tabTitle,
   terminalBridgeOf,
   toggleCollapsed,
+  wheelScrollTabs,
 } from '../src/ui/terminalTabs';
 
 const tab = (id: string, cwd = `/work/${id}`): TerminalTab => ({ id, cwd, state: 'running' });
@@ -141,7 +142,8 @@ describe('size', () => {
     expect(clampHeight(10, 900)).toBe(MIN_PANEL_HEIGHT);
     expect(clampHeight(2000, 900)).toBe(900 - MIN_OFFICE_HEIGHT);
     expect(clampHeight(300.4, 900)).toBe(300);
-    expect(clampHeight(500, 200)).toBe(MIN_PANEL_HEIGHT);
+    expect(clampHeight(500, 200)).toBe(200 - MIN_OFFICE_HEIGHT);
+    expect(clampHeight(500, 100)).toBe(0);
   });
 
   it('occupied height follows tabs and collapse', () => {
@@ -212,7 +214,8 @@ describe('dock and width', () => {
     expect(clampWidth(10, 1200)).toBe(MIN_PANEL_WIDTH);
     expect(clampWidth(5000, 1200)).toBe(1200 - MIN_OFFICE_WIDTH);
     expect(clampWidth(300.4, 1200)).toBe(300);
-    expect(clampWidth(500, 300)).toBe(MIN_PANEL_WIDTH);
+    expect(clampWidth(500, 300)).toBe(300 - MIN_OFFICE_WIDTH);
+    expect(clampWidth(500, 100)).toBe(0);
     expect(setWidth(createPanelModel(), 9999, 1000).width).toBe(1000 - MIN_OFFICE_WIDTH);
   });
 
@@ -281,5 +284,20 @@ describe('layoutKey', () => {
     expect(layoutKey(setHeight(m, m.height + 40, 1000))).not.toBe(key);
     expect(layoutKey(collapse(m))).not.toBe(key);
     expect(layoutKey(collapse(setDock(m, 'left')))).not.toBe(layoutKey(setDock(m, 'left')));
+  });
+});
+
+describe('wheelScrollTabs', () => {
+  it('maps deltaY to scrollLeft when the bar overflows', () => {
+    const bar = { scrollLeft: 10, scrollWidth: 500, clientWidth: 200 };
+    expect(wheelScrollTabs(bar, 40)).toBe(true);
+    expect(bar.scrollLeft).toBe(50);
+  });
+
+  it('leaves the event alone without overflow or delta', () => {
+    const bar = { scrollLeft: 0, scrollWidth: 200, clientWidth: 200 };
+    expect(wheelScrollTabs(bar, 40)).toBe(false);
+    expect(bar.scrollLeft).toBe(0);
+    expect(wheelScrollTabs({ scrollLeft: 0, scrollWidth: 500, clientWidth: 200 }, 0)).toBe(false);
   });
 });

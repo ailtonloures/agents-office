@@ -50,6 +50,9 @@ PRD: [agents-office.prd.md](../prds/agents-office.prd.md)
 | 044 | Resize idempotente, coalescido e com render síncrono | high | done | bugfix, web, performance, testing | 033, 037, 040 |
 | 045 | Painel emite layout só quando muda e foco sem re-render | high | done | bugfix, web, terminal, testing | 040, 041, 044 |
 | 046 | Limpar texturas de vinheta antigas | medium | done | bugfix, web, performance, testing | 044 |
+| 047 | Terminal sem corte no rodapé | high | done | bugfix, web, terminal, layout, testing | — |
+| 048 | Scrollbars finos globais | medium | done | feature, web, ui, testing | — |
+| 049 | Barra de abas sem scrollbar nativa | high | done | bugfix, web, terminal, ui, testing | 048 |
 
 Fases do PRD: 001–002 = Fase 0 (spike) · 003–011 = Fase 1 (MVP) · 006, 012 = parte da Fase 2. Replay, minimapa e Tauri (Fase 3) ficam fora deste lote.
 
@@ -70,3 +73,5 @@ PRD do terminal por clique, dock e botões: [terminal-por-clique-dock-botoes.prd
 PRD das mesas liberadas: [mesas-liberadas-agente-sai.prd.md](../prds/mesas-liberadas-agente-sai.prd.md) (043; depende de 032, 035, 036 e 038).
 
 PRD sem flash ao redimensionar: [sem-flash-ao-redimensionar.prd.md](../prds/sem-flash-ao-redimensionar.prd.md) (044–046; 045 depende de 044, 046 de 044).
+
+PRD do terminal sem corte e scrollbars: [terminal-sem-corte-scrollbars.prd.md](../prds/terminal-sem-corte-scrollbars.prd.md) (047–049; 049 depende de 048).

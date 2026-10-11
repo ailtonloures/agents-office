@@ -174,9 +174,13 @@ export function setFocus(model: PanelModel, focus: FocusOwner): PanelModel {
   return model.focus === focus ? model : { ...model, focus };
 }
 
-/** Keeps the panel between its minimum and what leaves the office its minimum height. */
+/**
+ * Keeps the panel between its minimum and what leaves the office its minimum height. The maximum
+ * wins over the minimum: in a very short window the panel shrinks below `MIN_PANEL_HEIGHT` rather
+ * than overflowing the window.
+ */
 export function clampHeight(height: number, windowHeight: number): number {
-  const max = Math.max(MIN_PANEL_HEIGHT, windowHeight - MIN_OFFICE_HEIGHT);
+  const max = Math.max(0, windowHeight - MIN_OFFICE_HEIGHT);
   return Math.round(Math.min(max, Math.max(MIN_PANEL_HEIGHT, height)));
 }
 
@@ -184,9 +188,9 @@ export function setHeight(model: PanelModel, height: number, windowHeight: numbe
   return { ...model, height: clampHeight(height, windowHeight) };
 }
 
-/** Keeps the panel between its minimum and what leaves the office its minimum width. */
+/** Same as `clampHeight`, for the side docks: the maximum wins over `MIN_PANEL_WIDTH`. */
 export function clampWidth(width: number, windowWidth: number): number {
-  const max = Math.max(MIN_PANEL_WIDTH, windowWidth - MIN_OFFICE_WIDTH);
+  const max = Math.max(0, windowWidth - MIN_OFFICE_WIDTH);
   return Math.round(Math.min(max, Math.max(MIN_PANEL_WIDTH, width)));
 }
 
@@ -291,4 +295,14 @@ export function terminalBridgeOf(win: object): TerminalBridge | undefined {
   if (desktop?.desktop !== true) return undefined;
   const terminal = desktop.terminal;
   return terminal && typeof terminal.start === 'function' ? terminal : undefined;
+}
+
+/** Turns a vertical wheel gesture into horizontal scroll; true when it consumed the event (there is overflow). */
+export function wheelScrollTabs(
+  el: { scrollLeft: number; scrollWidth: number; clientWidth: number },
+  deltaY: number,
+): boolean {
+  if (deltaY === 0 || el.scrollWidth <= el.clientWidth) return false;
+  el.scrollLeft += deltaY;
+  return true;
 }
