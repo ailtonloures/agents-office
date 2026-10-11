@@ -49,6 +49,16 @@ const game = new Phaser.Game({
   },
   scene: [BootScene, OfficeScene, CharactersDebugScene],
 });
+// The splash in index.html stays up until the first real scene has been created.
+const splash = document.getElementById('splash');
+const hideSplash = () => {
+  if (!splash) return;
+  splash.classList.add('hidden');
+  setTimeout(() => splash.remove(), 400);
+};
+for (const key of ['OfficeScene', DEBUG_CHARACTERS_SCENE]) {
+  game.scene.getScene(key).events.once(Phaser.Scenes.Events.CREATE, hideSplash);
+}
 // BootScene awaits network requests before OfficeScene starts, so the client is set in time.
 game.registry.set(REGISTRY_CLIENT, client);
 if (debugCharacters) game.registry.set(REGISTRY_START_SCENE, DEBUG_CHARACTERS_SCENE);

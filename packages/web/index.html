@@ -32,10 +32,69 @@
       canvas {
         image-rendering: pixelated;
       }
+      #splash {
+        position: fixed;
+        inset: 0;
+        z-index: 1000;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 14px;
+        background: radial-gradient(ellipse at 50% 40%, #1a1e3a 0%, #0d1020 70%);
+        color: #eeecf6;
+        font-family: system-ui, sans-serif;
+        transition: opacity 0.3s ease;
+      }
+      #splash.hidden {
+        opacity: 0;
+        pointer-events: none;
+      }
+      #splash img {
+        width: 112px;
+        height: 112px;
+        image-rendering: pixelated;
+        border-radius: 22px;
+        box-shadow: 0 8px 32px rgba(139, 124, 246, 0.3);
+        animation: splash-float 2.4s ease-in-out infinite;
+      }
+      #splash h1 {
+        margin: 6px 0 0;
+        font-size: 1.6rem;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+      }
+      #splash p {
+        margin: 0;
+        font-size: 0.95rem;
+        color: #a9a6c4;
+        animation: splash-pulse 1.4s ease-in-out infinite;
+      }
+      @keyframes splash-float {
+        50% {
+          transform: translateY(-6px);
+        }
+      }
+      @keyframes splash-pulse {
+        50% {
+          opacity: 0.45;
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        #splash img,
+        #splash p {
+          animation: none;
+        }
+      }
     </style>
   </head>
   <body>
     <div id="game"></div>
+    <div id="splash" role="status" aria-live="polite">
+      <img src="/logo.svg" alt="" />
+      <h1>Agents Office</h1>
+      <p>Carregando...</p>
+    </div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
