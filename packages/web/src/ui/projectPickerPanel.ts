@@ -42,11 +42,12 @@ const CSS = `
 .ao-picker-row .star[aria-pressed=true]{color:#f0c040}
 .ao-picker-row .name{font-weight:bold}.ao-picker-row .path{color:#8a8fa8;flex:1;overflow:hidden;
   text-overflow:ellipsis;white-space:nowrap}.ao-picker-row .when{color:#8a8fa8}
-.ao-picker-opts{display:grid;gap:8px}
+.ao-picker-opts{display:grid;grid-template-columns:minmax(0,1fr);gap:8px}
+.ao-picker-opts>*{min-width:0}
 .ao-picker-opts label{display:flex;gap:6px;align-items:center;padding:8px 10px;background:#0d1020;
   border:2px solid transparent}
 .ao-picker-opts label:has(input:checked){border-color:#f0c040}
-.ao-picker-opts select{flex:1;min-width:0;max-width:100%;text-overflow:ellipsis}
+.ao-picker-opts select{flex:1;width:100%;min-width:0;max-width:100%;text-overflow:ellipsis}
 .ao-picker-mode{display:grid;grid-template-columns:auto minmax(0,1fr);gap:8px;align-items:center}
 .ao-picker-mode select{width:100%;min-width:0}
 .ao-picker-note,.ao-picker-warn,.ao-picker-err{line-height:1.5;overflow-wrap:anywhere}
