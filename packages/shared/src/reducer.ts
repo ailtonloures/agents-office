@@ -75,6 +75,12 @@ export function reduce(
         ...(event.parentAgentId !== undefined ? { parentAgentId: event.parentAgentId } : {}),
       };
       if (existing && existing.sessionId !== event.sessionId) detachAgent(next, existing);
+      // A brand-new id may be the recreation of a sub-agent that died without SubagentStop: its
+      // idle, equivalent predecessor leaves the office as if it had finished normally.
+      if (!existing) {
+        const predecessor = findIdlePredecessor(next, agent);
+        if (predecessor) finishAgent(next, predecessor, event.ts, event);
+      }
       putAgent(next, agent, event);
       return next;
     }
@@ -165,24 +171,43 @@ export function reduce(
       );
 
     case 'agent.finished': {
-      const agent = ensureAgent(next, event.agentId, undefined, event.ts);
-      const { currentTool: _running, ...rest } = agent;
-      const finished: Agent = { ...rest, status: 'finished', finishedTs: event.ts };
-      putAgent(next, finished, event);
-      const stored = next.agents[event.agentId] ?? finished;
-      const projectId = next.sessions[stored.sessionId]?.projectId;
-      const projectName = projectId ? next.projects[projectId]?.name : undefined;
-      const entry: HallOfFameEntry =
-        projectName === undefined ? stored : { ...stored, projectName };
-      next.hallOfFame = [...next.hallOfFame.filter((a) => a.id !== stored.id), entry].slice(
-        -HALL_OF_FAME_SIZE,
-      );
+      finishAgent(next, ensureAgent(next, event.agentId, undefined, event.ts), event.ts, event);
       return next;
     }
 
     case 'session.ended':
       return sessionEnded(next, event.sessionId);
   }
+}
+
+/** Marks the agent `finished` and records it in the Hall of Fame (shared by finish and replace). */
+function finishAgent(model: OfficeModel, agent: Agent, ts: string, event: OfficeEvent): void {
+  const { currentTool: _running, ...rest } = agent;
+  const finished: Agent = { ...rest, status: 'finished', finishedTs: ts };
+  putAgent(model, finished, event);
+  const stored = model.agents[agent.id] ?? finished;
+  const projectId = model.sessions[stored.sessionId]?.projectId;
+  const projectName = projectId ? model.projects[projectId]?.name : undefined;
+  const entry: HallOfFameEntry = projectName === undefined ? stored : { ...stored, projectName };
+  model.hallOfFame = [...model.hallOfFame.filter((a) => a.id !== stored.id), entry].slice(
+    -HALL_OF_FAME_SIZE,
+  );
+}
+
+/**
+ * The idle agent of the same session that `agent` equivalently replaces (same type, description
+ * and parent). Working / thinking / waiting twins are never candidates.
+ */
+function findIdlePredecessor(model: OfficeModel, agent: Agent): Agent | undefined {
+  return Object.values(model.agents).find(
+    (other) =>
+      other.id !== agent.id &&
+      other.sessionId === agent.sessionId &&
+      other.status === 'idle' &&
+      other.agentType === agent.agentType &&
+      other.description === agent.description &&
+      other.parentAgentId === agent.parentAgentId,
+  );
 }
 
 function sessionStarted(

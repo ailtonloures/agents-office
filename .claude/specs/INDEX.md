@@ -36,9 +36,17 @@ PRD: [agents-office.prd.md](../prds/agents-office.prd.md)
 | 030 | Remover o PermissionCard da web mantendo balão e contador | high | done | feature, web, ui, testing | 029 |
 | 031 | Fechar a notificação do sistema ao resolver no terminal | high | done | feature, desktop, notifications, docs, testing | 029 |
 | 032 | Contador de sessões e agentes conta apenas atores vivos | high | done | feature, web, daemon, shared, testing | — |
+| 033 | Zoom do escritório — lógica, câmera e Ctrl + roda | medium | done | feature, web, camera, testing | — |
+| 034 | Zoom do escritório — botões + / − e E2E | medium | done | feature, web, ui, testing | 033 |
+| 035 | Substituir sub-agente ocioso ao recriar agente equivalente | high | in-progress | feature, shared, daemon, web, testing | — |
+| 036 | Finalizar sub-agentes ociosos por inatividade (liveness) | medium | todo | feature, daemon, testing | 035 |
 
 Fases do PRD: 001–002 = Fase 0 (spike) · 003–011 = Fase 1 (MVP) · 006, 012 = parte da Fase 2. Replay, minimapa e Tauri (Fase 3) ficam fora deste lote.
 
 PRDs do app desktop: [desktop-app-permissions.prd.md](../prds/desktop-app-permissions.prd.md) (013–019) · [desktop-terminal-sessions.prd.md](../prds/desktop-terminal-sessions.prd.md) (020–025, depende do primeiro). O spec 013 é um spike de validação: seus resultados podem exigir ajustes nos specs 014–025. Windows, assinatura/notarização e auto-update ficam fora deste lote.
 
 PRD de polimento das modais: [modal-ui-polish.prd.md](../prds/modal-ui-polish.prd.md) (026–028; 027 e 028 dependem de 026 e são independentes entre si).
+
+PRD de zoom do escritório: [zoom-escritorio.prd.md](../prds/zoom-escritorio.prd.md) (033–034; 034 depende de 033).
+
+PRD do avatar de sub-agente órfão: [avatar-subagente-orfao.prd.md](../prds/avatar-subagente-orfao.prd.md) (035–036; 036 depende de 035).

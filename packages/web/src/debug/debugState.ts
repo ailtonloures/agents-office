@@ -28,6 +28,10 @@ export interface DebugState {
   /** Rooms of the generated building (tile coordinates). */
   /** Player avatar (tile coordinates, fractional while walking). */
   player: { x: number; y: number; facing: string; moving: boolean };
+  /** Office camera zoom chosen by the user (the overview does not change it). */
+  zoom: number;
+  /** True while the overview (M) is showing the whole building. */
+  overview: boolean;
   /** The HUD text and the dialog state. */
   hud: { text: string };
   dialog: { open: boolean; targetId: string | undefined; pages: readonly (readonly string[])[] };
@@ -55,6 +59,8 @@ export function createDebugState(): DebugState {
     model: createEmptyModel(),
     characters: [],
     player: { x: 0, y: 0, facing: 'down', moving: false },
+    zoom: 1,
+    overview: false,
     hud: { text: '' },
     dialog: { open: false, targetId: undefined, pages: [] },
     permissions: { queue: [] },
@@ -74,6 +80,8 @@ export function updateDebugState(state: DebugState, next: Partial<DebugState>): 
   if (next.model !== undefined) state.model = next.model;
   if (next.characters !== undefined) state.characters = next.characters;
   if (next.player !== undefined) state.player = next.player;
+  if (next.zoom !== undefined) state.zoom = next.zoom;
+  if (next.overview !== undefined) state.overview = next.overview;
   if (next.hud !== undefined) state.hud = next.hud;
   if (next.dialog !== undefined) state.dialog = next.dialog;
   if (next.permissions !== undefined) state.permissions = next.permissions;

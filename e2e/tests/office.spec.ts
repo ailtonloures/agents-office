@@ -206,3 +206,80 @@ test('5. the Hall of Fame board lists the finished agents', async ({ page }) => 
   await page.waitForTimeout(1200);
   await shot(page, '5-hall-of-fame');
 });
+
+const zoomOf = (page: import('@playwright/test').Page): Promise<number> =>
+  page.evaluate(() => window.__office?.zoom ?? 0);
+
+async function ctrlWheel(page: import('@playwright/test').Page, deltaY: number, ctrl = true) {
+  const box = await page.locator('canvas').boundingBox();
+  if (!box) throw new Error('no canvas');
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  if (ctrl) await page.keyboard.down('Control');
+  await page.mouse.wheel(0, deltaY);
+  if (ctrl) await page.keyboard.up('Control');
+}
+
+test('6. zoom buttons change the zoom, stop at the limits and do not move the avatar', async ({
+  page,
+}) => {
+  await page.addInitScript(() => localStorage.removeItem('agents-office.zoom'));
+  await openOffice(page, daemon.url);
+  const zoomIn = page.getByTestId('zoom-in');
+  const zoomOut = page.getByTestId('zoom-out');
+  await expect(zoomIn).toBeVisible();
+  expect(await zoomOf(page)).toBe(1);
+  const before = await page.evaluate(() => window.__office?.player);
+
+  await zoomIn.click();
+  expect(await zoomOf(page)).toBe(1.25);
+  await zoomOut.click();
+  await zoomOut.click();
+  expect(await zoomOf(page)).toBe(0.75);
+  expect(await page.evaluate(() => window.__office?.player)).toEqual(before);
+
+  for (let i = 0; i < 10; i++) if (await zoomIn.isEnabled()) await zoomIn.click();
+  expect(await zoomOf(page)).toBe(3);
+  await expect(zoomIn).toBeDisabled();
+  await expect(zoomOut).toBeEnabled();
+  for (let i = 0; i < 20; i++) if (await zoomOut.isEnabled()) await zoomOut.click();
+  expect(await zoomOf(page)).toBe(0.5);
+  await expect(zoomOut).toBeDisabled();
+  await expect(zoomIn).toBeEnabled();
+});
+
+test('7. Ctrl + wheel over the canvas zooms; the wheel alone does not', async ({ page }) => {
+  await page.addInitScript(() => localStorage.removeItem('agents-office.zoom'));
+  await openOffice(page, daemon.url);
+  await ctrlWheel(page, -100, false);
+  await page.waitForTimeout(200);
+  expect(await zoomOf(page)).toBe(1);
+  await ctrlWheel(page, -100);
+  await expect.poll(() => zoomOf(page)).toBe(1.25);
+  await ctrlWheel(page, 100);
+  await expect.poll(() => zoomOf(page)).toBe(1);
+});
+
+test('8. zoom persists after reload; the overview hides the buttons and restores the zoom', async ({
+  page,
+}) => {
+  await openOffice(page, daemon.url);
+  await page.evaluate(() => localStorage.removeItem('agents-office.zoom'));
+  await page.reload();
+  await page.waitForFunction(() => window.__office?.connected === true);
+  await page.getByTestId('zoom-in').click();
+  await page.getByTestId('zoom-in').click();
+  expect(await zoomOf(page)).toBe(1.5);
+
+  await page.reload();
+  await page.waitForFunction(() => window.__office?.connected === true);
+  await expect.poll(() => zoomOf(page)).toBe(1.5);
+
+  await page.keyboard.press('m');
+  await expect.poll(() => page.evaluate(() => window.__office?.overview)).toBe(true);
+  await expect(page.getByTestId('zoom-in')).toBeHidden();
+  expect(await zoomOf(page)).toBe(1.5);
+  await page.keyboard.press('m');
+  await expect.poll(() => page.evaluate(() => window.__office?.overview)).toBe(false);
+  await expect(page.getByTestId('zoom-in')).toBeVisible();
+  expect(await zoomOf(page)).toBe(1.5);
+});

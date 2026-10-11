@@ -34,6 +34,15 @@ import { isWallProp, PROP_DEFS, type PropPlacement, propDepthBias } from '../wor
 import { RoomDecor } from '../world/roomDecor';
 import { type BuildingLayout, CHUNK, type Layer, layoutBuilding } from '../world/roomLayout';
 import { ensureVignette } from '../world/rugs';
+import {
+  readStoredZoom,
+  stepZoom,
+  wheelDirection,
+  writeStoredZoom,
+  ZOOM_CHANGED_EVENT,
+  ZOOM_STEP_EVENT,
+  type ZoomDirection,
+} from '../zoom';
 import { REGISTRY_SKIN, REGISTRY_SKIN_WARNING } from './BootScene';
 
 export const REGISTRY_CLIENT = 'officeClient';
@@ -117,6 +126,8 @@ export class OfficeScene extends Phaser.Scene {
   private knownRooms = new Set<string>();
   private toast: Phaser.GameObjects.Container | undefined;
   private overview = false;
+  /** Camera zoom chosen by the user (Ctrl + wheel / buttons); the overview ignores it. */
+  private userZoom = readStoredZoom();
   private vignette!: Phaser.GameObjects.Image;
   private warningText: Phaser.GameObjects.BitmapText | undefined;
   private keys!: {
@@ -183,6 +194,7 @@ export class OfficeScene extends Phaser.Scene {
       offConnection();
       offModel();
       offEvent();
+      this.game.events.off(ZOOM_STEP_EVENT, this.zoomBy, this);
       this.controller.destroy();
       this.player.destroy();
       this.hud.destroy();
@@ -203,6 +215,7 @@ export class OfficeScene extends Phaser.Scene {
     this.player = new PlayerAvatar(this, this.factory, this.layout.spawn);
     const camera = this.cameras.main;
     camera.startFollow(this.player.sprite, true, FOLLOW_LERP, FOLLOW_LERP, 0, FOLLOW_OFFSET_Y);
+    this.applyZoom(this.userZoom);
     this.centerCameraOnPlayer();
     const debug = installDebugState();
     // Test helpers (E2E): walk-less moves to the neighbourhood of a character or the board.
@@ -313,6 +326,38 @@ export class OfficeScene extends Phaser.Scene {
       });
     }
     this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => this.onPointer(pointer));
+    // Ctrl + wheel zooms the office (the page's own zoom is cancelled in main.ts).
+    this.input.on(
+      'wheel',
+      (pointer: Phaser.Input.Pointer, _over: unknown, _dx: number, dy: number) => {
+        const event = pointer.event as WheelEvent | undefined;
+        if (!event?.ctrlKey || this.overview) return;
+        event.preventDefault();
+        this.zoomBy(wheelDirection(dy));
+      },
+    );
+    this.game.events.on(ZOOM_STEP_EVENT, this.zoomBy, this);
+  }
+
+  /** One zoom step closer (1) or farther (-1); ignored in the overview. */
+  private zoomBy(direction: ZoomDirection): void {
+    if (this.overview) return;
+    this.applyZoom(stepZoom(this.userZoom, direction));
+  }
+
+  private applyZoom(zoom: number): void {
+    this.userZoom = zoom;
+    this.cameras.main.setZoom(zoom);
+    writeStoredZoom(zoom);
+    this.publishZoom();
+  }
+
+  /** Tells the debug state and the zoom buttons the current level and overview mode. */
+  private publishZoom(): void {
+    const debug = installDebugState();
+    debug.zoom = this.userZoom;
+    debug.overview = this.overview;
+    this.game.events.emit(ZOOM_CHANGED_EVENT, { zoom: this.userZoom, overview: this.overview });
   }
 
   /** H / ?: the controls and legends overlay (not over the zoomed-out map). */
@@ -693,11 +738,12 @@ export class OfficeScene extends Phaser.Scene {
       camera.stopFollow();
       this.fitOverview();
     } else {
-      camera.setZoom(1);
+      camera.setZoom(this.userZoom);
       this.setCameraBounds();
       camera.startFollow(this.player.sprite, true, FOLLOW_LERP, FOLLOW_LERP, 0, FOLLOW_OFFSET_Y);
       this.centerCameraOnPlayer();
     }
+    this.publishZoom();
   }
 
   /**

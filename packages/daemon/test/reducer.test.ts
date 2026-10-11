@@ -340,3 +340,103 @@ describe('reducer: hall of fame project name', () => {
     expect(model.hallOfFame[0]?.projectName).toBe('my-app');
   });
 });
+
+describe('reducer: replacing an idle sub-agent on equivalent spawn', () => {
+  const twin = (agentId: string, ts: string, sessionId = 's1'): OfficeEvent => ({
+    ...spawned(agentId, 'Explore', ts),
+    sessionId,
+    description: 'same task',
+  });
+  const idle = (actorId: string, ts: string): OfficeEvent => ({
+    type: 'actor.idle',
+    actorId,
+    ts,
+    source: 'clock',
+  });
+
+  it('finishes the idle equivalent predecessor, with one hall-of-fame entry', () => {
+    const model = apply([started, twin('old', at(1)), idle('old', at(5)), twin('new', at(20))]);
+    expect(model.agents.old).toMatchObject({ status: 'finished', finishedTs: at(20) });
+    expect(model.agents.new?.status).toBe('spawning');
+    expect(model.hallOfFame.map((a) => a.id)).toEqual(['old']);
+    expect(model.hallOfFame[0]?.projectName).toBe('my-app');
+  });
+
+  it('does not revive the replaced agent on late events', () => {
+    const model = apply([
+      started,
+      twin('old', at(1)),
+      idle('old', at(5)),
+      twin('new', at(20)),
+      toolStarted('old', 1),
+    ]);
+    expect(model.agents.old?.status).toBe('finished');
+  });
+
+  it('never replaces a working, thinking or waiting agent', () => {
+    const working = apply([
+      started,
+      twin('old', at(1)),
+      toolStarted('old', 1),
+      twin('new', at(20)),
+    ]);
+    expect(working.agents.old?.status).toBe('working');
+    const thinking = apply([
+      started,
+      twin('old', at(1)),
+      { type: 'actor.thinking', actorId: 'old', ts: at(5), source: 'jsonl' },
+      twin('new', at(20)),
+    ]);
+    expect(thinking.agents.old?.status).toBe('thinking');
+    const waiting = apply([
+      started,
+      twin('old', at(1)),
+      { type: 'actor.waiting', actorId: 'old', ts: at(5), source: 'hook' },
+      twin('new', at(20)),
+    ]);
+    expect(waiting.agents.old?.status).toBe('waiting');
+    expect(working.hallOfFame).toHaveLength(0);
+  });
+
+  it('keeps parallel twins that are both working', () => {
+    const model = apply([
+      started,
+      twin('a', at(1)),
+      toolStarted('a', 1),
+      twin('b', at(2)),
+      toolStarted('b', 2),
+    ]);
+    expect(model.agents.a?.status).toBe('working');
+    expect(model.agents.b?.status).toBe('working');
+  });
+
+  it('does not cross sessions, nor replace a different type, description or parent', () => {
+    const other: OfficeEvent = { ...started, sessionId: 's2' };
+    const crossed = apply([
+      started,
+      other,
+      twin('old', at(1)),
+      idle('old', at(5)),
+      twin('new', at(20), 's2'),
+    ]);
+    expect(crossed.agents.old?.status).toBe('idle');
+
+    const base = [started, twin('old', at(1)), idle('old', at(5))];
+    const differentType = apply([...base, { ...twin('new', at(20)), agentType: 'Plan' }]);
+    const differentDesc = apply([...base, { ...twin('new', at(20)), description: 'other' }]);
+    const differentParent = apply([...base, { ...twin('new', at(20)), parentAgentId: 'p' }]);
+    for (const model of [differentType, differentDesc, differentParent]) {
+      expect(model.agents.old?.status).toBe('idle');
+    }
+  });
+
+  it('does not touch the parent session, and a re-spawn with the same id keeps today behavior', () => {
+    const model = apply([started, twin('old', at(1)), idle('old', at(5)), twin('new', at(20))]);
+    expect(model.sessions.s1?.status).not.toBe('finished');
+    expect(model.sessions.s1?.agentIds).toEqual(['old', 'new']);
+
+    const same = apply([started, twin('a', at(1)), idle('a', at(5)), twin('a', at(20))]);
+    expect(same.agents.a?.status).toBe('idle');
+    expect(same.hallOfFame).toHaveLength(0);
+  });
+});

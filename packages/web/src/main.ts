@@ -15,6 +15,7 @@ import { hooksBridgeOf } from './ui/settingsLogic';
 import { mountSettingsPanel } from './ui/settingsPanel';
 import { mountTerminalPanel } from './ui/terminalPanel';
 import { terminalBridgeOf } from './ui/terminalTabs';
+import { mountZoomControls } from './ui/zoomControls';
 
 const query = new URLSearchParams(window.location.search);
 const debugCharacters = query.get('debug') === 'characters';
@@ -58,6 +59,17 @@ function resize(): void {
   game.scale.resize(width, height);
 }
 window.addEventListener('resize', resize);
+
+// Ctrl + wheel over the game zooms the office, not the page (the terminal panel is outside the canvas).
+game.canvas.addEventListener(
+  'wheel',
+  (event) => {
+    if (event.ctrlKey) event.preventDefault();
+  },
+  { passive: false },
+);
+
+mountZoomControls(game, gameParent);
 
 if (demo) startDemo(client);
 else if (!debugCharacters) client.start();

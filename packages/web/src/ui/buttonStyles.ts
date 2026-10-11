@@ -5,6 +5,7 @@ const BUTTONS = [
   '.ao-hooks-btn',
   '.ao-picker-box button:not(.star)',
   '.ao-picker-btn',
+  '.ao-zoom-btn',
 ];
 
 const each = (suffix: string): string =>
