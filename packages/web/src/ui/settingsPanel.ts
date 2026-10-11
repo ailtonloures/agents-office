@@ -1,4 +1,5 @@
 import type { HooksBridge, HooksStatus } from '@agents-office/shared';
+import { BUTTON_CSS } from './buttonStyles';
 import {
   classifyDiffLine,
   HOOKS_PROMPT_KEY,
@@ -8,24 +9,29 @@ import {
 } from './settingsLogic';
 
 const CSS = `
-.ao-hooks-btn{position:fixed;left:8px;bottom:8px;z-index:20;font:12px monospace;padding:4px 8px;
-  background:#1b1d2a;color:#f0e6b8;border:2px solid #f0c040;cursor:pointer}
+.ao-hooks-btn{position:fixed;left:8px;bottom:8px;z-index:20;padding:4px 8px}
 .ao-hooks-banner{position:fixed;left:50%;bottom:44px;transform:translateX(-50%);z-index:20;
   font:13px monospace;background:#1b1d2a;color:#f0e6b8;border:2px solid #f0c040;padding:8px 12px;
   display:flex;gap:8px;align-items:center;max-width:90vw}
 .ao-hooks-panel{position:fixed;inset:0;z-index:30;background:rgba(5,6,12,.8);display:flex;
   align-items:center;justify-content:center;font:13px monospace;color:#f0e6b8}
-.ao-hooks-box{background:#1b1d2a;border:3px solid #f0c040;padding:16px;width:min(720px,92vw);
+.ao-hooks-box{background:#1b1d2a;border:3px solid #f0c040;padding:20px 24px;width:min(720px,92vw);
   max-height:88vh;overflow:auto}
-.ao-hooks-box h2{margin:0 0 8px;font-size:16px}
-.ao-hooks-box ul{list-style:none;padding:0;margin:8px 0;columns:2}
-.ao-hooks-box button,.ao-hooks-banner button{font:12px monospace;padding:4px 10px;margin-right:6px;
-  background:#2a2d44;color:#f0e6b8;border:2px solid #f0c040;cursor:pointer}
+.ao-hooks-box h2{margin:0 0 12px;font-size:16px}
+.ao-hooks-box ul{list-style:none;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:6px 16px;padding:0;margin:12px 0}
+.ao-hooks-box li{padding:6px 10px;background:#0d1020;border-left:3px solid #4a4f70;
+  word-spacing:.25em}
+.ao-hooks-info{margin:6px 0}
+.ao-hooks-path{margin:6px 0;color:#8a8fa8;overflow-wrap:anywhere}
+.ao-hooks-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
+@media (max-width:520px){.ao-hooks-box ul{grid-template-columns:minmax(0,1fr)}}
+.ao-hooks-box button,.ao-hooks-banner button{padding:4px 10px}
 .ao-hooks-diff{background:#0d1020;padding:8px;margin:8px 0;max-height:40vh;overflow:auto;
   white-space:pre;font-size:12px}
 .ao-diff-add{color:#7ddc7d}.ao-diff-del{color:#ff7b7b}.ao-diff-ctx{color:#8a8fa8}
 .ao-hooks-msg{margin:8px 0;color:#9ad1ff}
-`;
+${BUTTON_CSS}`;
 
 function el<K extends keyof HTMLElementTagNameMap>(
   tag: K,
@@ -114,7 +120,7 @@ export function mountSettingsPanel(bridge: HooksBridge): void {
           ),
         );
       }
-      const actions = el('div');
+      const actions = el('div', { className: 'ao-hooks-actions' });
       const install = el('button', { textContent: 'Instalar hooks' }, 'hooks-install');
       const remove = el('button', { textContent: 'Remover hooks' }, 'hooks-uninstall');
       const close = el('button', { textContent: 'Fechar' }, 'hooks-close');
@@ -126,9 +132,17 @@ export function mountSettingsPanel(bridge: HooksBridge): void {
       actions.append(install, remove, close);
       box.replaceChildren(
         el('h2', { textContent: 'Hooks do Claude Code' }),
-        el('div', { textContent: summaryLabel(status) }, 'hooks-summary'),
-        el('div', { textContent: hooksSeenLabel(status, new Date()) }, 'hooks-seen'),
-        el('div', { textContent: status.path }),
+        el(
+          'div',
+          { textContent: summaryLabel(status), className: 'ao-hooks-info' },
+          'hooks-summary',
+        ),
+        el(
+          'div',
+          { textContent: hooksSeenLabel(status, new Date()), className: 'ao-hooks-info' },
+          'hooks-seen',
+        ),
+        el('div', { textContent: status.path, className: 'ao-hooks-path' }),
         list,
         el('div', { textContent: message, className: 'ao-hooks-msg' }, 'hooks-message'),
         actions,
@@ -166,6 +180,8 @@ export function mountSettingsPanel(bridge: HooksBridge): void {
         'hooks-confirm',
       );
       const cancel = el('button', { textContent: 'Cancelar' }, 'hooks-cancel');
+      const actions = el('div', { className: 'ao-hooks-actions' });
+      actions.append(confirm, cancel);
       cancel.onclick = () => showStatus(status);
       confirm.onclick = async () => {
         try {
@@ -186,10 +202,9 @@ export function mountSettingsPanel(bridge: HooksBridge): void {
         el('h2', {
           textContent: action === 'install' ? 'Prévia da instalação' : 'Prévia da remoção',
         }),
-        el('div', { textContent: preview.path }),
+        el('div', { textContent: preview.path, className: 'ao-hooks-path' }),
         diff,
-        confirm,
-        cancel,
+        actions,
       );
     };
 

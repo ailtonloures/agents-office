@@ -29,7 +29,15 @@ PRD: [agents-office.prd.md](../prds/agents-office.prd.md)
 | 023 | Vínculo aba ↔ sessão e ações no diálogo do jogo | high | done | feature, desktop, web, interaction | 022, 021 |
 | 024 | ExternalOpener — abrir o projeto no VS Code | medium | done | feature, desktop, web, integration | 022, 023 |
 | 025 | Ciclo de vida das sessões — bandeja, Sair e E2E do fluxo completo | medium | done | feature, desktop, e2e, testing | 020, 021, 024, 019 |
+| 026 | Estilo de botão compartilhado com efeito de clique | high | done | feature, web, ui, css | — |
+| 027 | Layout da modal "Hooks do Claude Code" | medium | done | feature, web, ui, css, hooks | 026 |
+| 028 | Layout da modal "Iniciar sessão" sem rolagem horizontal | high | done | feature, web, ui, css, projects | 026 |
+| 029 | Hook PermissionRequest não bloqueante e daemon rastreador | high | pending | feature, daemon, shared, hooks, testing | 014, 015 |
+| 030 | Remover o PermissionCard da web mantendo balão e contador | high | pending | feature, web, ui, testing | 029 |
+| 031 | Fechar a notificação do sistema ao resolver no terminal | high | pending | feature, desktop, notifications, docs, testing | 029 |
 
 Fases do PRD: 001–002 = Fase 0 (spike) · 003–011 = Fase 1 (MVP) · 006, 012 = parte da Fase 2. Replay, minimapa e Tauri (Fase 3) ficam fora deste lote.
 
 PRDs do app desktop: [desktop-app-permissions.prd.md](../prds/desktop-app-permissions.prd.md) (013–019) · [desktop-terminal-sessions.prd.md](../prds/desktop-terminal-sessions.prd.md) (020–025, depende do primeiro). O spec 013 é um spike de validação: seus resultados podem exigir ajustes nos specs 014–025. Windows, assinatura/notarização e auto-update ficam fora deste lote.
+
+PRD de polimento das modais: [modal-ui-polish.prd.md](../prds/modal-ui-polish.prd.md) (026–028; 027 e 028 dependem de 026 e são independentes entre si).

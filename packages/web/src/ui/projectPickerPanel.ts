@@ -3,6 +3,7 @@ import type {
   ProjectSessionInfo,
   TerminalPermissionMode,
 } from '@agents-office/shared';
+import { BUTTON_CSS } from './buttonStyles';
 import { openInVSCodeWithToast } from './externalOpen';
 import {
   buildStartOptions,
@@ -20,30 +21,38 @@ import {
 } from './projectPicker';
 
 const CSS = `
-.ao-picker-btn{position:fixed;left:72px;bottom:8px;z-index:20;font:12px monospace;padding:4px 8px;
-  background:#1b1d2a;color:#f0e6b8;border:2px solid #f0c040;cursor:pointer}
+.ao-picker-btn{position:fixed;left:72px;bottom:8px;z-index:20;padding:4px 8px}
 .ao-picker{position:fixed;inset:0;z-index:30;background:rgba(5,6,12,.8);display:flex;
   align-items:center;justify-content:center;font:13px monospace;color:#f0e6b8}
-.ao-picker-box{background:#1b1d2a;border:3px solid #f0c040;padding:16px;width:min(760px,94vw);
-  max-height:90vh;overflow:auto;display:flex;flex-direction:column;gap:8px}
+.ao-picker-box{background:#1b1d2a;border:3px solid #f0c040;width:min(760px,94vw);
+  max-height:90vh;overflow-x:hidden;overflow-y:auto;box-sizing:border-box;padding:20px 24px;
+  display:flex;flex-direction:column;gap:12px}
+.ao-picker-box>*{min-width:0;max-width:100%}
+.ao-picker-details{display:flex;flex-direction:column;gap:12px}
+.ao-picker-details>*{min-width:0;max-width:100%}
+.ao-picker-cwd{overflow-wrap:anywhere;color:#8a8fa8}
 .ao-picker-box h2{margin:0;font-size:16px}
 .ao-picker-box input[type=search],.ao-picker-box select{font:13px monospace;background:#0d1020;
   color:#f0e6b8;border:2px solid #4a4f70;padding:4px 6px}
-.ao-picker-box button{font:12px monospace;padding:4px 10px;background:#2a2d44;color:#f0e6b8;
-  border:2px solid #f0c040;cursor:pointer}
-.ao-picker-box button:disabled{opacity:.45;cursor:default}
+.ao-picker-box button{padding:4px 10px}
 .ao-picker-list{list-style:none;margin:0;padding:0;max-height:34vh;overflow:auto;background:#0d1020}
-.ao-picker-row{display:flex;gap:8px;align-items:center;padding:4px 6px;cursor:pointer}
+.ao-picker-row{display:flex;gap:12px;align-items:center;padding:8px 10px;cursor:pointer}
 .ao-picker-row[aria-selected=true]{background:#2a2d44;outline:2px solid #f0c040}
 .ao-picker-row .star{background:none;border:0;padding:0 4px;font-size:14px;color:#8a8fa8}
 .ao-picker-row .star[aria-pressed=true]{color:#f0c040}
 .ao-picker-row .name{font-weight:bold}.ao-picker-row .path{color:#8a8fa8;flex:1;overflow:hidden;
   text-overflow:ellipsis;white-space:nowrap}.ao-picker-row .when{color:#8a8fa8}
-.ao-picker-opts{display:flex;flex-direction:column;gap:4px}
-.ao-picker-opts label{display:flex;gap:6px;align-items:center}
+.ao-picker-opts{display:grid;gap:8px}
+.ao-picker-opts label{display:flex;gap:6px;align-items:center;padding:8px 10px;background:#0d1020;
+  border:2px solid transparent}
+.ao-picker-opts label:has(input:checked){border-color:#f0c040}
+.ao-picker-opts select{flex:1;min-width:0;max-width:100%;text-overflow:ellipsis}
+.ao-picker-mode{display:grid;grid-template-columns:auto minmax(0,1fr);gap:8px;align-items:center}
+.ao-picker-mode select{width:100%;min-width:0}
+.ao-picker-note,.ao-picker-warn,.ao-picker-err{line-height:1.5;overflow-wrap:anywhere}
 .ao-picker-note{color:#9ad1ff}.ao-picker-warn{color:#f0c040}.ao-picker-err{color:#ff7b7b}
-.ao-picker-actions{display:flex;gap:6px;align-items:center}
-`;
+.ao-picker-actions{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:4px}
+${BUTTON_CSS}`;
 
 function el<K extends keyof HTMLElementTagNameMap>(
   tag: K,
@@ -133,6 +142,7 @@ export function mountProjectPicker(
     list.className = 'ao-picker-list';
     list.setAttribute('role', 'listbox');
     const details = el('div');
+    details.className = 'ao-picker-details';
     box.append(el('h2', { textContent: 'Iniciar sessão do Claude Code' }), search, list, details);
 
     const visible = (): CatalogProject[] => filterProjects(projects, query);
@@ -289,12 +299,16 @@ export function mountProjectPicker(
       };
       const info = permissionModeInfo(mode);
       const modeLabel = el('label');
+      modeLabel.className = 'ao-picker-mode';
       modeLabel.append(el('span', { textContent: 'Modo de permissão: ' }), modeSelect);
 
       details.replaceChildren(
         el(
           'div',
-          { textContent: project ? project.cwd : 'Escolha um projeto.' },
+          {
+            textContent: project ? project.cwd : 'Escolha um projeto.',
+            className: 'ao-picker-cwd',
+          },
           'picker-selected',
         ),
         opts,
