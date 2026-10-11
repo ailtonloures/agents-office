@@ -14,6 +14,11 @@ export const ActorStatusSchema = z.enum([
 ]);
 export type ActorStatus = z.infer<typeof ActorStatusSchema>;
 
+/** Whether an actor is still alive: anything but `finished` (subagent done) or `ended` (session over). */
+export function isLive(actor: { status: string }): boolean {
+  return actor.status !== 'finished' && actor.status !== 'ended';
+}
+
 /** IT profession of an actor: the session is the `tech-lead`, subagents derive it from their type. */
 export const ProfessionSchema = z.enum([
   'tech-lead',

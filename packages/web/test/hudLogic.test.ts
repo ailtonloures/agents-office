@@ -1,4 +1,4 @@
-import type { Agent, OfficeModel, Session } from '@agents-office/shared';
+import type { Agent, OfficeModel, PermissionRequest, Session } from '@agents-office/shared';
 import { createEmptyModel } from '@agents-office/shared';
 import { describe, expect, it } from 'vitest';
 import {
@@ -83,6 +83,27 @@ describe('hud counts', () => {
   it('counts sessions and agents like /health and the waiting actors', () => {
     expect(hudCounts(build())).toEqual({ sessions: 2, agents: 1, waiting: 2 });
     expect(hudCounts(createEmptyModel())).toEqual({ sessions: 0, agents: 0, waiting: 0 });
+  });
+
+  it('does not count finished agents or ended sessions', () => {
+    const model = build();
+    model.agents.a2 = agent('a2', 's1', { status: 'finished' });
+    model.sessions.s3 = session('s3', 'p1', { status: 'ended' });
+    expect(hudCounts(model)).toEqual({ sessions: 2, agents: 1, waiting: 2 });
+  });
+
+  it('does not count a waiting-then-finished agent as waiting', () => {
+    const model = build();
+    model.agents.a1 = agent('a1', 's1', { status: 'finished' });
+    expect(hudCounts(model)).toEqual({ sessions: 2, agents: 0, waiting: 1 });
+  });
+
+  it('still adds a pending permission once', () => {
+    const model = build();
+    const request = { actorId: 'a1' } as PermissionRequest;
+    expect(hudCounts(model, [request])).toEqual({ sessions: 2, agents: 1, waiting: 2 });
+    model.agents.a1 = agent('a1', 's1', { status: 'finished' });
+    expect(hudCounts(model, [request]).agents).toBe(0);
   });
 
   it('formats the bar text (singular and plural)', () => {

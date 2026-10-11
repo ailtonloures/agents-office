@@ -1,12 +1,12 @@
-import type { OfficeModel, PermissionRequest } from '@agents-office/shared';
+import { isLive, type OfficeModel, type PermissionRequest } from '@agents-office/shared';
 import { DIRECTION_DELTA, directionBetween } from '../player/playerMotion';
 import type { Direction } from '../skin';
 import type { BuildingLayout, Tile } from '../world/roomLayout';
 
 export interface HudCounts {
-  /** Same definition as `/health`: entries of `model.sessions`. */
+  /** Same definition as `/health`: live sessions (not `ended`). */
   sessions: number;
-  /** Same definition as `/health`: entries of `model.agents`. */
+  /** Same definition as `/health`: live agents (not `finished`/`ended`). */
   agents: number;
   /**
    * Things waiting for the user: pending permission requests plus the actors that wait for
@@ -19,8 +19,8 @@ export function hudCounts(
   model: OfficeModel,
   pending: readonly PermissionRequest[] = [],
 ): HudCounts {
-  const sessions = Object.values(model.sessions);
-  const agents = Object.values(model.agents);
+  const sessions = Object.values(model.sessions).filter(isLive);
+  const agents = Object.values(model.agents).filter(isLive);
   const asking = new Set(pending.map((request) => request.actorId));
   const waiting = [...sessions, ...agents].filter(
     (actor) => actor.status === 'waiting' && !asking.has(actor.id),

@@ -1,5 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import { createEmptyModel, OfficeModelSchema, ProfessionSchema } from '../src';
+import { createEmptyModel, isLive, OfficeModelSchema, ProfessionSchema } from '../src';
+
+describe('isLive', () => {
+  it('is true for working, waiting and idle actors', () => {
+    for (const status of ['working', 'waiting', 'idle']) expect(isLive({ status })).toBe(true);
+  });
+
+  it('is false for finished and ended actors', () => {
+    for (const status of ['finished', 'ended']) expect(isLive({ status })).toBe(false);
+  });
+});
 
 describe('model', () => {
   it('creates an empty model that satisfies the schema', () => {

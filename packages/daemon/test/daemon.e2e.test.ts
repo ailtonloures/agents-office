@@ -3,6 +3,7 @@ import { networkInterfaces, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   createEmptyModel,
+  isLive,
   type OfficeEvent,
   type OfficeModel,
   parseServerMessage,
@@ -166,9 +167,12 @@ describe('daemon e2e (Seam 1)', () => {
 
     const health = await getJson(port, '/health');
     const model = daemon?.getModel();
-    expect(health.sessions).toBe(Object.keys(model?.sessions ?? {}).length);
-    expect(health.agents).toBe(Object.keys(model?.agents ?? {}).length);
+    expect(health.sessions).toBe(Object.values(model?.sessions ?? {}).filter(isLive).length);
+    expect(health.agents).toBe(Object.values(model?.agents ?? {}).filter(isLive).length);
     expect(health.sessions).toBe(1);
+    // The three subagents finished: they stay in the model but are no longer counted.
+    expect(Object.keys(model?.agents ?? {})).toHaveLength(3);
+    expect(health.agents).toBe(0);
 
     // A late client gets the current state as its snapshot.
     const late = await connect(port);
