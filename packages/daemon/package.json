@@ -1,0 +1,31 @@
+{
+  "name": "@agents-office/daemon",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Agents Office daemon: transcript watcher, hook receiver, WebSocket stream and CLI",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "capture-fixture": "node scripts/capture-fixture.ts",
+    "start": "node bin/agents-office.mjs start",
+    "dev": "node bin/agents-office.mjs start --no-open"
+  },
+  "dependencies": {
+    "@agents-office/shared": "workspace:*",
+    "@fastify/websocket": "11.3.4",
+    "chokidar": "4.0.3",
+    "fastify": "5.12.5",
+    "open": "11.0.4",
+    "tsx": "4.23.15"
+  },
+  "devDependencies": {
+    "@agents-office/daemon": "workspace:*",
+    "@types/ws": "8.18.2",
+    "ws": "8.22.0"
+  },
+  "bin": {
+    "agents-office": "./bin/agents-office.mjs"
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "name": "@agents-office/web",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Agents Office web client (Vite + Phaser 3)",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "generate-skin": "node scripts/generate-default-skin.mjs"
+  },
+  "dependencies": {
+    "@agents-office/shared": "workspace:*",
+    "@xterm/addon-fit": "0.11.0",
+    "@xterm/addon-web-links": "0.12.0",
+    "@xterm/xterm": "6.0.0",
+    "phaser": "3.90.0",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "vite": "7.3.7"
+  }
+}

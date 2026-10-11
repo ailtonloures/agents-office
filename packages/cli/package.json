@@ -1,0 +1,43 @@
+{
+  "name": "agents-office",
+  "version": "0.1.0",
+  "description": "A pixel art office that mirrors your Claude Code agents in real time",
+  "keywords": [
+    "claude-code",
+    "agents",
+    "pixel-art",
+    "visualization"
+  ],
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "agents-office": "./bin/agents-office.mjs"
+  },
+  "files": [
+    "bin",
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "prepack": "node scripts/build.mjs"
+  },
+  "dependencies": {
+    "@fastify/websocket": "11.3.4",
+    "chokidar": "4.0.3",
+    "fastify": "5.12.5",
+    "open": "11.0.4"
+  },
+  "devDependencies": {
+    "@agents-office/daemon": "workspace:*",
+    "@agents-office/shared": "workspace:*",
+    "@agents-office/web": "workspace:*",
+    "esbuild": "0.28.2"
+  }
+}

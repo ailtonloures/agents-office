@@ -1,0 +1,210 @@
+import type { AgentsOfficeDesktop, TerminalBridge } from '@agents-office/shared';
+// Pure model of the terminal panel (tabs, titles, focus, size). No DOM and no xterm: the view in
+// `terminalPanel.ts` renders it. Tested with Vitest.
+
+export type TabState = 'running' | 'exited';
+
+export interface TerminalTab {
+  id: string;
+  cwd: string;
+  state: TabState;
+  /** Exit code once the process finished. */
+  exitCode?: number;
+  /** Office state of the session bound to this tab (`pensando`, `trabalhando`...), if any. */
+  activity?: string;
+}
+
+export type FocusOwner = 'player' | 'terminal';
+
+export interface PanelModel {
+  tabs: readonly TerminalTab[];
+  activeId: string | undefined;
+  collapsed: boolean;
+  /** Height of the expanded panel in CSS pixels. */
+  height: number;
+  /** Who receives the keyboard: the player (Phaser canvas) or the active terminal. */
+  focus: FocusOwner;
+}
+
+export const DEFAULT_PANEL_HEIGHT = 280;
+export const MIN_PANEL_HEIGHT = 120;
+/** The office keeps at least this many pixels of height, whatever the panel size. */
+export const MIN_OFFICE_HEIGHT = 160;
+/** Height of the tab strip, which stays visible when the panel is collapsed. */
+export const TAB_BAR_HEIGHT = 30;
+
+export function createPanelModel(height = DEFAULT_PANEL_HEIGHT): PanelModel {
+  return { tabs: [], activeId: undefined, collapsed: false, height, focus: 'player' };
+}
+
+/** Last path segment of the working directory (`/a/b/` -> `b`, `C:\a\b` -> `b`). */
+export function projectName(cwd: string): string {
+  const parts = cwd.split(/[\\/]+/).filter((part) => part.length > 0);
+  return parts[parts.length - 1] ?? cwd;
+}
+
+export function stateLabel(tab: TerminalTab): string {
+  return tab.state === 'running' ? 'ativa' : 'encerrada';
+}
+
+/** Tab title: `projeto · estado`, plus the office state of the bound session while running. */
+export function tabTitle(tab: TerminalTab): string {
+  const base = `${projectName(tab.cwd)} · ${stateLabel(tab)}`;
+  return tab.state === 'running' && tab.activity ? `${base} · ${tab.activity}` : base;
+}
+
+/** Sets the office activity of each tab from `activity` (by tab id); returns the same model if nothing changed. */
+export function applyActivity(
+  model: PanelModel,
+  activity: Readonly<Record<string, string>>,
+): PanelModel {
+  let changed = false;
+  const tabs = model.tabs.map((tab) => {
+    const next = activity[tab.id];
+    if (tab.activity === next) return tab;
+    changed = true;
+    const { activity: _old, ...rest } = tab;
+    return next === undefined ? rest : { ...rest, activity: next };
+  });
+  return changed ? { ...model, tabs } : model;
+}
+
+/** Message of the strip shown on an ended session. */
+export function exitMessage(tab: TerminalTab): string {
+  const code = tab.exitCode === undefined ? '' : ` (código ${tab.exitCode})`;
+  return `Processo terminou${code}`;
+}
+
+/** Adds the tab (or keeps the existing one) and makes it the active one. */
+export function addTab(model: PanelModel, tab: TerminalTab, activate = true): PanelModel {
+  if (model.tabs.some((t) => t.id === tab.id)) {
+    return activate ? { ...model, activeId: tab.id } : model;
+  }
+  return {
+    ...model,
+    tabs: [...model.tabs, tab],
+    activeId: activate || model.activeId === undefined ? tab.id : model.activeId,
+  };
+}
+
+/** Removes a tab; the active one moves to its right neighbour, else the left one. */
+export function removeTab(model: PanelModel, id: string): PanelModel {
+  const index = model.tabs.findIndex((t) => t.id === id);
+  if (index < 0) return model;
+  const tabs = model.tabs.filter((t) => t.id !== id);
+  const activeId = model.activeId === id ? (tabs[index] ?? tabs[index - 1])?.id : model.activeId;
+  return {
+    ...model,
+    tabs,
+    activeId,
+    focus: tabs.length === 0 ? 'player' : model.focus,
+  };
+}
+
+export function markExited(model: PanelModel, id: string, exitCode: number): PanelModel {
+  return {
+    ...model,
+    tabs: model.tabs.map((t) => (t.id === id ? { ...t, state: 'exited', exitCode } : t)),
+  };
+}
+
+export function setActive(model: PanelModel, id: string): PanelModel {
+  return model.tabs.some((t) => t.id === id) ? { ...model, activeId: id } : model;
+}
+
+export function activeTab(model: PanelModel): TerminalTab | undefined {
+  return model.tabs.find((t) => t.id === model.activeId);
+}
+
+/** Closing a live session asks first; an ended one closes at once. */
+export function needsCloseConfirm(tab: TerminalTab): boolean {
+  return tab.state === 'running';
+}
+
+export function toggleCollapsed(model: PanelModel): PanelModel {
+  const collapsed = !model.collapsed;
+  // A collapsed panel cannot own the keyboard.
+  return { ...model, collapsed, focus: collapsed ? 'player' : model.focus };
+}
+
+export function setFocus(model: PanelModel, focus: FocusOwner): PanelModel {
+  if (focus === 'terminal' && (model.collapsed || model.tabs.length === 0)) return model;
+  return model.focus === focus ? model : { ...model, focus };
+}
+
+/** Keeps the panel between its minimum and what leaves the office its minimum height. */
+export function clampHeight(height: number, windowHeight: number): number {
+  const max = Math.max(MIN_PANEL_HEIGHT, windowHeight - MIN_OFFICE_HEIGHT);
+  return Math.round(Math.min(max, Math.max(MIN_PANEL_HEIGHT, height)));
+}
+
+export function setHeight(model: PanelModel, height: number, windowHeight: number): PanelModel {
+  return { ...model, height: clampHeight(height, windowHeight) };
+}
+
+/** Pixels the panel takes from the window (0 without tabs). */
+export function panelOccupiedHeight(model: PanelModel): number {
+  if (model.tabs.length === 0) return 0;
+  return model.collapsed ? TAB_BAR_HEIGHT : model.height;
+}
+
+/** Who gets the keys: the terminal only when it is visible and focused. */
+export function keyboardOwner(model: PanelModel): FocusOwner {
+  return model.focus === 'terminal' && !model.collapsed && model.tabs.length > 0
+    ? 'terminal'
+    : 'player';
+}
+
+/** Ctrl+` (VS Code style) collapses / expands the panel. */
+export function isToggleShortcut(event: {
+  key: string;
+  code?: string;
+  ctrlKey: boolean;
+  altKey?: boolean;
+  metaKey?: boolean;
+  shiftKey?: boolean;
+}): boolean {
+  return (
+    event.ctrlKey &&
+    !event.altKey &&
+    !event.metaKey &&
+    !event.shiftKey &&
+    (event.key === '`' || event.code === 'Backquote')
+  );
+}
+
+export type ClipboardAction = 'copy' | 'paste';
+
+/**
+ * Terminal clipboard keys: Ctrl+Shift+C / Ctrl+Shift+V (Cmd+C / Cmd+V on macOS), and a plain
+ * Ctrl+C copies only while there is a selection (otherwise it is the interrupt).
+ */
+export function clipboardAction(
+  event: { key: string; ctrlKey: boolean; metaKey: boolean; shiftKey: boolean; altKey?: boolean },
+  hasSelection: boolean,
+): ClipboardAction | undefined {
+  if (event.altKey) return undefined;
+  const key = event.key.toLowerCase();
+  if (event.metaKey && !event.ctrlKey) {
+    if (key === 'c' && hasSelection) return 'copy';
+    if (key === 'v') return 'paste';
+    return undefined;
+  }
+  if (!event.ctrlKey) return undefined;
+  if (event.shiftKey) {
+    if (key === 'c') return 'copy';
+    if (key === 'v') return 'paste';
+    return undefined;
+  }
+  return key === 'c' && hasSelection ? 'copy' : undefined;
+}
+
+/** The terminal bridge of the desktop shell; undefined in a plain browser (panel hidden). */
+export function terminalBridgeOf(win: object): TerminalBridge | undefined {
+  const desktop = (win as { agentsOfficeDesktop?: unknown }).agentsOfficeDesktop as
+    | Partial<AgentsOfficeDesktop>
+    | undefined;
+  if (desktop?.desktop !== true) return undefined;
+  const terminal = desktop.terminal;
+  return terminal && typeof terminal.start === 'function' ? terminal : undefined;
+}

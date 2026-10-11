@@ -1,0 +1,12 @@
+{
+  "session_id": "5e551017-0004-4000-8000-00000000000d",
+  "transcript_path": "/anon/.claude/projects/-anon-projects-demo-app/5e551017-0004-4000-8000-00000000000d.jsonl",
+  "cwd": "/anon/projects/demo-app",
+  "permission_mode": "default",
+  "hook_event_name": "SubagentStop",
+  "stop_hook_active": false,
+  "agent_id": "a6f0000000000000f",
+  "agent_type": "Explore",
+  "agent_transcript_path": "/anon/.claude/projects/-anon-projects-demo-app/5e551017-0004-4000-8000-00000000000d/subagents/agent-a6f0000000000000f.jsonl",
+  "last_assistant_message": "Placeholder report of the subagent."
+}

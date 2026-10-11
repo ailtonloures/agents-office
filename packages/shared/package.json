@@ -1,0 +1,19 @@
+{
+  "name": "@agents-office/shared",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Canonical OfficeEvent/OfficeModel contracts shared by the Agents Office daemon and web client",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "types": "./src/index.ts",
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "zod": "4.6.5"
+  }
+}

@@ -1,0 +1,414 @@
+{
+  "name": "Agents Office Default",
+  "version": 4,
+  "tileSize": 16,
+  "tileset": {
+    "image": "tileset.png",
+    "columns": 8,
+    "tiles": {
+      "floor": 0,
+      "wall": 1,
+      "door": 2,
+      "desk": 3,
+      "chair": 4,
+      "computer": 5,
+      "server-rack": 6,
+      "phone": 7,
+      "window": 8,
+      "plant": 9,
+      "sign": 10,
+      "board": 11,
+      "floor-b": 12,
+      "hall": 13,
+      "tile": 14,
+      "wall-cap": 15,
+      "whiteboard": 16,
+      "poster": 17,
+      "clock": 18,
+      "plant-tall": 19,
+      "bookshelf": 20,
+      "sofa-l": 21,
+      "sofa-r": 22,
+      "coffee": 23,
+      "cooler": 24,
+      "printer": 25,
+      "table": 26,
+      "counter": 27,
+      "lamp": 28,
+      "wood": 29,
+      "wood-b": 30,
+      "wall-side-l": 31,
+      "wall-side-r": 32,
+      "wall-bottom": 33,
+      "wall-corner-tl": 34,
+      "wall-corner-tr": 35
+    }
+  },
+  "characters": {
+    "frame": {
+      "width": 16,
+      "height": 32
+    },
+    "columns": 6,
+    "walk": {
+      "down": [0, 1, 2],
+      "left": [6, 7, 8],
+      "right": [12, 13, 14],
+      "up": [18, 19, 20]
+    },
+    "idle": {
+      "down": [3, 4],
+      "left": [9, 10],
+      "right": [15, 16],
+      "up": [21, 22]
+    },
+    "poses": {
+      "sit-type": 24,
+      "sit-type-b": 25,
+      "sit-type-c": 26,
+      "read": 27,
+      "read-b": 28,
+      "phone": 29,
+      "sleep": 30,
+      "sleep-b": 31,
+      "celebrate": 32,
+      "celebrate-b": 33
+    },
+    "head": {
+      "top": 3,
+      "seatedTop": 10
+    },
+    "baseColors": {
+      "skin": "#ff00ff",
+      "skinShade": "#b800b8",
+      "skinLight": "#ff80ff",
+      "hair": "#ff0080",
+      "hairShade": "#a8005a",
+      "hairLight": "#ff80bf",
+      "shirt": "#00ffff",
+      "shirtShade": "#00a0a0",
+      "shirtLight": "#80ffff",
+      "pants": "#80ff00",
+      "pantsShade": "#489000",
+      "pantsLight": "#c0ff80"
+    },
+    "palettes": {
+      "skin": ["#f7d9c4", "#efc4a4", "#dca681", "#c08660", "#9a6544", "#6e4630"],
+      "hair": ["#26211f", "#4a3326", "#7a5232", "#b07a45", "#d8b26a", "#a8483a", "#a3a8b4"],
+      "shirt": [
+        "#3b5b92",
+        "#2e8a85",
+        "#6a58a8",
+        "#4f8a5b",
+        "#c98a3c",
+        "#4a86c8",
+        "#a84a4a",
+        "#5a6378"
+      ],
+      "pants": ["#2b303d", "#34476b", "#4c5162", "#5e4e3f"]
+    },
+    "body": "characters/body.png",
+    "hair": [
+      "characters/hair-0.png",
+      "characters/hair-1.png",
+      "characters/hair-2.png",
+      "characters/hair-3.png",
+      "characters/hair-4.png",
+      "characters/hair-5.png",
+      "characters/hair-6.png"
+    ],
+    "outfit": {
+      "tech-lead": "characters/outfit-tech-lead.png",
+      "analyst": "characters/outfit-analyst.png",
+      "architect": "characters/outfit-architect.png",
+      "developer": "characters/outfit-developer.png",
+      "qa": "characters/outfit-qa.png",
+      "support": "characters/outfit-support.png"
+    },
+    "accessory": {
+      "tech-lead": "characters/accessory-tech-lead.png",
+      "analyst": "characters/accessory-analyst.png",
+      "architect": "characters/accessory-architect.png",
+      "developer": "characters/accessory-developer.png",
+      "qa": "characters/accessory-qa.png",
+      "support": "characters/accessory-support.png"
+    }
+  },
+  "props": {
+    "image": "props.png",
+    "frames": {
+      "workstation": {
+        "x": 0,
+        "y": 0,
+        "w": 34,
+        "h": 38,
+        "ax": 1,
+        "ay": 37,
+        "screens": [
+          {
+            "x": 1,
+            "y": -31,
+            "w": 16,
+            "h": 11
+          }
+        ]
+      },
+      "workstation-b": {
+        "x": 35,
+        "y": 0,
+        "w": 34,
+        "h": 38,
+        "ax": 1,
+        "ay": 37,
+        "screens": [
+          {
+            "x": 1,
+            "y": -31,
+            "w": 16,
+            "h": 11
+          }
+        ]
+      },
+      "workstation-c": {
+        "x": 70,
+        "y": 0,
+        "w": 34,
+        "h": 38,
+        "ax": 1,
+        "ay": 37,
+        "screens": [
+          {
+            "x": 1,
+            "y": -31,
+            "w": 16,
+            "h": 11
+          }
+        ]
+      },
+      "lead-desk": {
+        "x": 105,
+        "y": 0,
+        "w": 50,
+        "h": 38,
+        "ax": 1,
+        "ay": 37,
+        "screens": [
+          {
+            "x": 16,
+            "y": -32,
+            "w": 16,
+            "h": 11
+          },
+          {
+            "x": 3,
+            "y": -29,
+            "w": 11,
+            "h": 9
+          },
+          {
+            "x": 34,
+            "y": -29,
+            "w": 11,
+            "h": 9
+          }
+        ]
+      },
+      "chair": {
+        "x": 156,
+        "y": 0,
+        "w": 18,
+        "h": 17,
+        "ax": 1,
+        "ay": 11
+      },
+      "chair-exec": {
+        "x": 175,
+        "y": 0,
+        "w": 18,
+        "h": 19,
+        "ax": 1,
+        "ay": 13
+      },
+      "kanban": {
+        "x": 194,
+        "y": 0,
+        "w": 34,
+        "h": 34,
+        "ax": 1,
+        "ay": 33
+      },
+      "bookshelf": {
+        "x": 0,
+        "y": 39,
+        "w": 34,
+        "h": 42,
+        "ax": 1,
+        "ay": 41
+      },
+      "plant-tall": {
+        "x": 35,
+        "y": 39,
+        "w": 22,
+        "h": 36,
+        "ax": 3,
+        "ay": 35
+      },
+      "plant-fig": {
+        "x": 58,
+        "y": 39,
+        "w": 18,
+        "h": 40,
+        "ax": 1,
+        "ay": 39
+      },
+      "plant": {
+        "x": 77,
+        "y": 39,
+        "w": 18,
+        "h": 24,
+        "ax": 1,
+        "ay": 23
+      },
+      "planter": {
+        "x": 96,
+        "y": 39,
+        "w": 34,
+        "h": 26,
+        "ax": 1,
+        "ay": 25
+      },
+      "sofa": {
+        "x": 131,
+        "y": 39,
+        "w": 36,
+        "h": 28,
+        "ax": 2,
+        "ay": 27
+      },
+      "armchair": {
+        "x": 168,
+        "y": 39,
+        "w": 20,
+        "h": 26,
+        "ax": 2,
+        "ay": 25
+      },
+      "coffee-table": {
+        "x": 189,
+        "y": 39,
+        "w": 34,
+        "h": 18,
+        "ax": 1,
+        "ay": 17
+      },
+      "side-table": {
+        "x": 224,
+        "y": 39,
+        "w": 18,
+        "h": 20,
+        "ax": 1,
+        "ay": 19
+      },
+      "floor-lamp": {
+        "x": 0,
+        "y": 82,
+        "w": 18,
+        "h": 38,
+        "ax": 1,
+        "ay": 37
+      },
+      "server-rack": {
+        "x": 19,
+        "y": 82,
+        "w": 18,
+        "h": 38,
+        "ax": 1,
+        "ay": 37
+      },
+      "printer": {
+        "x": 38,
+        "y": 82,
+        "w": 20,
+        "h": 26,
+        "ax": 2,
+        "ay": 25
+      },
+      "kitchen": {
+        "x": 59,
+        "y": 82,
+        "w": 50,
+        "h": 34,
+        "ax": 1,
+        "ay": 33
+      },
+      "fridge": {
+        "x": 110,
+        "y": 82,
+        "w": 18,
+        "h": 38,
+        "ax": 1,
+        "ay": 37
+      },
+      "cooler": {
+        "x": 129,
+        "y": 82,
+        "w": 18,
+        "h": 32,
+        "ax": 1,
+        "ay": 31
+      },
+      "phone-table": {
+        "x": 148,
+        "y": 82,
+        "w": 18,
+        "h": 22,
+        "ax": 1,
+        "ay": 21
+      },
+      "reception": {
+        "x": 167,
+        "y": 82,
+        "w": 66,
+        "h": 32,
+        "ax": 1,
+        "ay": 31
+      },
+      "whiteboard": {
+        "x": 0,
+        "y": 121,
+        "w": 34,
+        "h": 18,
+        "ax": 1,
+        "ay": 17
+      },
+      "tv": {
+        "x": 35,
+        "y": 121,
+        "w": 34,
+        "h": 18,
+        "ax": 1,
+        "ay": 17
+      },
+      "art-wide": {
+        "x": 70,
+        "y": 121,
+        "w": 34,
+        "h": 18,
+        "ax": 1,
+        "ay": 17
+      }
+    }
+  },
+  "font": {
+    "image": "font/pixel.png",
+    "data": "font/pixel.fnt"
+  },
+  "fontSmall": {
+    "image": "font/tiny.png",
+    "data": "font/tiny.fnt"
+  },
+  "fontLabel": {
+    "image": "font/label.png",
+    "data": "font/label.fnt"
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "session_id": "5e551017-0004-4000-8000-00000000000d",
+  "transcript_path": "/anon/.claude/projects/-anon-projects-demo-app/5e551017-0004-4000-8000-00000000000d.jsonl",
+  "cwd": "/anon/projects/demo-app",
+  "permission_mode": "default",
+  "hook_event_name": "PostToolUse",
+  "tool_name": "Edit",
+  "tool_input": {
+    "file_path": "/anon/projects/demo-app/src/payments/checkout.ts",
+    "old_string": "Placeholder old.",
+    "new_string": "Placeholder new."
+  },
+  "tool_response": {
+    "filePath": "/anon/projects/demo-app/src/payments/checkout.ts",
+    "oldString": "Placeholder old.",
+    "newString": "Placeholder new.",
+    "userModified": false,
+    "replaceAll": false
+  },
+  "tool_use_id": "toolu_01HOOK000000000000000EDIT"
+}

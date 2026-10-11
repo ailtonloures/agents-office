@@ -1,0 +1,5 @@
+Interactive (pty) sessions add one more top-level field to the PermissionRequest payload:
+  "scratchpad_dir": "/tmp/claude-<uid>/-<encoded cwd>/<session_id>/scratchpad"
+Order observed for one permission prompt answered in the terminal (hook sleeping):
+  PreToolUse(tool_use_id=X) -> PermissionRequest (no tool_use_id) -> [~6 s] Notification{notification_type:"permission_prompt", message:"Claude needs your permission..."} -> PostToolUse(tool_use_id=X) -> Stop
+The PermissionRequest hook process was still alive after PostToolUse (until the session ended).

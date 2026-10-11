@@ -1,0 +1,15 @@
+node_modules/
+dist/
+coverage/
+*.log
+*.tsbuildinfo
+.DS_Store
+test-results/
+playwright-report/
+packages/cli/LICENSE
+packages/cli/README.md
+*.tgz
+e2e/.artifacts/
+.playwright-mcp/
+packages/desktop/build/
+packages/desktop/release/

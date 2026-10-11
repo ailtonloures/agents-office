@@ -1,0 +1,7 @@
+{
+  "agentType": "Explore",
+  "description": "Find payment tests",
+  "toolUseId": "toolu_01NEST00000000000000INNER",
+  "parentAgentId": "a4f0000000000000d",
+  "spawnDepth": 2
+}

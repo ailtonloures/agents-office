@@ -1,0 +1,40 @@
+# Packaging of the desktop app (no code signing and no auto-update in v1).
+appId: dev.agentsoffice.desktop
+productName: Agents Office
+executableName: agents-office
+copyright: MIT License
+directories:
+  output: release
+  buildResources: resources
+npmRebuild: false
+asar: true
+# Only the bundled main/preload go into the asar; the daemon is a separate directory because it
+# is started as a child process and needs real files (and its own node_modules).
+files:
+  - package.json
+  - dist/**
+extraResources:
+  - from: build/daemon
+    to: daemon
+    filter:
+      - "**/*"
+# electron-builder never copies node_modules through extraResources, so the daemon's production
+# dependencies are added by this hook (see the file).
+afterPack: scripts/after-pack.cjs
+# node-pty is a native module: its .node/spawn-helper files must live on disk, not inside the asar.
+asarUnpack:
+  - "**/node_modules/node-pty/**"
+linux:
+  target: [AppImage, deb]
+  category: Development
+  icon: icon.png
+  maintainer: Agents Office <noreply@agents-office.invalid>
+  synopsis: Pixel art office that mirrors your Claude Code agents
+mac:
+  target: dmg
+  category: public.app-category.developer-tools
+  icon: icon.png
+  identity: null
+dmg:
+  title: Agents Office
+artifactName: "agents-office-${version}-${os}-${arch}.${ext}"
