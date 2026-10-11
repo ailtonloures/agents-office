@@ -3,9 +3,9 @@ import { isWallProp, PROP_DEFS } from '../src/world/props';
 import {
   type BuildingLayout,
   CHUNK,
-  CUBICLES_PER_CHUNK,
   cubicleChunksFor,
   type LayoutProjectInput,
+  LEADS_PER_CHUNK,
   layoutBuilding,
   type Rect,
   SIGN_MAX_CHARS,
@@ -67,19 +67,33 @@ describe('layoutBuilding', () => {
     expect(layout.collision[layout.spawn.y]?.[layout.spawn.x]).toBe(false);
   });
 
-  it.each([0, 1, 3, 9])('has capacity for %i agents, 3 desks per Tech Lead', (agents) => {
+  it.each([0, 1, 3, 4, 9])('seats exactly one cubicle per agent (%i)', (agents) => {
     const layout = layoutBuilding([project('p', 1, [agents])]);
     const cubicles = layout.desks.filter((d) => d.sessionId === undefined);
-    expect(cubicles.length).toBeGreaterThanOrEqual(Math.max(agents, CUBICLES_PER_CHUNK));
-    expect(layout.rooms[0]?.cubicleCapacity).toBe(cubicles.length);
-    expect(cubicles.length).toBe(cubicleChunksFor(agents, 1) * CUBICLES_PER_CHUNK);
+    expect(cubicles).toHaveLength(agents);
+    expect(layout.rooms[0]?.cubicleCapacity).toBe(agents);
+    expect(layout.rooms[0]?.chunks.filter((c) => c === 'cubicles-4')).toHaveLength(
+      cubicleChunksFor(agents),
+    );
   });
 
-  it('gives each Tech Lead exactly 3 programmer desks', () => {
-    const layout = layoutBuilding([project('p', 1, [0, 0])]);
-    expect(layout.desks.filter((d) => d.sessionId === undefined)).toHaveLength(6);
-    const single = layoutBuilding([project('q', 1, [0])]);
-    expect(single.desks.filter((d) => d.sessionId === undefined)).toHaveLength(3);
+  it('adds the agents of every session of the room', () => {
+    const layout = layoutBuilding([project('p', 1, [2, 3])]);
+    expect(layout.desks.filter((d) => d.sessionId === undefined)).toHaveLength(5);
+  });
+
+  it('seats Tech Leads side by side, two per row', () => {
+    const leads = (n: number) =>
+      layoutBuilding([project('p', 1, Array(n).fill(0))]).desks.filter((d) => d.sessionId);
+    const [a, b, c] = leads(3);
+    expect(a?.tile.y).toBe(b?.tile.y);
+    expect(a?.tile.x).not.toBe(b?.tile.x);
+    expect(c?.tile.y).toBeGreaterThan(a?.tile.y ?? 0);
+    const height = (n: number) =>
+      layoutBuilding([project('p', 1, Array(n).fill(0))]).rooms[0]?.bounds.h;
+    expect(height(2)).toBe(height(1));
+    expect(height(3)).toBeGreaterThan(height(2) ?? 0);
+    expect(LEADS_PER_CHUNK).toBe(2);
   });
 
   it('gives each session one lead desk with a stable id', () => {

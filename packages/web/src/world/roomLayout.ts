@@ -11,6 +11,8 @@ export const CORRIDOR_HEIGHT = 4;
 export const SIGN_MAX_CHARS = 14;
 /** Number of desks in a `cubicles-*` chunk (one row of three workstations). */
 export const CUBICLES_PER_CHUNK = 3;
+/** Tech Lead desks side by side in a `lead-desk` chunk. */
+export const LEADS_PER_CHUNK = 2;
 
 export type ChunkKind = keyof typeof CHUNK_HEIGHT;
 
@@ -152,17 +154,20 @@ export function truncateSign(name: string): string {
   return Array.from(name.trim()).slice(0, SIGN_MAX_CHARS).join('');
 }
 
-/** Cubicle chunks needed: one per Tech Lead at least, growing when agents outnumber the desks. */
-export function cubicleChunksFor(agents: number, sessionCount = 1): number {
-  return Math.max(1, sessionCount, Math.ceil(Math.max(0, agents) / CUBICLES_PER_CHUNK));
+/** Cubicle chunks needed for `agents` agents: one desk per agent, so none without agents. */
+export function cubicleChunksFor(agents: number): number {
+  return Math.ceil(Math.max(0, agents) / CUBICLES_PER_CHUNK);
 }
 
 /** Chunk sequence of a room, top to bottom. */
 export function roomChunks(sessionCount: number, agentCount: number): ChunkKind[] {
   return [
     'entrance',
-    ...Array.from({ length: sessionCount }, () => 'lead-desk' as const),
-    ...Array.from({ length: cubicleChunksFor(agentCount, sessionCount) }, () => 'cubicles-4' as const),
+    ...Array.from(
+      { length: Math.ceil(sessionCount / LEADS_PER_CHUNK) },
+      () => 'lead-desk' as const,
+    ),
+    ...Array.from({ length: cubicleChunksFor(agentCount) }, () => 'cubicles-4' as const),
     'utility',
   ];
 }
@@ -317,33 +322,38 @@ function buildRoom(
         rect: { x: x0 + 1, y: top + 3, w: 6, h: 3 },
       });
     } else if (kind === 'lead-desk') {
-      const session = project.sessions[sessionIndex];
-      sessionIndex += 1;
-      if (!session) continue;
-      // Executive desk: the Tech Lead sits below the monitors, on an accent rug.
-      prop('lead-desk', 6, 3);
-      prop('chair-exec', 7, 4);
-      b.desks.push({
-        id: `${project.id}:lead:${session.id}`,
-        roomId: project.id,
-        sessionId: session.id,
-        tile: at(7, 4),
-        facing: 'up',
-      });
-      b.zones.push({
-        kind: 'rug',
-        roomId: project.id,
-        rect: { x: x0 + 3, y: top + 1, w: 10, h: 6 },
-      });
-      prop('bookshelf', 1, 1);
-      prop('kanban', 11, 1);
-      prop(hash % 3 === 0 ? 'floor-lamp' : 'plant-tall', 14, 1);
-      prop('plant', 14, 6);
-      prop('plant-fig', 1, 6);
+      // Executive desks side by side: each Tech Lead sits below the monitors, on an accent rug.
+      const slots = [
+        { desk: 2, chair: 3, rug: 1, shelf: 1, kanban: 5, plant: ['plant-fig', 1] },
+        { desk: 11, chair: 12, rug: 9, shelf: 9, kanban: 13, plant: ['plant', 14] },
+      ] as const;
+      for (const slot of slots) {
+        const session = project.sessions[sessionIndex];
+        sessionIndex += 1;
+        if (!session) break;
+        prop('lead-desk', slot.desk, 3);
+        prop('chair-exec', slot.chair, 4);
+        b.desks.push({
+          id: `${project.id}:lead:${session.id}`,
+          roomId: project.id,
+          sessionId: session.id,
+          tile: at(slot.chair, 4),
+          facing: 'up',
+        });
+        b.zones.push({
+          kind: 'rug',
+          roomId: project.id,
+          rect: { x: x0 + slot.rug, y: top + 1, w: 6, h: 6 },
+        });
+        prop('bookshelf', slot.shelf, 1);
+        prop('kanban', slot.kanban, 1);
+        prop(slot.plant[0], slot.plant[1], 6);
+      }
     } else if (kind === 'cubicles-4') {
       const looks = ['workstation', 'workstation-b', 'workstation-c'] as const;
       const sy = 2;
-      for (const sx of [3, 7, 11]) {
+      const deskCount = Math.min(CUBICLES_PER_CHUNK, agents - cubicleIndex);
+      for (const sx of [3, 7, 11].slice(0, deskCount)) {
         prop(looks[(hash + cubicleIndex * 7) % looks.length] ?? 'workstation', sx, sy);
         prop('chair', sx, sy + 1);
         b.desks.push({
@@ -357,7 +367,7 @@ function buildRoom(
       b.zones.push({
         kind: 'rug',
         roomId: project.id,
-        rect: { x: x0 + 2, y: top + 1, w: 12, h: 3 },
+        rect: { x: x0 + 2, y: top + 1, w: 4 * deskCount, h: 3 },
       });
       const plants = ['plant', 'plant-tall', 'plant-fig'] as const;
       for (const [k, index] of pickTwo(hash >>> 3, 4).entries()) {

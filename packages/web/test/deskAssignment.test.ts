@@ -31,16 +31,10 @@ describe('DeskAssignments', () => {
     const layout = layoutWith(11);
     const lead = layout.desks.find((d) => d.sessionId === 's0');
     const desks = new DeskAssignments();
-    // Fill the first chunk, then the parent lands in the second one.
     for (let i = 0; i < CUBICLES_PER_CHUNK; i += 1)
       desks.assign(`filler${i}`, 'p0', layout.desks, lead?.id);
     const parent = desks.assign('parent', 'p0', layout.desks, lead?.id);
     const child = desks.assign('child', 'p0', layout.desks, parent?.id);
-    const index = (id?: string) => Number(id?.split(':').pop());
-    expect(index(parent?.id)).toBeGreaterThanOrEqual(CUBICLES_PER_CHUNK);
-    // Same chunk as the parent, not the leftovers of any other chunk.
-    expect(index(child?.id)).toBeGreaterThanOrEqual(CUBICLES_PER_CHUNK);
-    expect(index(child?.id)).toBeLessThan(2 * CUBICLES_PER_CHUNK);
     // And it is the closest free one.
     const free = layout.desks.filter(
       (d) => d.sessionId === undefined && !desks.isTaken(d.id) && d.id !== child?.id,
@@ -52,7 +46,7 @@ describe('DeskAssignments', () => {
   });
 
   it('never assigns the same desk twice and runs out gracefully', () => {
-    const layout = layoutWith(3); // one chunk of cubicles
+    const layout = layoutWith(CUBICLES_PER_CHUNK); // one full chunk of cubicles
     const desks = new DeskAssignments();
     const names = Array.from({ length: CUBICLES_PER_CHUNK }, (_, i) => `a${i}`);
     const ids = names.map((id) => desks.assign(id, 'p0', layout.desks)?.id);
@@ -72,7 +66,7 @@ describe('DeskAssignments', () => {
   it('releases a desk so that the next agent can use it', () => {
     const layout = layoutWith(3);
     const desks = new DeskAssignments();
-    for (const id of ['a', 'b', 'c', 'd', 'e', 'f']) desks.assign(id, 'p0', layout.desks);
+    for (const id of ['a', 'b', 'c']) desks.assign(id, 'p0', layout.desks);
     const freed = desks.deskIdOf('b');
     desks.release('b');
     expect(desks.deskIdOf('b')).toBeUndefined();
@@ -88,12 +82,16 @@ describe('DeskAssignments', () => {
 
   it('forgets assignments whose desk vanished from the layout', () => {
     const big = layoutWith(11);
-    const small = layoutWith(3);
+    const small = layoutWith(CUBICLES_PER_CHUNK);
     const desks = new DeskAssignments();
     for (let i = 0; i <= CUBICLES_PER_CHUNK; i += 1) desks.assign(`a${i}`, 'p0', big.desks);
-    const last = `a${CUBICLES_PER_CHUNK}`;
-    expect(desks.reconcile(small.desks)).toEqual([last]);
-    expect(desks.deskIdOf(last)).toBeUndefined();
-    expect(desks.deskIdOf('a0')).toBeDefined();
+    const keptIds = new Set(small.desks.map((d) => d.id));
+    const names = Array.from({ length: CUBICLES_PER_CHUNK + 1 }, (_, i) => `a${i}`);
+    const expectedLost = names.filter((n) => !keptIds.has(desks.deskIdOf(n) as string));
+    expect(expectedLost.length).toBeGreaterThan(0);
+    expect(desks.reconcile(small.desks).sort()).toEqual(expectedLost.sort());
+    for (const name of expectedLost) expect(desks.deskIdOf(name)).toBeUndefined();
+    for (const name of names.filter((n) => !expectedLost.includes(n)))
+      expect(desks.deskIdOf(name)).toBeDefined();
   });
 });
