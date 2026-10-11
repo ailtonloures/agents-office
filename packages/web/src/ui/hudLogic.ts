@@ -1,4 +1,4 @@
-import { isLive, type OfficeModel, type PermissionRequest } from '@agents-office/shared';
+import { liveActors, type OfficeModel, type PermissionRequest } from '@agents-office/shared';
 import { DIRECTION_DELTA, directionBetween } from '../player/playerMotion';
 import type { Direction } from '../skin';
 import type { BuildingLayout, Tile } from '../world/roomLayout';
@@ -19,8 +19,7 @@ export function hudCounts(
   model: OfficeModel,
   pending: readonly PermissionRequest[] = [],
 ): HudCounts {
-  const sessions = Object.values(model.sessions).filter(isLive);
-  const agents = Object.values(model.agents).filter(isLive);
+  const { sessions, agents } = liveActors(model);
   const asking = new Set(pending.map((request) => request.actorId));
   const waiting = [...sessions, ...agents].filter(
     (actor) => actor.status === 'waiting' && !asking.has(actor.id),

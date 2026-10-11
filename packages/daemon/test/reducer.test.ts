@@ -65,10 +65,12 @@ describe('reducer: terminal binding', () => {
     expect(OfficeModelSchema.safeParse(model).success).toBe(true);
   });
 
-  it('binding before session.started survives the start', () => {
+  it('binding before session.started is ignored: no session or project is invented', () => {
+    expect(reduce(createEmptyModel(), bound)).toEqual(createEmptyModel());
     const model = apply([bound, started]);
-    expect(model.sessions.s1?.terminalId).toBe('term-1');
+    expect(model.sessions.s1?.terminalId).toBeUndefined();
     expect(model.sessions.s1?.projectId).toBe('-home-u-my-app');
+    expect(Object.keys(model.projects)).toEqual(['-home-u-my-app']);
   });
 
   it('sessions without a binding have no terminalId', () => {
@@ -134,14 +136,14 @@ describe('reducer: fixtures', () => {
     }
   });
 
-  it('tolerates the hook-before-JSONL order (agent events before the spawn)', () => {
+  it('drops events that arrive before session.started instead of inventing a session', () => {
     const events = normalizeFixture('parallel-subagents');
     const reordered = [
       ...events.filter((e) => e.type !== 'session.started'),
       ...events.filter((e) => e.type === 'session.started'),
     ];
     const model = apply(reordered);
-    expect(Object.keys(model.agents)).toHaveLength(3);
+    expect(Object.keys(model.agents)).toHaveLength(0);
     expect(Object.keys(model.projects)).toEqual(['-anon-projects-demo-app']);
     expect(Object.keys(model.sessions)).toHaveLength(1);
   });
@@ -282,10 +284,14 @@ describe('reducer: events', () => {
     expect(reduce(model, end('s2'))).toEqual(model);
   });
 
-  it('creates placeholders for unknown actors and enriches them later', () => {
-    let model = reduce(createEmptyModel(), toolStarted('ghost', 1));
-    expect(model.agents.ghost).toMatchObject({ status: 'working', agentType: '' });
-    model = apply([started, spawned('ghost', 'Plan')], model);
+  it('attaches an orphan actor to the only session and enriches it later', () => {
+    let model = apply([started, toolStarted('ghost', 1)]);
+    expect(model.agents.ghost).toMatchObject({
+      status: 'working',
+      agentType: '',
+      sessionId: 's1',
+    });
+    model = apply([spawned('ghost', 'Plan')], model);
     expect(model.agents.ghost).toMatchObject({
       status: 'working',
       agentType: 'Plan',
@@ -293,8 +299,61 @@ describe('reducer: events', () => {
       sessionId: 's1',
     });
     expect(model.sessions.s1?.agentIds).toEqual(['ghost']);
-    expect(model.sessions.unknown).toBeUndefined();
-    expect(model.projects.unknown).toBeUndefined();
+    expect(Object.keys(model.sessions)).toEqual(['s1']);
+    expect(Object.keys(model.projects)).toEqual(['-home-u-my-app']);
+  });
+
+  describe('orphan events never create a session or project', () => {
+    const second: OfficeEvent = { ...started, sessionId: 's2', projectId: '-home-u-other' };
+    const orphans: Array<[string, OfficeEvent]> = [
+      ['tool.started', toolStarted('ghost', 1)],
+      [
+        'tool.finished',
+        {
+          type: 'tool.finished',
+          actorId: 'ghost',
+          toolUseId: 'tu1',
+          ok: true,
+          ts: at(2),
+          source: 'jsonl',
+        },
+      ],
+      ['actor.thinking', { type: 'actor.thinking', actorId: 'ghost', ts: at(2), source: 'hook' }],
+      ['actor.waiting', { type: 'actor.waiting', actorId: 'ghost', ts: at(2), source: 'hook' }],
+      ['actor.idle', { type: 'actor.idle', actorId: 'ghost', ts: at(2), source: 'hook' }],
+      [
+        'usage',
+        {
+          type: 'usage',
+          actorId: 'ghost',
+          inputTokens: 1,
+          outputTokens: 1,
+          ts: at(2),
+          source: 'jsonl',
+        },
+      ],
+      ['agent.updated', { type: 'agent.updated', agentId: 'ghost', ts: at(2), source: 'jsonl' }],
+      ['agent.finished', { type: 'agent.finished', agentId: 'ghost', ts: at(2), source: 'jsonl' }],
+      ['agent.spawned', { ...spawned('ghost'), sessionId: 'missing' }],
+      [
+        'session.bound',
+        { type: 'session.bound', sessionId: 'missing', terminalId: 't', ts: at(2), source: 'hook' },
+      ],
+    ];
+
+    it.each(orphans)('%s on an empty office leaves the model unchanged', (_name, event) => {
+      expect(reduce(createEmptyModel(), event)).toEqual(createEmptyModel());
+    });
+
+    it.each(orphans)('%s with several sessions leaves the model unchanged', (_name, event) => {
+      const model = apply([started, second]);
+      expect(reduce(model, event)).toEqual(model);
+    });
+
+    it('agent.spawned for a missing session is ignored even when another session exists', () => {
+      const model = apply([started]);
+      expect(reduce(model, { ...spawned('ghost'), sessionId: 'missing' })).toEqual(model);
+    });
   });
 
   it('agent.updated enriches an agent', () => {

@@ -220,6 +220,45 @@ describe('daemon e2e (Seam 1)', () => {
     expect(forBash[0]?.source).toBe('hook');
   });
 
+  it('orphan hooks open no room, and an expired session is reborn when it resumes', async () => {
+    nowMs = Date.parse('2026-10-10T12:00:00.000Z');
+    const { port } = await startDaemon();
+    const client = await connect(port);
+    const hook = (body: Record<string, unknown>) =>
+      fetch(`http://127.0.0.1:${port}/hook`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+    const real = { session_id: 'real-1', cwd: '/work/agent-office' };
+
+    await hook({ ...real, hook_event_name: 'SessionStart' });
+    await waitFor(() => client.events().some((e) => e.type === 'session.started'), 'real session');
+
+    // A stray hook of an unknown session without cwd: no room, no phantom in the counts.
+    await hook({ hook_event_name: 'Stop', session_id: 'ghost-1' });
+    await hook({ hook_event_name: 'SessionStart', session_id: 'ghost-2' });
+    await settle(client);
+    expect(await getJson(port, '/health')).toMatchObject({ sessions: 1 });
+    expect(client.events().filter((e) => e.type === 'session.started')).toHaveLength(1);
+
+    // Silence expires the session (15 min); a resume brings its room back.
+    nowMs += 15 * 60 * 1000;
+    await waitFor(
+      () => client.events().some((e) => e.type === 'session.ended' && e.reason === 'expired'),
+      'session.ended{expired}',
+    );
+    await waitFor(async () => (await getJson(port, '/health')).sessions === 0, 'empty office');
+    await hook({ ...real, hook_event_name: 'UserPromptSubmit', prompt: 'back' });
+    await waitFor(
+      () => client.events().filter((e) => e.type === 'session.started').length === 2,
+      'session.started after the resume',
+    );
+    expect(await getJson(port, '/health')).toMatchObject({ sessions: 1 });
+    const fresh = await connect(port);
+    expect(Object.keys(snapshotOf(fresh).projects)).toEqual(['-work-agent-office']);
+  });
+
   it('rejects an invalid hook payload with 400', async () => {
     nowMs = Date.now();
     const { port } = await startDaemon();

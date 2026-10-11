@@ -1,6 +1,7 @@
 import { createEmptyModel, type OfficeEvent, type OfficeModel } from '@agents-office/shared';
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_LIVENESS_CONFIG, reduce, tick } from '../src/model';
+import { createNormalizer } from '../src/normalizer';
 
 const T0 = Date.parse('2026-10-10T12:00:00.000Z');
 const MIN = 60_000;
@@ -76,6 +77,34 @@ describe('liveness', () => {
     ]);
     for (const e of events) model = reduce(model, e);
     expect(model).toEqual(createEmptyModel());
+  });
+
+  it('an expired session that resumes gets a real room again (normalizer + reducer)', () => {
+    const normalizer = createNormalizer();
+    const hook = (event: string, ms: number) => ({
+      kind: 'hook' as const,
+      payload: { hook_event_name: event, session_id: 's1', cwd: '/home/u/app' },
+      receivedAt: iso(ms),
+    });
+    let model = createEmptyModel();
+    const feed = (events: OfficeEvent[]) => {
+      for (const e of events) {
+        model = reduce(model, e);
+        if (e.type === 'session.ended' && e.source !== 'hook') {
+          normalizer.sessionEnded(e.sessionId, e.ts, e.source);
+        }
+      }
+    };
+    feed(normalizer.ingest(hook('SessionStart', T0)));
+    expect(Object.keys(model.sessions)).toEqual(['s1']);
+
+    feed(tick(model, T0 + 15 * MIN));
+    expect(model).toEqual(createEmptyModel());
+
+    feed(normalizer.ingest(hook('UserPromptSubmit', T0 + 20 * MIN)));
+    expect(Object.keys(model.sessions)).toEqual(['s1']);
+    expect(Object.values(model.projects).map((p) => p.name)).toEqual(['app']);
+    expect(Object.keys(model.projects)).not.toContain('s1');
   });
 
   it('subagent activity keeps the parent session alive', () => {

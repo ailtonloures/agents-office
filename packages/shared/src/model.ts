@@ -19,6 +19,22 @@ export function isLive(actor: { status: string }): boolean {
   return actor.status !== 'finished' && actor.status !== 'ended';
 }
 
+/**
+ * The live sessions and agents that really exist: a session counts only when its project is known
+ * and has a working directory (a residual placeholder never does), and an agent only when its
+ * session counts. HUD and `/health` both count through this, so they always agree.
+ */
+export function liveActors(model: OfficeModel): { sessions: Session[]; agents: Agent[] } {
+  const sessions = Object.values(model.sessions).filter(
+    (session) => isLive(session) && (model.projects[session.projectId]?.cwd ?? '') !== '',
+  );
+  const real = new Set(sessions.map((session) => session.id));
+  const agents = Object.values(model.agents).filter(
+    (agent) => isLive(agent) && real.has(agent.sessionId),
+  );
+  return { sessions, agents };
+}
+
 /** IT profession of an actor: the session is the `tech-lead`, subagents derive it from their type. */
 export const ProfessionSchema = z.enum([
   'tech-lead',

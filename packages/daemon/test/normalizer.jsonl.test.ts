@@ -253,6 +253,31 @@ describe('normalizer: JSONL correlation edge cases', () => {
     });
   }
 
+  it('a transcript line newer than the session end restarts it; older lines do not', () => {
+    const normalizer = createNormalizer();
+    const ingest = (uuid: string, ts: string) =>
+      normalizer
+        .ingest({
+          kind: 'session-line',
+          sessionId,
+          projectSlug,
+          line: line({
+            type: 'user',
+            uuid,
+            timestamp: ts,
+            message: { role: 'user', content: 'hi' },
+          }),
+        })
+        .filter((event) => event.type === 'session.started');
+    expect(ingest('u1', '2026-10-10T12:00:00.000Z')).toHaveLength(1);
+    expect(ingest('u2', '2026-10-10T12:01:00.000Z')).toHaveLength(0);
+
+    normalizer.sessionEnded(sessionId, '2026-10-10T12:15:00.000Z', 'clock');
+    expect(ingest('u3', '2026-10-10T12:02:00.000Z')).toHaveLength(0);
+    expect(ingest('u4', '2026-10-10T12:20:00.000Z')).toHaveLength(1);
+    expect(ingest('u5', '2026-10-10T12:21:00.000Z')).toHaveLength(0);
+  });
+
   it('derives parentAgentId from the toolUseId when the meta does not carry it', () => {
     const normalizer = createNormalizer();
     const events = [

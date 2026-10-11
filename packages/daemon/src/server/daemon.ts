@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import {
   createEmptyModel,
   type EventMessage,
-  isLive,
+  liveActors,
   type OfficeEvent,
   type OfficeModel,
   type PermissionSnapshotMessage,
@@ -139,6 +139,10 @@ export function createDaemon(options: DaemonOptions): Daemon {
   function apply(events: OfficeEvent[]): void {
     for (const event of events) {
       model = reduce(model, event, reduceOptions);
+      // Hook-ended sessions are known to the normalizer already; an expiry is not.
+      if (event.type === 'session.ended' && event.source !== 'hook') {
+        normalizer.sessionEnded(event.sessionId, event.ts, event.source);
+      }
       broadcast({ kind: 'event', event });
     }
   }
@@ -169,14 +173,17 @@ export function createDaemon(options: DaemonOptions): Daemon {
   app.register(fastifyWebsocket);
 
   app.register(async (instance) => {
-    instance.get('/health', async () => ({
-      ok: true,
-      version: options.version ?? '0.0.0',
-      sessions: Object.values(model.sessions).filter(isLive).length,
-      agents: Object.values(model.agents).filter(isLive).length,
-      pendingPermissions: broker.pendingCount,
-      ...(hooksSeenAt !== undefined ? { hooksSeenAt } : {}),
-    }));
+    instance.get('/health', async () => {
+      const live = liveActors(model);
+      return {
+        ok: true,
+        version: options.version ?? '0.0.0',
+        sessions: live.sessions.length,
+        agents: live.agents.length,
+        pendingPermissions: broker.pendingCount,
+        ...(hooksSeenAt !== undefined ? { hooksSeenAt } : {}),
+      };
+    });
 
     instance.post('/hook', async (request, reply) => {
       const parsed = parseHookPayload(request.body);

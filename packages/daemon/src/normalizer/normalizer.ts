@@ -94,6 +94,12 @@ export function createNormalizer(): Normalizer {
   const emittedKeys = new Set<string>();
   const seenUuids = new Set<string>();
   const sessionCwd = new Map<string, string>();
+  /**
+   * Sessions that left the model, with when. A late event of such a session must not bring it
+   * back; only a resume does: a `SessionStart` hook, a transcript line newer than the end, or (for
+   * an expiry, where silence is the only signal) any hook that tells where the session runs.
+   */
+  const endedSessions = new Map<string, { ts: number; byHook: boolean }>();
   const toolUses = new Map<string, ToolUseInfo>();
   const agentByToolUse = new Map<string, string>();
   /** Spawned agents; `fromMeta` tells whether the meta (richest source) was already applied. */
@@ -131,10 +137,26 @@ export function createNormalizer(): Normalizer {
     ts: string,
     source: Source,
   ) {
+    const ended = endedSessions.get(sessionId);
+    if (ended !== undefined) {
+      if (source === 'jsonl' && Date.parse(ts) <= ended.ts) return;
+      endedSessions.delete(sessionId);
+    }
     emit(
       { type: 'session.started', sessionId, projectId, cwd, ts, source },
       `session.started:${sessionId}`,
     );
+  }
+
+  function sessionEnded(sessionId: string, ts: string, source: OfficeEvent['source']) {
+    emittedKeys.delete(`session.started:${sessionId}`);
+    emittedKeys.delete(`session.ended:${sessionId}`);
+    for (const key of emittedKeys) {
+      if (key.startsWith(`session.bound:${sessionId}:`)) emittedKeys.delete(key);
+    }
+    const parsed = Date.parse(ts);
+    if (!Number.isNaN(parsed))
+      endedSessions.set(sessionId, { ts: parsed, byHook: source === 'hook' });
   }
 
   function recordToolUse(toolUseId: string, info: ToolUseInfo) {
@@ -445,14 +467,16 @@ export function createNormalizer(): Normalizer {
   function startSessionFromHook(payload: HookPayload, ts: string) {
     const sessionId = payload.session_id;
     if (emittedKeys.has(`session.started:${sessionId}`)) return;
-    const isSessionStart = payload.hook_event_name === 'SessionStart';
     // Any hook of an unknown session starts it, as long as it tells where the session runs.
-    if (!isSessionStart && payload.cwd === undefined) return;
+    // Without a cwd there is no project to name, so nothing starts.
+    if (!payload.cwd) return;
+    const ended = endedSessions.get(sessionId);
+    // A hook-ended session only comes back with SessionStart (a late Stop must not revive it).
+    if (ended?.byHook && payload.hook_event_name !== 'SessionStart') return;
     const projectId =
       (payload.transcript_path ? parentDirName(payload.transcript_path) : undefined) ??
-      (payload.cwd ? slugifyCwd(payload.cwd) : undefined) ??
-      sessionId;
-    startSession(sessionId, projectId, payload.cwd ?? '', ts, 'hook');
+      slugifyCwd(payload.cwd);
+    startSession(sessionId, projectId, payload.cwd, ts, 'hook');
   }
 
   /**
@@ -512,6 +536,10 @@ export function createNormalizer(): Normalizer {
     if (payload.cwd && !sessionCwd.has(sessionId)) sessionCwd.set(sessionId, payload.cwd);
     if (event !== 'SessionEnd') {
       startSessionFromHook(payload, ts);
+      if (endedSessions.has(sessionId)) {
+        stats.ignored += 1;
+        return;
+      }
       bindTerminal(payload, ts);
     }
     // Hooks fired inside a subagent carry its agent_id.
@@ -525,6 +553,7 @@ export function createNormalizer(): Normalizer {
           { type: 'session.ended', sessionId, reason: 'hook', ts, source: 'hook' },
           `session.ended:${sessionId}`,
         );
+        sessionEnded(sessionId, ts, 'hook');
         return;
       case 'SubagentStart':
         if (payload.agent_id === undefined) stats.skipped += 1;
@@ -631,6 +660,7 @@ export function createNormalizer(): Normalizer {
 
   return {
     stats,
+    sessionEnded,
     ingest(input: NormalizerInput): OfficeEvent[] {
       out = [];
       try {

@@ -144,6 +144,55 @@ describe('normalizer: hooks', () => {
     expect(events.map((event) => event.type)).toEqual(['session.started', 'tool.started']);
   });
 
+  it('a hook without cwd never starts a session nor names a project after its id', () => {
+    const normalizer = createNormalizer();
+    const { cwd: _cwd, ...noCwd } = loadHookPayload('PreToolUse');
+    const events = normalizer.ingest({
+      kind: 'hook',
+      payload: { ...noCwd, hook_event_name: 'SessionStart' },
+      receivedAt: RECEIVED_AT,
+    });
+    expect(events.filter((event) => event.type === 'session.started')).toEqual([]);
+    const later = normalizer.ingest({
+      kind: 'hook',
+      payload: noCwd,
+      receivedAt: RECEIVED_AT,
+    });
+    expect(later.filter((event) => event.type === 'session.started')).toEqual([]);
+  });
+
+  it('an ended session that resumes starts again; late hooks do not revive it', () => {
+    const normalizer = createNormalizer();
+    const started = (events: OfficeEvent[]) =>
+      events.filter((event) => event.type === 'session.started');
+    expect(
+      started(normalizer.ingest(hook('SessionStart', {}, '2026-10-10T16:00:00.000Z'))),
+    ).toHaveLength(1);
+    expect(
+      normalizer.ingest(hook('SessionEnd', {}, '2026-10-10T16:10:00.000Z')).map((e) => e.type),
+    ).toEqual(['session.ended']);
+
+    // A late Stop (cwd and all) is ignored: no room comes back from it.
+    expect(normalizer.ingest(hook('Stop', {}, '2026-10-10T16:10:01.000Z'))).toEqual([]);
+    expect(normalizer.ingest(hook('PreToolUse', {}, '2026-10-10T16:10:02.000Z'))).toEqual([]);
+
+    // The resume (SessionStart) reopens the room, and the next end is reported again.
+    expect(
+      started(normalizer.ingest(hook('SessionStart', {}, '2026-10-10T16:20:00.000Z'))),
+    ).toHaveLength(1);
+    expect(
+      normalizer.ingest(hook('SessionEnd', {}, '2026-10-10T16:30:00.000Z')).map((e) => e.type),
+    ).toEqual(['session.ended']);
+  });
+
+  it('a session expired by the clock starts again on the next hook that tells its cwd', () => {
+    const normalizer = createNormalizer();
+    normalizer.ingest(hook('SessionStart', {}, '2026-10-10T16:00:00.000Z'));
+    normalizer.sessionEnded(SESSION, '2026-10-10T16:15:00.000Z', 'clock');
+    const events = normalizer.ingest(hook('UserPromptSubmit', {}, '2026-10-10T17:00:00.000Z'));
+    expect(events.map((event) => event.type)).toEqual(['session.started', 'actor.thinking']);
+  });
+
   it('ignores unknown hook events and skips invalid payloads without throwing', () => {
     const normalizer = createNormalizer();
     expect(normalizer.ingest(hook('Stop', { hook_event_name: 'PreCompact' }))).toEqual([]);

@@ -41,6 +41,11 @@ PRD: [agents-office.prd.md](../prds/agents-office.prd.md)
 | 035 | Substituir sub-agente ocioso ao recriar agente equivalente | high | done | feature, shared, daemon, web, testing | — |
 | 036 | Finalizar sub-agentes ociosos por inatividade (liveness) | medium | done | feature, daemon, testing | 035 |
 | 037 | HUD estático durante o zoom do escritório | high | done | bugfix, web, camera, ui, testing | 033, 034 |
+| 038 | Fim da sala "Unknown" e das sessões fantasma | high | done | bugfix, shared, daemon, web, testing | 032, 036 |
+| 039 | Botões Hooks e Sessões dentro da área do escritório | high | pending | bugfix, web, ui, layout | 037 |
+| 040 | Modelo do painel de terminal com dock e minimizar | medium | pending | feature, web, terminal, testing | 039 |
+| 041 | Clique no Tech Lead abre o terminal, clique fora minimiza | high | pending | feature, web, desktop, terminal, testing | 040 |
+| 042 | Dock do terminal à esquerda, à direita ou embaixo | medium | pending | feature, web, ui, layout, terminal, testing | 040, 041 |
 
 Fases do PRD: 001–002 = Fase 0 (spike) · 003–011 = Fase 1 (MVP) · 006, 012 = parte da Fase 2. Replay, minimapa e Tauri (Fase 3) ficam fora deste lote.
 
@@ -53,3 +58,7 @@ PRD de zoom do escritório: [zoom-escritorio.prd.md](../prds/zoom-escritorio.prd
 PRD do avatar de sub-agente órfão: [avatar-subagente-orfao.prd.md](../prds/avatar-subagente-orfao.prd.md) (035–036; 036 depende de 035).
 
 PRD do HUD estático no zoom: [hud-estatico-zoom.prd.md](../prds/hud-estatico-zoom.prd.md) (037; depende de 033 e 034).
+
+PRD da sala Unknown e sessões fantasma: [sala-unknown-sessoes-fantasma.prd.md](../prds/sala-unknown-sessoes-fantasma.prd.md) (038; depende de 032 e 036).
+
+PRD do terminal por clique, dock e botões: [terminal-por-clique-dock-botoes.prd.md](../prds/terminal-por-clique-dock-botoes.prd.md) (039–042; 040 depende de 039, 041 de 040, 042 de 040 e 041).

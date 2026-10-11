@@ -93,6 +93,22 @@ describe('hud counts', () => {
     expect(hudCounts(model)).toEqual({ sessions: 2, agents: 1, waiting: 2 });
   });
 
+  it('ignores placeholder sessions and the agents hanging from them', () => {
+    const model = build();
+    model.projects.ghost = {
+      id: 'ghost',
+      name: 'ghost',
+      cwd: '',
+      sessionIds: ['s3'],
+      lastActivityTs: '2026-01-01T00:00:00.000Z',
+    };
+    model.sessions.s3 = session('s3', 'ghost', { agentIds: ['a3'] });
+    model.agents.a3 = agent('a3', 's3');
+    model.sessions.s4 = session('s4', 'missing-project');
+    model.agents.a4 = agent('a4', 's4');
+    expect(hudCounts(model)).toEqual({ sessions: 2, agents: 1, waiting: 2 });
+  });
+
   it('does not count a waiting-then-finished agent as waiting', () => {
     const model = build();
     model.agents.a1 = agent('a1', 's1', { status: 'finished' });

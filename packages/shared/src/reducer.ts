@@ -18,10 +18,6 @@ import {
 export const RECENT_STEPS_LIMIT = 5;
 export const HALL_OF_FAME_SIZE = 20;
 
-/** Placeholder ids for actors whose session is not known yet (hook before JSONL). */
-const UNKNOWN_PROJECT_ID = 'unknown';
-const UNKNOWN_SESSION_ID = 'unknown';
-
 export interface ReduceOptions {
   /** Loaded elsewhere (professions.json); defaults to the built-in table. */
   professions?: ProfessionsConfig;
@@ -35,7 +31,8 @@ type Actor = { kind: 'session'; value: Session } | { kind: 'agent'; value: Agent
 /**
  * Applies one event to the model. Pure and immutable: the input model is never mutated and no
  * clock is read, so the same event sequence always yields the same model (replay-safe).
- * Events for actors not seen yet create placeholders that later events enrich.
+ * Events for actors not seen yet create placeholder agents that later events enrich, but only
+ * inside a session that already exists: events of an unknown session leave the model unchanged.
  */
 export function reduce(
   model: OfficeModel,
@@ -55,7 +52,8 @@ export function reduce(
       return sessionStarted(next, event);
 
     case 'session.bound': {
-      const session = ensureSession(next, event.sessionId, event.ts);
+      const session = next.sessions[event.sessionId];
+      if (!session) return model;
       if (session.terminalId !== event.terminalId) {
         next.sessions[session.id] = { ...session, terminalId: event.terminalId };
       }
@@ -63,7 +61,7 @@ export function reduce(
     }
 
     case 'agent.spawned': {
-      ensureSession(next, event.sessionId, event.ts);
+      if (!next.sessions[event.sessionId]) return model;
       const existing = next.agents[event.agentId];
       const agent: Agent = {
         ...(existing ?? placeholderAgent(event.agentId, event.sessionId, event.ts)),
@@ -86,7 +84,8 @@ export function reduce(
     }
 
     case 'agent.updated': {
-      const agent = ensureAgent(next, event.agentId, undefined, event.ts);
+      const agent = ensureAgent(next, event.agentId, event.ts);
+      if (!agent) return model;
       const agentType = event.agentType ?? agent.agentType;
       putAgent(
         next,
@@ -171,7 +170,9 @@ export function reduce(
       );
 
     case 'agent.finished': {
-      finishAgent(next, ensureAgent(next, event.agentId, undefined, event.ts), event.ts, event);
+      const agent = ensureAgent(next, event.agentId, event.ts);
+      if (!agent) return model;
+      finishAgent(next, agent, event.ts, event);
       return next;
     }
 
@@ -222,8 +223,7 @@ function sessionStarted(
     sessionIds: [],
     lastActivityTs: event.ts,
   };
-  // A project created from a placeholder (or an earlier session of a cwd-less hook) gets its
-  // real name once the cwd is known.
+  // A project without a cwd gets its real name once a session reports it.
   model.projects[project.id] = {
     ...project,
     ...(project.cwd === '' && event.cwd !== ''
@@ -234,7 +234,7 @@ function sessionStarted(
       : [...project.sessionIds, event.sessionId],
   };
 
-  const stray = adoptStrays(model, event.sessionId);
+  const stray = foldStrayAgent(model, event.sessionId);
   if (existing && existing.projectId !== event.projectId) detachSession(model, existing);
   const base = existing ?? {
     ...placeholderSession(event.sessionId, event.projectId, event.ts),
@@ -242,9 +242,8 @@ function sessionStarted(
   };
   model.sessions[event.sessionId] = {
     ...base,
-    ...stray.session,
+    ...stray,
     projectId: event.projectId,
-    agentIds: [...new Set([...base.agentIds, ...stray.agentIds])],
   };
   touch(model, event.sessionId, event);
   return model;
@@ -252,45 +251,28 @@ function sessionStarted(
 
 /**
  * Reconciles what arrived before `session.started`: events addressed to the session id were
- * recorded as a placeholder agent (folded back into the session), and actors of unknown
- * ownership sit in the "unknown" placeholder session (moved to the real one).
+ * recorded as a placeholder agent of the only known session, and are folded back into the new one.
  */
-function adoptStrays(
-  model: OfficeModel,
-  sessionId: string,
-): { session: Partial<Session>; agentIds: string[] } {
-  let session: Partial<Session> = {};
-  const agentIds: string[] = [];
+function foldStrayAgent(model: OfficeModel, sessionId: string): Partial<Session> {
   const asAgent = model.agents[sessionId];
-  if (asAgent) {
-    const { currentTool } = asAgent;
-    session = {
-      status: asAgent.status === 'spawning' ? 'thinking' : asAgent.status,
-      recentSteps: asAgent.recentSteps,
-      usage: asAgent.usage,
-      ...(asAgent.lastActivityTs !== undefined ? { lastActivityTs: asAgent.lastActivityTs } : {}),
-      ...(currentTool !== undefined ? { currentTool } : {}),
+  if (!asAgent) return {};
+  const { currentTool } = asAgent;
+  const session: Partial<Session> = {
+    status: asAgent.status === 'spawning' ? 'thinking' : asAgent.status,
+    recentSteps: asAgent.recentSteps,
+    usage: asAgent.usage,
+    ...(asAgent.lastActivityTs !== undefined ? { lastActivityTs: asAgent.lastActivityTs } : {}),
+    ...(currentTool !== undefined ? { currentTool } : {}),
+  };
+  delete model.agents[sessionId];
+  const owner = model.sessions[asAgent.sessionId];
+  if (owner) {
+    model.sessions[owner.id] = {
+      ...owner,
+      agentIds: owner.agentIds.filter((id) => id !== sessionId),
     };
-    delete model.agents[sessionId];
-    const owner = model.sessions[asAgent.sessionId];
-    if (owner) {
-      model.sessions[owner.id] = {
-        ...owner,
-        agentIds: owner.agentIds.filter((id) => id !== sessionId),
-      };
-    }
   }
-  const unknown = sessionId === UNKNOWN_SESSION_ID ? undefined : model.sessions[UNKNOWN_SESSION_ID];
-  if (unknown) {
-    for (const id of unknown.agentIds) {
-      const agent = model.agents[id];
-      if (agent) model.agents[id] = { ...agent, sessionId };
-      agentIds.push(id);
-    }
-    detachSession(model, unknown);
-    delete model.sessions[UNKNOWN_SESSION_ID];
-  }
-  return { session, agentIds };
+  return session;
 }
 
 function sessionEnded(model: OfficeModel, sessionId: string): OfficeModel {
@@ -309,7 +291,10 @@ function sessionEnded(model: OfficeModel, sessionId: string): OfficeModel {
   return model;
 }
 
-/** Applies `change` to the session or agent addressed by `actorId`, creating a placeholder. */
+/**
+ * Applies `change` to the session or agent addressed by `actorId`, creating a placeholder agent
+ * when exactly one session exists. With no owner to attach to, the event is dropped.
+ */
 function updateActor(
   model: OfficeModel,
   actorId: string,
@@ -319,6 +304,7 @@ function updateActor(
   allowSettled = false,
 ): OfficeModel {
   const actor = resolveActor(model, actorId, event.ts);
+  if (!actor) return model;
   // A finished agent is never resurrected by late events (only its usage still accrues).
   if (actor.kind === 'agent' && actor.value.status === 'finished' && !allowSettled) return model;
   if (actor.kind === 'session') {
@@ -353,58 +339,37 @@ function syncHallOfFame(model: OfficeModel, agentId: string): OfficeModel {
   return model;
 }
 
-function resolveActor(model: OfficeModel, actorId: string, ts: string): Actor {
+function resolveActor(model: OfficeModel, actorId: string, ts: string): Actor | undefined {
   const agent = model.agents[actorId];
   if (agent) return { kind: 'agent', value: agent };
   const session = model.sessions[actorId];
   if (session) return { kind: 'session', value: session };
-  return { kind: 'agent', value: ensureAgent(model, actorId, undefined, ts) };
+  const created = ensureAgent(model, actorId, ts);
+  return created ? { kind: 'agent', value: created } : undefined;
 }
 
-function ensureAgent(
-  model: OfficeModel,
-  agentId: string,
-  sessionId: string | undefined,
-  ts: string,
-): Agent {
+/**
+ * The agent `agentId`; an unknown one becomes a placeholder of the only existing session, since a
+ * session cannot be guessed otherwise. Without exactly one session nothing is created.
+ */
+function ensureAgent(model: OfficeModel, agentId: string, ts: string): Agent | undefined {
   const existing = model.agents[agentId];
   if (existing) return existing;
-  // Unknown owner: attach to the only known session, else to the "unknown" placeholder one.
   const sessionIds = Object.keys(model.sessions);
-  const owner = sessionId ?? (sessionIds.length === 1 ? sessionIds[0] : UNKNOWN_SESSION_ID);
-  const resolvedOwner = owner ?? UNKNOWN_SESSION_ID;
-  ensureSession(model, resolvedOwner, ts);
-  const agent = placeholderAgent(agentId, resolvedOwner, ts);
+  const owner = sessionIds.length === 1 ? sessionIds[0] : undefined;
+  const session = owner === undefined ? undefined : model.sessions[owner];
+  if (!session) return undefined;
+  const agent = placeholderAgent(agentId, session.id, ts);
   model.agents[agentId] = agent;
-  const session = model.sessions[resolvedOwner];
-  if (session && !session.agentIds.includes(agentId)) {
-    model.sessions[resolvedOwner] = { ...session, agentIds: [...session.agentIds, agentId] };
-  }
+  model.sessions[session.id] = { ...session, agentIds: [...session.agentIds, agentId] };
   return agent;
-}
-
-function ensureSession(model: OfficeModel, sessionId: string, ts: string): Session {
-  const existing = model.sessions[sessionId];
-  if (existing) return existing;
-  const projectId = UNKNOWN_PROJECT_ID;
-  const project: Project = model.projects[projectId] ?? {
-    id: projectId,
-    name: projectId,
-    cwd: '',
-    sessionIds: [],
-    lastActivityTs: ts,
-  };
-  model.projects[projectId] = { ...project, sessionIds: [...project.sessionIds, sessionId] };
-  const session = placeholderSession(sessionId, projectId, ts);
-  model.sessions[sessionId] = session;
-  return session;
 }
 
 /** Stores an agent (linking it to its session) and records the activity of `event`. */
 function putAgent(model: OfficeModel, agent: Agent, event: OfficeEvent): void {
   model.agents[agent.id] = agent;
-  const session = ensureSession(model, agent.sessionId, event.ts);
-  if (!session.agentIds.includes(agent.id)) {
+  const session = model.sessions[agent.sessionId];
+  if (session && !session.agentIds.includes(agent.id)) {
     model.sessions[session.id] = { ...session, agentIds: [...session.agentIds, agent.id] };
   }
   touch(model, agent.id, event);

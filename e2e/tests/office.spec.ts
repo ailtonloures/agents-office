@@ -384,3 +384,49 @@ test('10. the HUD, the shortcuts and the dialog keep size and position at any zo
     await shot(page, `10-zoom-${zoom}`);
   }
 });
+
+test('11. orphan events open no "Unknown" room and the HUD counts only real sessions', async ({
+  page,
+}) => {
+  await openOffice(page, daemon.url);
+  const hook = async (body: Record<string, unknown>) => {
+    const response = await fetch(`${daemon.url}/hook`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    expect(response.status).toBe(204);
+  };
+  const sessionIds = () =>
+    page.evaluate(() => Object.keys(window.__office?.model.sessions ?? {}).sort());
+
+  // Events of sessions that never told where they run: nothing appears.
+  await hook({ hook_event_name: 'Stop', session_id: 'orphan-1' });
+  await hook({ hook_event_name: 'SessionStart', session_id: 'orphan-2' });
+  await hook({ hook_event_name: 'Notification', session_id: 'orphan-3', message: 'hi' });
+  await page.waitForTimeout(800);
+  expect(await sessionIds()).toEqual([]);
+  expect(await characters(page)).toHaveLength(0);
+  await expect.poll(() => hudText(page)).toContain('0 sessões');
+
+  // Two real sessions get their rooms; the orphans still count for nothing.
+  const feeder = createFeeder(daemon.projectsDir, FIXTURE);
+  feeder.next(4);
+  await expect
+    .poll(async () => (await characters(page)).filter((c) => c.role === 'lead').length)
+    .toBe(1);
+  await hook({ hook_event_name: 'SessionStart', session_id: 'real-2', cwd: '/work/second-app' });
+  await expect.poll(async () => (await sessionIds()).length).toBe(2);
+  await hook({ hook_event_name: 'Stop', session_id: 'orphan-1' });
+  await hook({ hook_event_name: 'PostToolUse', session_id: 'orphan-4', tool_use_id: 'tu-x' });
+  await page.waitForTimeout(800);
+  expect(await sessionIds()).not.toContain('orphan-1');
+  expect((await sessionIds()).some((id) => id.startsWith('orphan'))).toBe(false);
+  await expect.poll(() => hudText(page)).toContain('2 sessões · 0 agentes');
+  const health = (await (await fetch(`${daemon.url}/health`)).json()) as {
+    sessions: number;
+    agents: number;
+  };
+  expect(health).toMatchObject({ sessions: 2, agents: 0 });
+  await shot(page, '11-no-unknown-room');
+});

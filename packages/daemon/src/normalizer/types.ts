@@ -55,6 +55,12 @@ export interface NormalizerStats {
 export interface Normalizer {
   /** Converts one input into zero or more canonical events. Never throws. */
   ingest(input: NormalizerInput): OfficeEvent[];
+  /**
+   * Tells the normalizer a session left the model (ended by a hook or expired by the clock): its
+   * "started" mark is forgotten so that a resumed session starts again, and events that are not a
+   * resume are ignored until then.
+   */
+  sessionEnded(sessionId: string, ts: string, source: OfficeEvent['source']): void;
   /** Live counters, updated by every `ingest` call. */
   readonly stats: Readonly<NormalizerStats>;
 }
