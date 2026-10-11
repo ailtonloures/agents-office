@@ -5,6 +5,7 @@ import type {
   Profession,
 } from '@agents-office/shared';
 import { createEmptyModel } from '@agents-office/shared';
+import type { Rect } from '../ui/hudLogic';
 
 export interface DebugCharacter {
   id: string;
@@ -34,6 +35,17 @@ export interface DebugState {
   overview: boolean;
   /** The HUD text and the dialog state. */
   hud: { text: string };
+  /** Screen-fixed UI: rectangles in game pixels and the cameras that draw it (spec 037). */
+  ui: {
+    screen: { width: number; height: number };
+    /** Zoom of the UI camera; it must stay 1 whatever the office zoom is. */
+    cameraZoom: number;
+    /** True if the zoomed main camera would draw any UI object (must be false). */
+    mainCameraDrawsUi: boolean;
+    hud: Rect;
+    hints: Rect;
+    dialog: Rect;
+  };
   dialog: { open: boolean; targetId: string | undefined; pages: readonly (readonly string[])[] };
   /** Pending permission requests (oldest first). */
   permissions: { queue: PermissionRequest[] };
@@ -62,6 +74,14 @@ export function createDebugState(): DebugState {
     zoom: 1,
     overview: false,
     hud: { text: '' },
+    ui: {
+      screen: { width: 0, height: 0 },
+      cameraZoom: 1,
+      mainCameraDrawsUi: false,
+      hud: { x: 0, y: 0, width: 0, height: 0 },
+      hints: { x: 0, y: 0, width: 0, height: 0 },
+      dialog: { x: 0, y: 0, width: 0, height: 0 },
+    },
     dialog: { open: false, targetId: undefined, pages: [] },
     permissions: { queue: [] },
     rooms: [],
@@ -83,6 +103,7 @@ export function updateDebugState(state: DebugState, next: Partial<DebugState>): 
   if (next.zoom !== undefined) state.zoom = next.zoom;
   if (next.overview !== undefined) state.overview = next.overview;
   if (next.hud !== undefined) state.hud = next.hud;
+  if (next.ui !== undefined) state.ui = next.ui;
   if (next.dialog !== undefined) state.dialog = next.dialog;
   if (next.permissions !== undefined) state.permissions = next.permissions;
   if (next.rooms !== undefined) state.rooms = next.rooms;

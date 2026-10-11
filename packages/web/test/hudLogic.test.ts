@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import {
   approachTile,
   freeTileNear,
+  hintPanelX,
   hudCounts,
   hudText,
   mostRecentRoom,
@@ -198,5 +199,15 @@ describe('positions', () => {
     const other = freeTileNear(layout, outside, (t) => t.x === outside.x && t.y === outside.y);
     expect(other).toBeDefined();
     expect(other).not.toEqual(outside);
+  });
+});
+
+describe('hintPanelX', () => {
+  it('right-aligns the panel against the margin', () => {
+    expect(hintPanelX(320, 100, 6)).toBe(214);
+  });
+
+  it('never goes past the left margin on a narrow screen', () => {
+    expect(hintPanelX(80, 100, 6)).toBe(6);
   });
 });

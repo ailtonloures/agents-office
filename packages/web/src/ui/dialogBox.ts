@@ -2,6 +2,7 @@ import type Phaser from 'phaser';
 import { SKIN_KEYS } from '../skin';
 import { DIALOG_LINES, type DialogPage, pageLength, revealLines } from './dialogContent';
 import { drawPanel, PAPER_PANEL } from './panel';
+import type { UiOverlay } from './uiOverlay';
 
 export const DIALOG_DEPTH = 2000;
 const BOX_WIDTH = 300;
@@ -32,7 +33,7 @@ export class DialogBox {
   private onClose: (() => void) | undefined;
   private visible = false;
 
-  constructor(scene: Phaser.Scene) {
+  constructor(scene: Phaser.Scene, ui: UiOverlay) {
     this.box = scene.add.graphics();
     // Shadow, ink border and paper; a gold accent bar on the left and a thin rule at the bottom.
     drawPanel(this.box, 0, 0, BOX_WIDTH, BOX_HEIGHT, PAPER_PANEL);
@@ -53,6 +54,7 @@ export class DialogBox {
       .setScrollFactor(0)
       .setDepth(DIALOG_DEPTH)
       .setVisible(false);
+    ui.add(this.container);
     this.layout(scene.scale.width, scene.scale.height);
   }
 
@@ -62,6 +64,11 @@ export class DialogBox {
       Math.floor((width - BOX_WIDTH) / 2),
       Math.max(0, height - BOX_HEIGHT - BOTTOM_MARGIN),
     );
+  }
+
+  /** Screen rectangle (game pixels) the box occupies, open or not; used by the debug state. */
+  get bounds(): { x: number; y: number; width: number; height: number } {
+    return { x: this.container.x, y: this.container.y, width: BOX_WIDTH, height: BOX_HEIGHT };
   }
 
   get isOpen(): boolean {

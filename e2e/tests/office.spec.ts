@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { type RunningDaemon, startDaemon } from '../support/daemon';
-import { createFeeder, loadFixture } from '../support/feeder';
-import { characters, hudText, openOffice, shot } from '../support/office';
+import { createFeeder, loadFixture, writeSubagent } from '../support/feeder';
+import { characters, gamePixel, hudText, openOffice, shot } from '../support/office';
 
 let daemon: RunningDaemon;
 
@@ -282,4 +282,105 @@ test('8. zoom persists after reload; the overview hides the buttons and restores
   await expect.poll(() => page.evaluate(() => window.__office?.overview)).toBe(false);
   await expect(page.getByTestId('zoom-in')).toBeVisible();
   expect(await zoomOf(page)).toBe(1.5);
+});
+
+test('9. recreating an idle subagent replaces it: the old one leaves, the new one stays', async ({
+  page,
+}) => {
+  await openOffice(page, daemon.url);
+  const feeder = createFeeder(daemon.projectsDir, FIXTURE);
+  feeder.next(4);
+  await expect
+    .poll(async () => (await characters(page)).filter((c) => c.role === 'lead').length)
+    .toBe(1);
+
+  // The first sub-agent has been silent for 3 minutes: the liveness clock turns it idle.
+  const twin = { agentType: 'Explore', description: 'Map the billing module' };
+  writeSubagent(daemon.projectsDir, FIXTURE, {
+    ...twin,
+    agentId: 'e2eold000000000001',
+    timestamp: new Date(Date.now() - 3 * 60_000).toISOString(),
+  });
+  const statusOf = (id: string) =>
+    page.evaluate((agentId) => window.__office?.model.agents[agentId]?.status, id);
+  await expect.poll(() => statusOf('e2eold000000000001'), { timeout: 30_000 }).toBe('idle');
+  await expect.poll(() => hudText(page)).toContain('1 agente ');
+  await shot(page, '9-0-idle-agent');
+
+  // The same sub-agent is recreated with a new id.
+  writeSubagent(daemon.projectsDir, FIXTURE, {
+    ...twin,
+    agentId: 'e2enew000000000002',
+    timestamp: new Date().toISOString(),
+  });
+  await expect.poll(() => statusOf('e2eold000000000001')).toBe('finished');
+  await expect
+    .poll(
+      async () =>
+        (await characters(page))
+          .filter((c) => c.role === 'agent')
+          .map((c) => c.id)
+          .sort(),
+      { timeout: 45_000 },
+    )
+    .toEqual(['e2enew000000000002']);
+  await expect.poll(() => hudText(page)).toContain('1 agente ');
+  const health = (await (await fetch(`${daemon.url}/health`)).json()) as { agents: number };
+  expect(health.agents).toBe(1);
+  await shot(page, '9-1-old-left-new-stays');
+});
+
+test('10. the HUD, the shortcuts and the dialog keep size and position at any zoom', async ({
+  page,
+}) => {
+  await page.addInitScript(() => localStorage.removeItem('agents-office.zoom'));
+  await openOffice(page, daemon.url);
+  const feeder = createFeeder(daemon.projectsDir, FIXTURE);
+  feeder.next(4);
+  await expect
+    .poll(async () => (await characters(page)).filter((c) => c.role === 'lead').length)
+    .toBe(1);
+  await expect
+    .poll(
+      async () => {
+        const id = (await characters(page)).find((c) => c.role === 'lead')?.id;
+        if (!id) return false;
+        await page.evaluate((leadId) => window.__office?.actions?.approachCharacter(leadId), id);
+        await page.keyboard.press('Enter');
+        return page.evaluate(() => window.__office?.dialog.open === true);
+      },
+      { timeout: 30_000, intervals: [200] },
+    )
+    .toBe(true);
+
+  const setZoom = async (target: number) => {
+    const button = page.getByTestId(target > (await zoomOf(page)) ? 'zoom-in' : 'zoom-out');
+    for (let i = 0; i < 20 && (await zoomOf(page)) !== target; i++) await button.click();
+    expect(await zoomOf(page)).toBe(target);
+  };
+  const ui = () => page.evaluate(() => window.__office?.ui);
+  // The dot is at game pixel (14, 13) of the status pill; the paper strip is inside the dialog.
+  const near = (c: number[], want: number[]) =>
+    c.every((v, i) => Math.abs(v - (want[i] ?? 0)) < 40);
+
+  await setZoom(1);
+  const base = await ui();
+  expect(base?.cameraZoom).toBe(1);
+  expect(base?.mainCameraDrawsUi).toBe(false);
+  expect(base?.hud.width).toBeGreaterThan(0);
+  expect(base?.hints.width).toBeGreaterThan(0);
+  expect(base?.dialog.width).toBeGreaterThan(0);
+
+  for (const zoom of [0.5, 1, 3]) {
+    await setZoom(zoom);
+    await page.waitForTimeout(300);
+    expect(await ui()).toEqual(base);
+    expect(await page.evaluate(() => window.__office?.dialog.open)).toBe(true);
+    const dot = await gamePixel(page, 14, 13);
+    expect(near(dot, [0x58, 0xd3, 0x6b]), `HUD dot at zoom ${zoom}: ${dot}`).toBe(true);
+    const d = base?.dialog;
+    const paper = await gamePixel(page, (d?.x ?? 0) + 150, (d?.y ?? 0) + 3);
+    expect(near(paper, [0xf7, 0xf6, 0xf2]), `dialog paper at zoom ${zoom}: ${paper}`).toBe(true);
+    await shot(page, `10-zoom-${zoom}`);
+  }
 });

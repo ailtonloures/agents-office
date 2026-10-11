@@ -4,6 +4,7 @@ import { SKIN_KEYS } from '../skin';
 import { HELP_CONTROLS } from './hudLogic';
 import { HintRow, hintFonts, KEY_COLORS } from './keyHints';
 import { DARK_PANEL, drawPanel } from './panel';
+import type { UiOverlay } from './uiOverlay';
 
 export const HELP_DEPTH = 2100;
 const WIDTH = 236;
@@ -42,6 +43,7 @@ export class HelpPanel {
     scene: Phaser.Scene,
     roleColor: Record<Profession, number>,
     statusColor: Record<ActorStatus, number>,
+    ui: UiOverlay,
   ) {
     const fonts = hintFonts(scene);
     const g = scene.add.graphics();
@@ -114,6 +116,7 @@ export class HelpPanel {
       .setScrollFactor(0)
       .setDepth(HELP_DEPTH)
       .setVisible(false);
+    ui.add(this.dim, this.container);
     this.layout(scene.scale.width, scene.scale.height);
   }
 

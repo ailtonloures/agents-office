@@ -198,3 +198,16 @@ export function freeTileNear(
   const distance = (t: Tile) => Math.abs(t.x - tile.x) + Math.abs(t.y - tile.y);
   return candidates.filter(free).sort((a, b) => distance(a) - distance(b))[0];
 }
+
+/** Left edge of the right-aligned shortcuts panel: against the right margin, never past the left one. */
+export function hintPanelX(screenWidth: number, panelWidth: number, margin: number): number {
+  return Math.max(margin, screenWidth - margin - panelWidth);
+}
+
+/** A rectangle in screen (game) pixels. */
+export interface Rect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}

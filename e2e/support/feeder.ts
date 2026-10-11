@@ -73,3 +73,42 @@ export function createFeeder(projectsDir: string, fixtureName: string): Feeder {
 }
 
 export { loadFixture };
+
+export interface SubagentFile {
+  agentId: string;
+  agentType: string;
+  description: string;
+  /** Timestamp of its only transcript line (the liveness rules read it as the last activity). */
+  timestamp: string;
+}
+
+/**
+ * Writes a sub-agent (`.meta.json` plus a first transcript line) under the session of `fixtureName`,
+ * as Claude Code would when the sub-agent starts. Backdating `timestamp` makes it look silent.
+ */
+export function writeSubagent(projectsDir: string, fixtureName: string, file: SubagentFile): void {
+  const { info } = loadFixture(fixtureName);
+  const dir = join(projectsDir, info.projectSlug, info.sessionId, 'subagents');
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(
+    join(dir, `agent-${file.agentId}.meta.json`),
+    JSON.stringify({
+      agentType: file.agentType,
+      description: file.description,
+      spawnDepth: 1,
+    }),
+  );
+  const line = {
+    parentUuid: null,
+    isSidechain: true,
+    agentId: file.agentId,
+    userType: 'external',
+    cwd: '/anon/projects/demo-app',
+    sessionId: info.sessionId,
+    type: 'user',
+    message: { role: 'user', content: 'Placeholder prompt for the subagent.' },
+    uuid: `00000000-0000-4000-8000-${file.agentId.padStart(12, '0').slice(-12)}`,
+    timestamp: file.timestamp,
+  };
+  appendFileSync(join(dir, `agent-${file.agentId}.jsonl`), `${JSON.stringify(line)}\n`);
+}

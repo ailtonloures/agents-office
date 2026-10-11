@@ -2,6 +2,7 @@ import type Phaser from 'phaser';
 import type { Prompt } from './hudLogic';
 import { HintRow } from './keyHints';
 import { DARK_PANEL, drawPanel } from './panel';
+import type { UiOverlay } from './uiOverlay';
 
 export const PROMPT_DEPTH = 1600;
 const HEIGHT = 15;
@@ -27,7 +28,7 @@ export class PromptBar {
   private hidden = false;
   private width = 0;
 
-  constructor(scene: Phaser.Scene) {
+  constructor(scene: Phaser.Scene, ui: UiOverlay) {
     this.panel = scene.add.graphics();
     this.row = new HintRow(scene);
     this.container = scene.add
@@ -35,6 +36,7 @@ export class PromptBar {
       .setScrollFactor(0)
       .setDepth(PROMPT_DEPTH)
       .setAlpha(0);
+    ui.add(this.container);
     this.layout(scene.scale.width, scene.scale.height);
   }
 

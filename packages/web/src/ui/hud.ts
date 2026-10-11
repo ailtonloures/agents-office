@@ -1,8 +1,9 @@
 import type Phaser from 'phaser';
 import { SKIN_KEYS } from '../skin';
-import { HUD_HINTS, type HudCounts, hudText } from './hudLogic';
+import { HUD_HINTS, type HudCounts, hintPanelX, hudText, type Rect } from './hudLogic';
 import { HintRow } from './keyHints';
 import { DARK_PANEL, drawPanel } from './panel';
+import type { UiOverlay } from './uiOverlay';
 
 export const HUD_DEPTH = 1500;
 export const HUD_HEIGHT = 15;
@@ -30,14 +31,16 @@ export class Hud {
   private hidden = false;
   private connected: boolean | undefined;
   private screenWidth = 0;
+  private hintRect = { x: 0, y: 0, width: 0, height: 0 };
 
-  constructor(scene: Phaser.Scene) {
+  constructor(scene: Phaser.Scene, ui: UiOverlay) {
     const fixed = <T extends Phaser.GameObjects.Components.ScrollFactor>(
       object: T,
       depth = 0,
     ): T => {
       object.setScrollFactor(0);
       (object as unknown as Phaser.GameObjects.Components.Depth).setDepth(HUD_DEPTH + depth);
+      ui.add(object as unknown as Phaser.GameObjects.GameObject);
       return object;
     };
     this.panel = fixed(scene.add.graphics());
@@ -56,12 +59,21 @@ export class Hud {
     return this.text;
   }
 
+  /** Screen rectangles (game pixels) of the status pill and the shortcuts panel, for the debug state. */
+  get bounds(): { status: Rect; hints: Rect } {
+    return {
+      status: { x: MARGIN, y: MARGIN, width: this.statusWidth(), height: HUD_HEIGHT },
+      hints: { ...this.hintRect },
+    };
+  }
+
   /** Places the hint panel against the right edge of a screen `width` game pixels wide. */
   layout(width: number): void {
     this.screenWidth = width;
     const g = this.hintPanel.clear();
     const w = this.hints.width + 12;
-    const x0 = Math.max(MARGIN, width - MARGIN - w);
+    const x0 = hintPanelX(width, w, MARGIN);
+    this.hintRect = { x: x0, y: MARGIN, width: w, height: HUD_HEIGHT };
     // Hide the hints when they would collide with the status pill (narrow windows).
     const visible = !this.hidden && x0 > MARGIN + this.statusWidth() + 8;
     drawPanel(g, x0, MARGIN, w, HUD_HEIGHT, DARK_PANEL);

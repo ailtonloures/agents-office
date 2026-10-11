@@ -2,7 +2,7 @@ import type { OfficeModel } from '@agents-office/shared';
 import Phaser from 'phaser';
 import { CharacterController } from '../characters/characterController';
 import { CharacterFactory } from '../characters/characterFactory';
-import { installDebugState, updateDebugState } from '../debug/debugState';
+import { type DebugState, installDebugState, updateDebugState } from '../debug/debugState';
 import type { OfficeClient } from '../net/officeClient';
 import { PlayerAvatar } from '../player/player';
 import { DirectionInput, directionBetween } from '../player/playerMotion';
@@ -27,6 +27,7 @@ import { DARK_PANEL, drawPanel } from '../ui/panel';
 import { pendingActorIds } from '../ui/permissionLogic';
 import { PromptBar } from '../ui/promptBar';
 import { doorAt, roomCwd } from '../ui/sessionBinding';
+import { UiOverlay } from '../ui/uiOverlay';
 import { DeskScreens } from '../world/deskScreens';
 import { LayoutInputBuilder } from '../world/layoutInput';
 import { Lighting } from '../world/lighting';
@@ -87,6 +88,8 @@ interface Reveal {
  */
 export class OfficeScene extends Phaser.Scene {
   private client!: OfficeClient;
+  /** Second camera at zoom 1 that draws every screen-fixed UI object (see UiOverlay). */
+  private ui!: UiOverlay;
   private hud!: Hud;
   private dialog!: DialogBox;
   private prompt!: PromptBar;
@@ -149,6 +152,7 @@ export class OfficeScene extends Phaser.Scene {
     this.skin = (this.registry.get(REGISTRY_SKIN) as LoadedSkin).skin;
     this.propsActive = this.skin.props !== undefined && this.textures.exists(SKIN_KEYS.props);
 
+    this.ui = new UiOverlay(this);
     this.decor = new RoomDecor(this);
     this.lighting = new Lighting(this, this.propsActive);
     this.screens = new DeskScreens(this);
@@ -158,10 +162,11 @@ export class OfficeScene extends Phaser.Scene {
       .setOrigin(0)
       .setScrollFactor(0)
       .setDepth(DEPTH.vignette);
-    this.hud = new Hud(this);
-    this.dialog = new DialogBox(this);
-    this.prompt = new PromptBar(this);
-    this.help = new HelpPanel(this, ROLE_COLOR, STATUS_COLOR);
+    this.ui.add(this.vignette);
+    this.hud = new Hud(this, this.ui);
+    this.dialog = new DialogBox(this, this.ui);
+    this.prompt = new PromptBar(this, this.ui);
+    this.help = new HelpPanel(this, ROLE_COLOR, STATUS_COLOR, this.ui);
 
     const warning = this.registry.get(REGISTRY_SKIN_WARNING) as string | undefined;
     if (warning) {
@@ -171,6 +176,7 @@ export class OfficeScene extends Phaser.Scene {
         .setMaxWidth(width - 8)
         .setDepth(DEPTH.ui)
         .setScrollFactor(0);
+      this.ui.add(this.warningText);
       console.warn(`[skin] ${warning}`);
     }
     const onResize = (size: Phaser.Structs.Size) => this.onResize(size.width, size.height);
@@ -198,6 +204,7 @@ export class OfficeScene extends Phaser.Scene {
       this.controller.destroy();
       this.player.destroy();
       this.hud.destroy();
+      this.ui.destroy();
       this.prompt.destroy();
       this.help.destroy();
       this.dialog.destroy();
@@ -249,6 +256,7 @@ export class OfficeScene extends Phaser.Scene {
 
   /** The window was resized: lay out every screen-fixed object again. */
   private onResize(width: number, height: number): void {
+    this.ui.resize(width, height);
     this.vignette.setTexture(ensureVignette(this.textures, width, height));
     this.hud.layout(width);
     this.dialog.layout(width, height);
@@ -459,7 +467,9 @@ export class OfficeScene extends Phaser.Scene {
       this.dialog.advance();
       return;
     }
-    const target = this.controller.characterAtPoint(pointer.worldX, pointer.worldY);
+    // pointer.worldX/Y follow the topmost camera (the UI one, zoom 1): project through the main one.
+    const world = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
+    const target = this.controller.characterAtPoint(world.x, world.y);
     if (target) this.openDialog(target);
   }
 
@@ -709,6 +719,7 @@ export class OfficeScene extends Phaser.Scene {
       .setScrollFactor(0)
       .setDepth(DEPTH.ui + 600)
       .setAlpha(0);
+    this.ui.add(container);
     this.toast = container;
     this.tweens.add({ targets: container, alpha: 1, y: 28, duration: 220 });
     this.tweens.add({
@@ -839,6 +850,7 @@ export class OfficeScene extends Phaser.Scene {
         moving: player.motion.moving,
       },
       hud: { text: this.hud.shownText },
+      ui: this.debugUi(),
       dialog: {
         open: this.dialog.isOpen,
         targetId: this.dialogTarget,
@@ -852,5 +864,20 @@ export class OfficeScene extends Phaser.Scene {
         sign: this.layout.signs.find((sign) => sign.roomId === room.id)?.text ?? '',
       })),
     });
+  }
+
+  /** Where the UI really is on screen and which cameras draw it, for the E2E debug state. */
+  private debugUi(): DebugState['ui'] {
+    const hud = this.hud.bounds;
+    const main = this.cameras.main;
+    const parts = this.ui.layer.list;
+    return {
+      screen: { width: this.scale.width, height: this.scale.height },
+      cameraZoom: this.ui.camera.zoom,
+      mainCameraDrawsUi: parts.some((part) => this.ui.isDrawnBy(main, part)),
+      hud: hud.status,
+      hints: hud.hints,
+      dialog: this.dialog.bounds,
+    };
   }
 }
