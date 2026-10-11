@@ -35,3 +35,12 @@ export function claudeSessionByTerminal(model: OfficeModel): Record<string, stri
   }
   return result;
 }
+
+/** Id of the session (the Tech Lead) running in the terminal tab `terminalId`, if any. */
+export function sessionIdByTerminal(
+  model: OfficeModel,
+  terminalId: string | undefined,
+): string | undefined {
+  if (terminalId === undefined) return undefined;
+  return Object.values(model.sessions).find((session) => session.terminalId === terminalId)?.id;
+}

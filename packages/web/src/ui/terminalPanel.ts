@@ -149,6 +149,8 @@ export interface TerminalPanelOptions {
   onKeyboardOwner(owner: FocusOwner): void;
   /** Opens the active tab's folder in VS Code; the bar shows the button only when given. */
   onOpenInVSCode?(cwd: string): void;
+  /** The tab shown while the panel is open changed (undefined: collapsed or no tabs). */
+  onActiveChange?(terminalId: string | undefined): void;
   /** The office area changed size (panel opened, collapsed, dragged). */
   onLayout(): void;
 }
@@ -373,12 +375,19 @@ export function mountTerminalPanel(
     };
   }
 
+  let lastShown: string | undefined;
+
   function render(): void {
     model = applyActivity(model, activity);
     root.hidden = model.tabs.length === 0;
     root.dataset.collapsed = String(model.collapsed);
     root.dataset.dock = model.dock;
     document.body.dataset.dock = model.dock;
+    const shown = model.tabs.length > 0 && !model.collapsed ? model.activeId : undefined;
+    if (shown !== lastShown) {
+      lastShown = shown;
+      options.onActiveChange?.(shown);
+    }
     const occupied = panelOccupiedSize(model);
     root.style.height = occupied.axis === 'height' ? `${occupied.size}px` : '';
     root.style.width = occupied.axis === 'width' ? `${occupied.size}px` : '';

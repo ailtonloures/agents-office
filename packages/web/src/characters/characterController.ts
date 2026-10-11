@@ -4,7 +4,7 @@ import type { DebugCharacter } from '../debug/debugState';
 import type { Direction } from '../skin';
 import { SKIN_KEYS } from '../skin';
 import { actionLine, agentDisplayNames, prettyAgentType } from '../ui/identity';
-import { NameTag, STATUS_COLOR } from '../ui/nameTag';
+import { NameTag, ROLE_COLOR, STATUS_COLOR } from '../ui/nameTag';
 import type { SeatedWorker } from '../world/deskScreens';
 import { DOT_KEY, ensureParticleTextures, Z_KEY } from '../world/lighting';
 import { findPath } from '../world/pathfinding';
@@ -122,6 +122,9 @@ export class CharacterController {
   private focusTile: Tile | undefined;
   private pointer: { x: number; y: number } | undefined;
   private highlightId: string | undefined;
+  private activeLeadId: string | undefined;
+  /** Four yellow silhouettes (2px) around the Tech Lead of the open terminal tab. */
+  private readonly leadOutline: Phaser.GameObjects.Sprite[] = [];
   private askingIds: ReadonlySet<string> = new Set();
   /** Four white silhouettes offset by 1px around the highlighted character: its outline. */
   private readonly highlight: Phaser.GameObjects.Sprite[] = [];
@@ -157,6 +160,19 @@ export class CharacterController {
   /** Characters with a permission request pending: they show the `!` balloon until it is answered. */
   setAsking(ids: ReadonlySet<string>): void {
     this.askingIds = ids;
+  }
+
+  /** Outlines the Tech Lead whose terminal tab is open (undefined: none). */
+  setActiveLead(id: string | undefined): void {
+    this.activeLeadId = id;
+    if (this.leadOutline.length === 0 && id !== undefined) {
+      for (let i = 0; i < 4; i += 1) {
+        this.leadOutline.push(
+          this.scene.add.sprite(0, 0, '__WHITE').setOrigin(0.5, 1).setVisible(false),
+        );
+      }
+    }
+    if (id === undefined) for (const s of this.leadOutline) s.setVisible(false);
   }
 
   /** Outlines one character (the one the player faces or the mouse hovers), or none. */
@@ -316,6 +332,8 @@ export class CharacterController {
   destroy(): void {
     for (const c of this.chars.values()) this.dispose(c);
     this.chars.clear();
+    for (const s of this.leadOutline) s.destroy();
+    this.leadOutline.length = 0;
     for (const s of this.highlight) s.destroy();
     this.highlight.length = 0;
     this.confetti?.destroy();
@@ -851,6 +869,7 @@ export class CharacterController {
     const tagDepth = TAG_DEPTH + (expanded ? 0.5 : 0) + py / 10_000;
     c.tag.place(px, py + (seatedTag ? -2 : 3) + c.tag.tagHeight, tagDepth, alpha);
     if (c.id === this.highlightId) this.renderHighlight(c, alpha);
+    if (c.id === this.activeLeadId) this.renderActiveLead(c, alpha);
 
     const animation = this.animationFor(c);
     if (animation !== c.anim) {
@@ -899,6 +918,26 @@ export class CharacterController {
       .setPosition(px, py - 1)
       .setDepth(SPRITE_DEPTH - 0.45 + py / 10_000)
       .setAlpha(alpha * pulse);
+  }
+
+  private renderActiveLead(c: Character, alpha: number): void {
+    const frame = c.sprite.frame;
+    const offsets = [
+      [-2, 0],
+      [2, 0],
+      [0, -2],
+      [0, 2],
+    ] as const;
+    const pulse = 0.65 + 0.35 * Math.abs(Math.sin(this.now / 400));
+    this.leadOutline.forEach((s, i) => {
+      const [dx, dy] = offsets[i] ?? [0, 0];
+      s.setTexture(frame.texture.key, frame.name)
+        .setPosition(c.sprite.x + dx, c.sprite.y + dy)
+        .setDepth(c.sprite.depth - 0.00003)
+        .setTintFill(ROLE_COLOR['tech-lead'])
+        .setAlpha(alpha * pulse)
+        .setVisible(c.sprite.visible);
+    });
   }
 
   private renderHighlight(c: Character, alpha: number): void {

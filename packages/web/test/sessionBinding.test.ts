@@ -5,6 +5,7 @@ import {
   claudeSessionByTerminal,
   doorAt,
   roomCwd,
+  sessionIdByTerminal,
 } from '../src/ui/sessionBinding';
 import { layoutBuilding } from '../src/world/roomLayout';
 
@@ -63,5 +64,16 @@ describe('claudeSessionByTerminal', () => {
     model.sessions.a = session('a', { terminalId: 'term-1' });
     model.sessions.b = session('b');
     expect(claudeSessionByTerminal(model)).toEqual({ 'term-1': 'a' });
+  });
+});
+
+describe('sessionIdByTerminal', () => {
+  it('finds the session running in the tab, or nothing', () => {
+    const model = createEmptyModel();
+    model.sessions.s1 = session('s1', { terminalId: 't1' });
+    model.sessions.s2 = session('s2');
+    expect(sessionIdByTerminal(model, 't1')).toBe('s1');
+    expect(sessionIdByTerminal(model, 't9')).toBeUndefined();
+    expect(sessionIdByTerminal(model, undefined)).toBeUndefined();
   });
 });

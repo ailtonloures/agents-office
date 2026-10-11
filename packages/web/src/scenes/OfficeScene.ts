@@ -27,7 +27,7 @@ import { ROLE_COLOR, STATUS_COLOR } from '../ui/nameTag';
 import { DARK_PANEL, drawPanel } from '../ui/panel';
 import { pendingActorIds } from '../ui/permissionLogic';
 import { PromptBar } from '../ui/promptBar';
-import { doorAt, roomCwd } from '../ui/sessionBinding';
+import { doorAt, roomCwd, sessionIdByTerminal } from '../ui/sessionBinding';
 import { UiOverlay } from '../ui/uiOverlay';
 import { DeskScreens } from '../world/deskScreens';
 import { DoorAnimator } from '../world/doors';
@@ -43,6 +43,8 @@ import {
   wheelDirection,
   writeStoredZoom,
   ZOOM_CHANGED_EVENT,
+  REGISTRY_ACTIVE_TERMINAL,
+  TERMINAL_ACTIVE_EVENT,
   ZOOM_STEP_EVENT,
   type ZoomDirection,
 } from '../zoom';
@@ -110,6 +112,7 @@ export class OfficeScene extends Phaser.Scene {
   private readonly layoutInputs = new LayoutInputBuilder();
   private factory!: CharacterFactory;
   private controller!: CharacterController;
+  private activeTerminal: string | undefined;
   private map: Phaser.Tilemaps.Tilemap | undefined;
   private layers = new Map<LayerName, Phaser.Tilemaps.TilemapLayer>();
   /** Tile index currently painted per layer (-1 = empty), to apply only the differences. */
@@ -206,6 +209,7 @@ export class OfficeScene extends Phaser.Scene {
       offModel();
       offEvent();
       this.game.events.off(ZOOM_STEP_EVENT, this.zoomBy, this);
+      this.game.events.off(TERMINAL_ACTIVE_EVENT, this.onTerminalActive, this);
       this.controller.destroy();
       this.player.destroy();
       this.hud.destroy();
@@ -364,9 +368,15 @@ export class OfficeScene extends Phaser.Scene {
       },
     );
     this.game.events.on(ZOOM_STEP_EVENT, this.zoomBy, this);
+    this.activeTerminal = this.registry.get(REGISTRY_ACTIVE_TERMINAL) as string | undefined;
+    this.game.events.on(TERMINAL_ACTIVE_EVENT, this.onTerminalActive, this);
   }
 
   /** One zoom step closer (1) or farther (-1); ignored in the overview. */
+  private onTerminalActive(terminalId: string | undefined): void {
+    this.activeTerminal = terminalId;
+  }
+
   private zoomBy(direction: ZoomDirection): void {
     if (this.overview) return;
     this.applyZoom(stepZoom(this.userZoom, direction));
@@ -867,6 +877,7 @@ export class OfficeScene extends Phaser.Scene {
     this.controller.setFocus(player.tile, world && { x: world.x, y: world.y });
     const facingId = this.controller.characterAtTile(player.frontTile());
     const hoveredId = world ? this.controller.characterAtPoint(world.x, world.y) : undefined;
+    this.controller.setActiveLead(sessionIdByTerminal(model, this.activeTerminal));
     this.controller.setHighlight(this.overview ? undefined : (hoveredId ?? facingId));
     const permissions = this.client.getPermissions();
     this.controller.setAsking(pendingActorIds(permissions));

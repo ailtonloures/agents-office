@@ -17,6 +17,7 @@ import { mountSettingsPanel } from './ui/settingsPanel';
 import { mountTerminalPanel } from './ui/terminalPanel';
 import { terminalBridgeOf } from './ui/terminalTabs';
 import { mountZoomControls } from './ui/zoomControls';
+import { REGISTRY_ACTIVE_TERMINAL, TERMINAL_ACTIVE_EVENT } from './zoom';
 
 installScrollbars();
 const query = new URLSearchParams(window.location.search);
@@ -118,6 +119,10 @@ if (terminalBridge) {
   const panel = mountTerminalPanel(terminalBridge, {
     gameParent,
     onLayout: resize,
+    onActiveChange: (terminalId) => {
+      game.registry.set(REGISTRY_ACTIVE_TERMINAL, terminalId);
+      game.events.emit(TERMINAL_ACTIVE_EVENT, terminalId);
+    },
     onOpenInVSCode: externalBridge
       ? (cwd) => void openInVSCodeWithToast(externalBridge, cwd)
       : undefined,

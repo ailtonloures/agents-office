@@ -10,6 +10,15 @@ export const ZOOM_STEP_EVENT = 'zoom-step';
 /** Game event (on `game.events`) published by the scene when the zoom or the overview changes. */
 export const ZOOM_CHANGED_EVENT = 'zoom-changed';
 
+/**
+ * Game event (on `game.events`) published by the terminal panel with the tab id of the open
+ * terminal (`string`), or `undefined` when the panel is collapsed or has no tabs.
+ */
+export const TERMINAL_ACTIVE_EVENT = 'terminal-active';
+
+/** Registry key holding the last value of TERMINAL_ACTIVE_EVENT (the scene may boot later). */
+export const REGISTRY_ACTIVE_TERMINAL = 'activeTerminal';
+
 export interface ZoomChange {
   zoom: number;
   overview: boolean;
