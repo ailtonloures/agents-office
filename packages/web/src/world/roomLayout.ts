@@ -4,13 +4,13 @@ import { isWallProp, PROP_DEFS, type PropId, type PropPlacement } from './props'
 /** Width of a room (and of the lobby), in tiles. */
 export const CHUNK = 16;
 /** Height of each kind of chunk, in tiles. A room is its chunks stacked top to bottom. */
-export const CHUNK_HEIGHT = { entrance: 7, 'lead-desk': 8, 'cubicles-4': 9, utility: 8 } as const;
+export const CHUNK_HEIGHT = { entrance: 7, 'lead-desk': 8, 'cubicles-4': 5, utility: 8 } as const;
 /** Height of the corridor band above the rooms (wall, 3 floor rows, wall shared with the rooms). */
 export const CORRIDOR_HEIGHT = 4;
 /** Max characters shown on a room sign. */
 export const SIGN_MAX_CHARS = 14;
-/** Number of desks in a `cubicles-*` chunk (two rows of three workstations). */
-export const CUBICLES_PER_CHUNK = 6;
+/** Number of desks in a `cubicles-*` chunk (one row of three workstations). */
+export const CUBICLES_PER_CHUNK = 3;
 
 export type ChunkKind = keyof typeof CHUNK_HEIGHT;
 
@@ -152,9 +152,9 @@ export function truncateSign(name: string): string {
   return Array.from(name.trim()).slice(0, SIGN_MAX_CHARS).join('');
 }
 
-/** Cubicle chunks needed for `agents` agents: capacity >= agents + 1 (at least one chunk). */
-export function cubicleChunksFor(agents: number): number {
-  return Math.max(1, Math.ceil((Math.max(0, agents) + 1) / CUBICLES_PER_CHUNK));
+/** Cubicle chunks needed: one per Tech Lead at least, growing when agents outnumber the desks. */
+export function cubicleChunksFor(agents: number, sessionCount = 1): number {
+  return Math.max(1, sessionCount, Math.ceil(Math.max(0, agents) / CUBICLES_PER_CHUNK));
 }
 
 /** Chunk sequence of a room, top to bottom. */
@@ -162,7 +162,7 @@ export function roomChunks(sessionCount: number, agentCount: number): ChunkKind[
   return [
     'entrance',
     ...Array.from({ length: sessionCount }, () => 'lead-desk' as const),
-    ...Array.from({ length: cubicleChunksFor(agentCount) }, () => 'cubicles-4' as const),
+    ...Array.from({ length: cubicleChunksFor(agentCount, sessionCount) }, () => 'cubicles-4' as const),
     'utility',
   ];
 }
@@ -342,39 +342,33 @@ function buildRoom(
       prop('plant-fig', 1, 6);
     } else if (kind === 'cubicles-4') {
       const looks = ['workstation', 'workstation-b', 'workstation-c'] as const;
-      for (const sy of [2, 6]) {
-        for (const sx of [3, 7, 11]) {
-          prop(looks[(hash + cubicleIndex * 7) % looks.length] ?? 'workstation', sx, sy);
-          prop('chair', sx, sy + 1);
-          b.desks.push({
-            id: `${project.id}:cubicle:${cubicleIndex}`,
-            roomId: project.id,
-            tile: at(sx, sy + 1),
-            facing: 'up',
-          });
-          cubicleIndex += 1;
-        }
+      const sy = 2;
+      for (const sx of [3, 7, 11]) {
+        prop(looks[(hash + cubicleIndex * 7) % looks.length] ?? 'workstation', sx, sy);
+        prop('chair', sx, sy + 1);
+        b.desks.push({
+          id: `${project.id}:cubicle:${cubicleIndex}`,
+          roomId: project.id,
+          tile: at(sx, sy + 1),
+          facing: 'up',
+        });
+        cubicleIndex += 1;
       }
       b.zones.push({
         kind: 'rug',
         roomId: project.id,
         rect: { x: x0 + 2, y: top + 1, w: 12, h: 3 },
       });
-      b.zones.push({
-        kind: 'rug',
-        roomId: project.id,
-        rect: { x: x0 + 2, y: top + 5, w: 12, h: 3 },
-      });
       const plants = ['plant', 'plant-tall', 'plant-fig'] as const;
       for (const [k, index] of pickTwo(hash >>> 3, 4).entries()) {
         const [lx, ly] = (
           [
-            [1, 8],
-            [14, 8],
+            [1, 4],
+            [14, 4],
             [1, 1],
             [14, 1],
           ] as const
-        )[index] ?? [1, 8];
+        )[index] ?? [1, 4];
         prop(plants[(hash + k + cubicleIndex) % plants.length] ?? 'plant', lx, ly);
       }
     } else {

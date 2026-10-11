@@ -67,12 +67,19 @@ describe('layoutBuilding', () => {
     expect(layout.collision[layout.spawn.y]?.[layout.spawn.x]).toBe(false);
   });
 
-  it.each([0, 1, 9])('has capacity for %i agents plus one spare', (agents) => {
+  it.each([0, 1, 3, 9])('has capacity for %i agents, 3 desks per Tech Lead', (agents) => {
     const layout = layoutBuilding([project('p', 1, [agents])]);
     const cubicles = layout.desks.filter((d) => d.sessionId === undefined);
-    expect(cubicles.length).toBeGreaterThanOrEqual(agents + 1);
+    expect(cubicles.length).toBeGreaterThanOrEqual(Math.max(agents, CUBICLES_PER_CHUNK));
     expect(layout.rooms[0]?.cubicleCapacity).toBe(cubicles.length);
-    expect(cubicles.length).toBe(cubicleChunksFor(agents) * CUBICLES_PER_CHUNK);
+    expect(cubicles.length).toBe(cubicleChunksFor(agents, 1) * CUBICLES_PER_CHUNK);
+  });
+
+  it('gives each Tech Lead exactly 3 programmer desks', () => {
+    const layout = layoutBuilding([project('p', 1, [0, 0])]);
+    expect(layout.desks.filter((d) => d.sessionId === undefined)).toHaveLength(6);
+    const single = layoutBuilding([project('q', 1, [0])]);
+    expect(single.desks.filter((d) => d.sessionId === undefined)).toHaveLength(3);
   });
 
   it('gives each session one lead desk with a stable id', () => {
