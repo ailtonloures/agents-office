@@ -244,6 +244,11 @@ function main(): void {
     setPending: (pending) => tray?.setImage(trayImage(pending)),
   };
 
+  // Packaged builds get the icon from electron-builder; from the sources (dev) the window would
+  // show Electron's default one, so point it at the committed resources/icon.png.
+  const devIcon = join(__dirname, '..', 'resources', 'icon.png');
+  const windowIcon = !app.isPackaged && existsSync(devIcon) ? devIcon : undefined;
+
   const createWindow = (): BrowserWindow => {
     const win = new BrowserWindow({
       width: 1280,
@@ -251,6 +256,7 @@ function main(): void {
       minWidth: 640,
       minHeight: 480,
       title: 'Agents Office',
+      icon: windowIcon,
       backgroundColor: '#1b1d2a',
       autoHideMenuBar: true,
       webPreferences: {
