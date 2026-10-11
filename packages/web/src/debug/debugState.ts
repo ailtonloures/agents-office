@@ -31,6 +31,8 @@ export interface DebugState {
   player: { x: number; y: number; facing: string; moving: boolean };
   /** Office camera zoom chosen by the user (the overview does not change it). */
   zoom: number;
+  /** Real canvas resizes since boot (equal-size requests are ignored; spec 044). */
+  resizes: number;
   /** True while the overview (M) is showing the whole building. */
   overview: boolean;
   /** The HUD text and the dialog state. */
@@ -74,6 +76,7 @@ export function createDebugState(): DebugState {
     characters: [],
     player: { x: 0, y: 0, facing: 'down', moving: false },
     zoom: 1,
+    resizes: 0,
     overview: false,
     hud: { text: '' },
     ui: {

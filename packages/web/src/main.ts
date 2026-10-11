@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import { installDebugState } from './debug/debugState';
 import { startDemo } from './net/demo';
 import { OfficeClient } from './net/officeClient';
-import { computeViewport } from './scale';
+import { computeViewport, type Viewport, viewportChanged } from './scale';
 import { BootScene, REGISTRY_START_SCENE } from './scenes/BootScene';
 import { CharactersDebugScene, DEBUG_CHARACTERS_SCENE } from './scenes/CharactersDebugScene';
 import { OfficeScene, REGISTRY_CLIENT } from './scenes/OfficeScene';
@@ -21,7 +21,7 @@ const query = new URLSearchParams(window.location.search);
 const debugCharacters = query.get('debug') === 'characters';
 const demo = query.has('demo');
 const client = new OfficeClient();
-installDebugState();
+const debug = installDebugState();
 
 const gameParent = document.getElementById('game') as HTMLElement;
 /** The office area: the window minus the terminal panel (the zoom stays a whole number). */
@@ -51,12 +51,34 @@ const game = new Phaser.Game({
 game.registry.set(REGISTRY_CLIENT, client);
 if (debugCharacters) game.registry.set(REGISTRY_START_SCENE, DEBUG_CHARACTERS_SCENE);
 
-/** Scenes listen to the scale manager's `resize` event to lay out their screen-fixed objects. */
-function resize(): void {
+let applied: Viewport = initial;
+let resizeQueued = false;
+
+/**
+ * Applies the window/area size to the game. Resizing clears the canvas, so it is skipped when
+ * nothing changed, and the game is rendered synchronously right after, before the browser paints.
+ * Scenes listen to the scale manager's `resize` event (emitted by `scale.resize`) to lay out their
+ * screen-fixed objects, so they have already run when the step renders.
+ */
+function applyResize(): void {
   const area = areaSize();
-  const { zoom, width, height } = computeViewport(area.width, area.height, window.devicePixelRatio);
-  game.scale.setZoom(zoom);
-  game.scale.resize(width, height);
+  const next = computeViewport(area.width, area.height, window.devicePixelRatio);
+  if (!viewportChanged(applied, next)) return;
+  applied = next;
+  game.scale.setZoom(next.zoom);
+  game.scale.resize(next.width, next.height);
+  debug.resizes += 1;
+  game.step(performance.now(), game.loop.delta);
+}
+
+/** Single source of resizes: window event, container observer and panel layout, once per frame. */
+function resize(): void {
+  if (resizeQueued) return;
+  resizeQueued = true;
+  requestAnimationFrame(() => {
+    resizeQueued = false;
+    applyResize();
+  });
 }
 window.addEventListener('resize', resize);
 
@@ -110,8 +132,9 @@ if (terminalBridge) {
     openTerminal: (terminalId) => {
       const opened = panel.focusSession(terminalId);
       // The canvas mousedown (focusPlayer) runs before Phaser's pointerdown that got us here, but
-      // defer to the next frame anyway so the xterm always ends up with the keyboard.
-      if (opened) requestAnimationFrame(() => panel.focusSession(terminalId));
+      // defer to the next frame anyway so the xterm always ends up with the keyboard (a plain
+      // focus: no second render, so no extra layout).
+      if (opened) requestAnimationFrame(() => panel.focusTerminal());
       return opened;
     },
     collapseTerminal: () => panel.collapse(),

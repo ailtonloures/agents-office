@@ -80,6 +80,30 @@ export function ensureVignette(
   return key;
 }
 
+const VIGNETTE_PREFIX = 'vignette:';
+
+/** Removes every `vignette:*` texture except `keepKey` (the one in use). */
+export function removeStaleVignettes(
+  textures: Pick<Phaser.Textures.TextureManager, 'getTextureKeys' | 'remove'>,
+  keepKey: string,
+): void {
+  for (const key of textures.getTextureKeys()) {
+    if (key.startsWith(VIGNETTE_PREFIX) && key !== keepKey) textures.remove(key);
+  }
+}
+
+/** Points the image at the vignette for the new size, then drops the old textures. */
+export function applyVignette(
+  textures: Phaser.Textures.TextureManager,
+  image: { setTexture(key: string): unknown },
+  w: number,
+  h: number,
+): void {
+  const key = ensureVignette(textures, w, h);
+  image.setTexture(key);
+  removeStaleVignettes(textures, key);
+}
+
 export const SHADOW_KEY = 'shadow';
 export const RING_KEY = 'status-ring';
 

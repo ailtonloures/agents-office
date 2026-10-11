@@ -11,6 +11,7 @@ import {
   exitMessage,
   isToggleShortcut,
   keyboardOwner,
+  layoutKey,
   MIN_OFFICE_HEIGHT,
   MIN_OFFICE_WIDTH,
   MIN_PANEL_HEIGHT,
@@ -265,5 +266,20 @@ describe('stored panel', () => {
     expect(parseStoredPanel(null)).toEqual({ dock: 'bottom', collapsed: false });
     expect(parseStoredPanel('junk')).toEqual({ dock: 'bottom', collapsed: false });
     expect(parseStoredPanel({ height: Number.NaN })).toEqual({ dock: 'bottom', collapsed: false });
+  });
+});
+
+describe('layoutKey', () => {
+  const withTabs = () => addTab(createPanelModel(), tab('1'));
+  it('ignores activity, focus and active tab, but not dock, size or minimized', () => {
+    const m = withTabs();
+    const key = layoutKey(m);
+    expect(layoutKey(applyActivity(m, { 1: 'working' }))).toBe(key);
+    expect(layoutKey(setFocus(m, 'terminal'))).toBe(key);
+    expect(layoutKey(setDock(m, 'left'))).not.toBe(key);
+    expect(layoutKey(setDock(m, 'left'))).not.toBe(layoutKey(setDock(m, 'right')));
+    expect(layoutKey(setHeight(m, m.height + 40, 1000))).not.toBe(key);
+    expect(layoutKey(collapse(m))).not.toBe(key);
+    expect(layoutKey(collapse(setDock(m, 'left')))).not.toBe(layoutKey(setDock(m, 'left')));
   });
 });

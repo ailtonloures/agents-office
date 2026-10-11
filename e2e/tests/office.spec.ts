@@ -697,3 +697,111 @@ test('14. terminal dock: left, right and bottom resize #game, keep controls insi
   expect((await rect('#game')).height).toBeLessThan(800);
   await checkControls();
 });
+
+test('15. resizing the window resizes the canvas at most once per change and ignores equal sizes', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await openOffice(page, daemon.url);
+  const resizes = () => page.evaluate(() => window.__office?.resizes ?? 0);
+  const screenWidth = () => page.evaluate(() => window.__office?.ui.screen.width ?? 0);
+  const before = await resizes();
+
+  // A real change: the game size follows the window, with exactly one canvas resize.
+  await page.setViewportSize({ width: 1600, height: 900 });
+  await expect.poll(resizes).toBe(before + 1);
+  const wide = await screenWidth();
+
+  // Same size again (and a burst of resize events with no change): the canvas is not touched.
+  await page.setViewportSize({ width: 1600, height: 900 });
+  await page.evaluate(() => {
+    for (let i = 0; i < 5; i++) window.dispatchEvent(new Event('resize'));
+  });
+  await page.waitForTimeout(200);
+  expect(await resizes()).toBe(before + 1);
+  expect(await screenWidth()).toBe(wide);
+
+  // Another change, with events fired in the same frame: still one resize.
+  await page.setViewportSize({ width: 1000, height: 700 });
+  await expect.poll(resizes).toBe(before + 2);
+  await page.waitForTimeout(200);
+  expect(await resizes()).toBe(before + 2);
+  expect(await screenWidth()).not.toBe(wide);
+});
+
+type DesktopActions = {
+  __desktopActions?: { collapseTerminal(): void; openTerminal(id: string): boolean };
+};
+
+test('16. minimizing and opening the terminal resize the canvas at most once and focus the xterm', async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    const noop = async () => {};
+    (window as unknown as Record<string, unknown>).agentsOfficeDesktop = {
+      desktop: true,
+      hooks: {
+        status: async () => ({
+          path: '/tmp/settings.json',
+          total: 1,
+          installedCount: 0,
+          events: [{ event: 'Stop', installed: false }],
+        }),
+      },
+      projects: { list: async () => [], sessions: async () => [], markUsed: noop },
+      terminal: {
+        start: async () => ({ ok: false, code: 'spawn-failed', message: 'fake' }),
+        write: noop,
+        resize: noop,
+        kill: noop,
+        list: async () => [
+          {
+            id: 'fake-1',
+            cwd: '/work/focus',
+            pid: 1,
+            startedAt: new Date().toISOString(),
+            cols: 80,
+            rows: 24,
+          },
+        ],
+        buffer: async () => 'hello\r\n',
+        getConfig: async () => ({}),
+        setConfig: async () => ({ ok: true }),
+        lostSessions: async () => [],
+        dismissLost: noop,
+        noteSession: noop,
+        onData: () => () => {},
+        onExit: () => () => {},
+      },
+    };
+  });
+  await page.setViewportSize({ width: 1200, height: 800 });
+  await openOffice(page, daemon.url);
+  await expect(page.getByTestId('terminal-panel')).toBeVisible();
+  const resizes = () => page.evaluate(() => window.__office?.resizes ?? 0);
+  await page.waitForTimeout(300);
+
+  // Minimize (what a click on empty floor does): exactly one canvas resize.
+  let before = await resizes();
+  await page.evaluate(() =>
+    (window as unknown as DesktopActions).__desktopActions?.collapseTerminal(),
+  );
+  await expect.poll(() => page.evaluate(() => window.__terminalPanel?.collapsed)).toBe(true);
+  await expect.poll(resizes).toBe(before + 1);
+  await page.waitForTimeout(300);
+  expect(await resizes()).toBe(before + 1);
+
+  // Open (what a click on a Tech Lead does): one resize and the keyboard goes to the terminal.
+  before = await resizes();
+  await page.evaluate(() =>
+    (window as unknown as DesktopActions).__desktopActions?.openTerminal('fake-1'),
+  );
+  await expect.poll(() => page.evaluate(() => window.__terminalPanel?.collapsed)).toBe(false);
+  await expect.poll(resizes).toBe(before + 1);
+  await page.waitForTimeout(300);
+  expect(await resizes()).toBe(before + 1);
+  await expect.poll(() => page.evaluate(() => window.__terminalPanel?.keyboard)).toBe('terminal');
+  expect(
+    await page.evaluate(() => document.activeElement?.classList.contains('xterm-helper-textarea')),
+  ).toBe(true);
+});

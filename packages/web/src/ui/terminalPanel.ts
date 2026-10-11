@@ -23,6 +23,7 @@ import {
   type FocusOwner,
   isToggleShortcut,
   keyboardOwner,
+  layoutKey,
   markExited,
   needsCloseConfirm,
   type PanelDock,
@@ -157,6 +158,8 @@ export interface TerminalPanel {
    * tab exists (closed or never adopted).
    */
   focusSession(id: string): boolean;
+  /** Gives the xterm of the active tab the keyboard, without re-rendering the panel. */
+  focusTerminal(): void;
   /** Office state of the sessions bound to tabs, by terminal id (shown in the tab titles). */
   setActivity(activity: Readonly<Record<string, string>>): void;
   /** The pointer went to the office: keys go to the player again. */
@@ -273,10 +276,24 @@ export function mountTerminalPanel(
   let lastOwner: FocusOwner | undefined;
   let activity: Readonly<Record<string, string>> = {};
 
+  let lastLayoutKey: string | undefined;
+  let layoutPending = false;
+  /**
+   * `onLayout` (a canvas resize) only when the office area really changed; the terminal is fitted
+   * either way, since the host can change size without the key changing (close confirmation).
+   */
   const emitLayout = (): void => {
+    const key = layoutKey(model);
+    if (key !== lastLayoutKey) {
+      lastLayoutKey = key;
+      layoutPending = true;
+    }
     cancelAnimationFrame(layoutFrame);
     layoutFrame = requestAnimationFrame(() => {
-      options.onLayout();
+      if (layoutPending) {
+        layoutPending = false;
+        options.onLayout();
+      }
       fitActive();
     });
   };
@@ -684,6 +701,7 @@ export function mountTerminalPanel(
       activate(id, true);
       return true;
     },
+    focusTerminal: focusActive,
     setActivity(next) {
       const same =
         Object.keys(next).length === Object.keys(activity).length &&

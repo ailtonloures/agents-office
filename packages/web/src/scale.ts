@@ -33,3 +33,13 @@ export function computeViewport(viewportWidth: number, viewportHeight: number, d
     height: Math.ceil(deviceH / device),
   };
 }
+
+/**
+ * True when the canvas must be resized: any of zoom, width or height differs from the last applied
+ * viewport (resizing clears the canvas, so equal values must never reach it).
+ */
+export function viewportChanged(last: Viewport | undefined, next: Viewport): boolean {
+  return (
+    !last || last.zoom !== next.zoom || last.width !== next.width || last.height !== next.height
+  );
+}

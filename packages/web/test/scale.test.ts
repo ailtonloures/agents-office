@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { computeViewport } from '../src/scale';
+import { computeViewport, viewportChanged } from '../src/scale';
 
 describe('computeViewport', () => {
   it.each([
@@ -36,5 +36,25 @@ describe('computeViewport', () => {
     // 2560x1440 device px -> 6x -> 3 CSS px per game pixel.
     expect(computeViewport(1280, 720, 2)).toEqual({ zoom: 3, width: 427, height: 240 });
     expect(computeViewport(700, 400, 1.25).zoom).toBeCloseTo(1.6); // 2 device px per game pixel
+  });
+});
+
+describe('viewportChanged', () => {
+  const base = { zoom: 3, width: 427, height: 240 };
+
+  it('accepts the first viewport', () => {
+    expect(viewportChanged(undefined, base)).toBe(true);
+  });
+
+  it('ignores equal values', () => {
+    expect(viewportChanged(base, { ...base })).toBe(false);
+  });
+
+  it.each([
+    ['zoom', { zoom: 4 }],
+    ['width', { width: 428 }],
+    ['height', { height: 241 }],
+  ])('accepts a change of %s', (_name, patch) => {
+    expect(viewportChanged(base, { ...base, ...patch })).toBe(true);
   });
 });

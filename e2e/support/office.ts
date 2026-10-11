@@ -14,6 +14,8 @@ declare global {
       player: { x: number; y: number; facing: string; moving: boolean };
       /** Office camera zoom chosen by the user. */
       zoom: number;
+      /** Real canvas resizes since boot (spec 044). */
+      resizes: number;
       /** True while the overview (M) is active. */
       overview: boolean;
       hud: { text: string };

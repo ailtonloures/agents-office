@@ -35,7 +35,7 @@ import { Lighting } from '../world/lighting';
 import { isWallProp, PROP_DEFS, type PropPlacement, propDepthBias } from '../world/props';
 import { RoomDecor } from '../world/roomDecor';
 import { type BuildingLayout, CHUNK, type Layer, layoutBuilding } from '../world/roomLayout';
-import { ensureVignette } from '../world/rugs';
+import { applyVignette, ensureVignette } from '../world/rugs';
 import {
   readStoredZoom,
   stepZoom,
@@ -272,7 +272,7 @@ export class OfficeScene extends Phaser.Scene {
   /** The window was resized: lay out every screen-fixed object again. */
   private onResize(width: number, height: number): void {
     this.ui.resize(width, height);
-    this.vignette.setTexture(ensureVignette(this.textures, width, height));
+    applyVignette(this.textures, this.vignette, width, height);
     this.hud.layout(width);
     this.dialog.layout(width, height);
     this.prompt.layout(width, height);

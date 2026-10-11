@@ -216,6 +216,16 @@ export function panelOccupiedSize(model: PanelModel): OccupiedSize {
   return { axis, size: axis === 'height' ? model.height : model.width };
 }
 
+/**
+ * What the office area depends on: occupied size, axis, dock and minimized state. Two models with
+ * the same key leave `#game` exactly as it is, so the panel only reports a layout change when the
+ * key changes (tab titles, activity and focus do not).
+ */
+export function layoutKey(model: PanelModel): string {
+  const { axis, size } = panelOccupiedSize(model);
+  return `${model.dock}|${axis}|${size}|${model.collapsed ? 'min' : 'open'}`;
+}
+
 /** Pixels of height the panel takes from the window (0 without tabs or when docked sideways). */
 export function panelOccupiedHeight(model: PanelModel): number {
   const { axis, size } = panelOccupiedSize(model);

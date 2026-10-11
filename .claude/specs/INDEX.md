@@ -47,6 +47,9 @@ PRD: [agents-office.prd.md](../prds/agents-office.prd.md)
 | 041 | Clique no Tech Lead abre o terminal, clique fora minimiza | high | done | feature, web, desktop, terminal, testing | 040 |
 | 042 | Dock do terminal à esquerda, à direita ou embaixo | medium | done | feature, web, ui, layout, terminal, testing | 040, 041 |
 | 043 | Liberar mesas quando o agente sai | high | done | bugfix, web, layout, testing | 032, 035, 036, 038 |
+| 044 | Resize idempotente, coalescido e com render síncrono | high | done | bugfix, web, performance, testing | 033, 037, 040 |
+| 045 | Painel emite layout só quando muda e foco sem re-render | high | done | bugfix, web, terminal, testing | 040, 041, 044 |
+| 046 | Limpar texturas de vinheta antigas | medium | done | bugfix, web, performance, testing | 044 |
 
 Fases do PRD: 001–002 = Fase 0 (spike) · 003–011 = Fase 1 (MVP) · 006, 012 = parte da Fase 2. Replay, minimapa e Tauri (Fase 3) ficam fora deste lote.
 
@@ -65,3 +68,5 @@ PRD da sala Unknown e sessões fantasma: [sala-unknown-sessoes-fantasma.prd.md](
 PRD do terminal por clique, dock e botões: [terminal-por-clique-dock-botoes.prd.md](../prds/terminal-por-clique-dock-botoes.prd.md) (039–042; 040 depende de 039, 041 de 040, 042 de 040 e 041).
 
 PRD das mesas liberadas: [mesas-liberadas-agente-sai.prd.md](../prds/mesas-liberadas-agente-sai.prd.md) (043; depende de 032, 035, 036 e 038).
+
+PRD sem flash ao redimensionar: [sem-flash-ao-redimensionar.prd.md](../prds/sem-flash-ao-redimensionar.prd.md) (044–046; 045 depende de 044, 046 de 044).
