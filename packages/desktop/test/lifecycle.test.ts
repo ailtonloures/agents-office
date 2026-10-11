@@ -3,6 +3,12 @@ import { resolveDaemonEntry } from '../src/main/daemonEntry';
 import { errorPageUrl } from '../src/main/errorPage';
 import { classifyNavigation } from '../src/main/navigation';
 import {
+  CLOSE_BUTTON_TEXT,
+  NotificationCenter,
+  type NotificationHandle,
+  type NotificationOptions,
+} from '../src/main/notificationCenter';
+import {
   PermissionTracker,
   PermissionWatcher,
   type SocketLike,
@@ -76,14 +82,15 @@ function setup() {
   };
   const quit = vi.fn();
   const notify = vi.fn();
-  const shell = new Shell({ window, tray, notify, quit });
+  const dismiss = vi.fn();
+  const shell = new Shell({ window, tray, notify, dismiss, quit });
   const menu = () => menus.at(-1) as MenuItemModel[];
   const item = (label: string) =>
     menu().find((entry) => 'label' in entry && entry.label.startsWith(label)) as Extract<
       MenuItemModel,
       { label: string }
     >;
-  return { window, tray, shell, quit, notify, menu, item };
+  return { window, tray, shell, quit, notify, dismiss, menu, item };
 }
 
 describe('Shell (window / tray state)', () => {
@@ -158,6 +165,12 @@ describe('Shell (window / tray state)', () => {
     expect(window.visible).toBe(true);
   });
 
+  it('dismisses the notification of every resolved request', () => {
+    const { shell, dismiss } = setup();
+    shell.onPermissionResolved(['p1', 'p2']);
+    expect(dismiss.mock.calls).toEqual([['p1'], ['p2']]);
+  });
+
   it('labels every daemon state', () => {
     expect(daemonStatusLabel({ state: 'external', port: 1, version: '1' })).toContain('externo');
     expect(daemonStatusLabel({ state: 'port-busy', port: 1 })).toContain('ocupada');
@@ -186,12 +199,38 @@ describe('PermissionTracker', () => {
     expect(first.notice).toEqual({
       id: 'perm-1',
       title: 'Pedido de permissão do Claude Code',
-      body: 'Bash: pnpm test',
+      body: 'Bash: pnpm test\nResponda no terminal.',
     });
     expect(
       tracker.apply({ kind: 'permission.requested', request: REQUEST }).notice,
     ).toBeUndefined();
-    expect(tracker.apply({ kind: 'permission.resolved', id: 'perm-1', by: 'ui' }).pending).toBe(0);
+    expect(tracker.apply({ kind: 'permission.resolved', id: 'perm-1' })).toEqual({
+      pending: 0,
+      resolvedIds: ['perm-1'],
+    });
+  });
+
+  it('reports no resolved id for an unknown resolution', () => {
+    const tracker = new PermissionTracker();
+    expect(tracker.apply({ kind: 'permission.resolved', id: 'ghost' })).toEqual({ pending: 0 });
+  });
+
+  it('a snapshot that omits a previously pending id reports it as resolved', () => {
+    const tracker = new PermissionTracker();
+    tracker.apply({ kind: 'permission.requested', request: REQUEST });
+    tracker.apply({ kind: 'permission.requested', request: { ...REQUEST, id: 'perm-2' } });
+    const update = tracker.apply({
+      kind: 'permission.snapshot',
+      pending: [{ ...REQUEST, id: 'perm-2' }],
+    });
+    expect(update).toEqual({ pending: 1, resolvedIds: ['perm-1'] });
+  });
+
+  it('clear() returns the ids that were pending', () => {
+    const tracker = new PermissionTracker();
+    tracker.apply({ kind: 'permission.requested', request: REQUEST });
+    expect(tracker.clear()).toEqual(['perm-1']);
+    expect(tracker.count).toBe(0);
   });
 
   it('a snapshot replaces the set without notifying; junk is ignored', () => {
@@ -200,7 +239,10 @@ describe('PermissionTracker', () => {
     expect(update).toEqual({ pending: 1 });
     expect(tracker.apply({ nope: true })).toEqual({ pending: 1 });
     expect(tracker.apply('text')).toEqual({ pending: 1 });
-    expect(tracker.apply({ kind: 'permission.snapshot', pending: [] })).toEqual({ pending: 0 });
+    expect(tracker.apply({ kind: 'permission.snapshot', pending: [] })).toEqual({
+      pending: 0,
+      resolvedIds: ['perm-1'],
+    });
   });
 
   it('uses just the tool name when there is no summary', () => {
@@ -209,7 +251,7 @@ describe('PermissionTracker', () => {
       kind: 'permission.requested',
       request: { ...REQUEST, inputSummary: '  ' },
     });
-    expect(update.notice?.body).toBe('Bash');
+    expect(update.notice?.body).toBe('Bash\nResponda no terminal.');
   });
 });
 
@@ -259,6 +301,148 @@ describe('PermissionWatcher', () => {
     expect(sockets[1]?.closed).toBe(true);
     sockets[1]?.onclose?.({});
     expect(timers).toHaveLength(0);
+  });
+});
+
+describe('PermissionWatcher resolved ids', () => {
+  it('reports pending ids as resolved when the connection drops and when stopped', () => {
+    const sockets: FakeSocket[] = [];
+    const updates: Array<{ pending: number; resolvedIds?: string[] }> = [];
+    const watcher = new PermissionWatcher({
+      url: 'ws://x',
+      createSocket: () => {
+        const socket = new FakeSocket();
+        sockets.push(socket);
+        return socket;
+      },
+      onUpdate: (update) => updates.push(update),
+      setTimer: () => 0,
+    });
+    watcher.start();
+    sockets[0]?.onmessage?.({
+      data: JSON.stringify({ kind: 'permission.requested', request: REQUEST }),
+    });
+    sockets[0]?.onclose?.({});
+    expect(updates.at(-1)).toEqual({ pending: 0, resolvedIds: ['perm-1'] });
+
+    watcher.stop();
+    expect(updates.at(-1)).toEqual({ pending: 0 });
+  });
+});
+
+class FakeNotification implements NotificationHandle {
+  static instances: FakeNotification[] = [];
+  shown = false;
+  closed = 0;
+  clickListener: (() => void) | undefined;
+  constructor(readonly options: NotificationOptions) {
+    FakeNotification.instances.push(this);
+  }
+  on(_event: 'click', listener: () => void) {
+    this.clickListener = listener;
+  }
+  show() {
+    this.shown = true;
+  }
+  close() {
+    this.closed += 1;
+  }
+}
+
+function setupCenter(canClose = true) {
+  FakeNotification.instances = [];
+  const center = new NotificationCenter({
+    isSupported: () => true,
+    create: (options) => new FakeNotification(options),
+    canClose: () => canClose,
+  });
+  return { center, all: () => FakeNotification.instances };
+}
+
+describe('desktop notifications for permission requests', () => {
+  it('a request creates a notification and its resolution closes it', () => {
+    const { center, all } = setupCenter();
+    const onClick = vi.fn();
+    center.notifyPermission('p1', 'Pedido', 'Bash: ls', onClick);
+    expect(all()).toHaveLength(1);
+    expect(all()[0]?.shown).toBe(true);
+    expect(all()[0]?.options).toEqual({ title: 'Pedido', body: 'Bash: ls' });
+    all()[0]?.clickListener?.();
+    expect(onClick).toHaveBeenCalledTimes(1);
+
+    center.dismiss('p1');
+    expect(all()[0]?.closed).toBe(1);
+    expect(center.size).toBe(0);
+    center.dismiss('p1');
+    expect(all()[0]?.closed).toBe(1);
+  });
+
+  it('two requests are independent', () => {
+    const { center, all } = setupCenter();
+    center.notifyPermission('p1', 'Pedido', 'a', () => {});
+    center.notifyPermission('p2', 'Pedido', 'b', () => {});
+    center.dismiss('p2');
+    expect(all().map((n) => n.closed)).toEqual([0, 1]);
+    center.dismiss('p1');
+    expect(all().map((n) => n.closed)).toEqual([1, 1]);
+  });
+
+  it('a reconnect (connection lost, then resolved ids) leaves no orphan', () => {
+    const { center, all } = setupCenter();
+    const window = new FakeWindow();
+    window.focused = false;
+    const shell = new Shell({
+      window,
+      tray: { setToolTip() {}, setMenu() {}, setPending() {} },
+      notify: (notice, onClick) =>
+        center.notifyPermission(notice.id, notice.title, notice.body, onClick),
+      dismiss: (id) => center.dismiss(id),
+      quit: () => {},
+    });
+    const tracker = new PermissionTracker();
+    const requested = tracker.apply({ kind: 'permission.requested', request: REQUEST });
+    if (requested.notice) shell.onPermissionNotice(requested.notice);
+    expect(center.size).toBe(1);
+    shell.onPermissionResolved(tracker.clear());
+    expect(center.size).toBe(0);
+    expect(all()[0]?.closed).toBe(1);
+  });
+
+  it('without programmatic close, the notification carries a native close button', () => {
+    const { center, all } = setupCenter(false);
+    center.notifyPermission('p1', 'Pedido', 'Bash: ls', () => {});
+    expect(all()[0]?.options.closeButtonText).toBe(CLOSE_BUTTON_TEXT);
+  });
+
+  it('survives a throwing or missing close()', () => {
+    const { center, all } = setupCenter();
+    center.notifyPermission('p1', 'Pedido', 'a', () => {});
+    const n = all()[0] as FakeNotification;
+    n.close = () => {
+      throw new Error('boom');
+    };
+    expect(() => center.dismiss('p1')).not.toThrow();
+    center.notifyPermission('p2', 'Pedido', 'b', () => {});
+    (all()[1] as { close?: () => void }).close = undefined;
+    expect(() => center.dismiss('p2')).not.toThrow();
+  });
+
+  it('a repeated id replaces the previous notification; unsupported systems show nothing', () => {
+    const { center, all } = setupCenter();
+    center.notifyPermission('p1', 'Pedido', 'a', () => {});
+    center.notifyPermission('p1', 'Pedido', 'a', () => {});
+    expect(all().map((n) => n.closed)).toEqual([1, 0]);
+
+    const none = new NotificationCenter({
+      isSupported: () => false,
+      create: () => {
+        throw new Error('should not create');
+      },
+      canClose: () => true,
+    });
+    none.notifyPermission('p1', 't', 'b', () => {});
+    none.notify('t', 'b');
+    expect(none.size).toBe(0);
   });
 });
 

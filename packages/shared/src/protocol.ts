@@ -46,7 +46,7 @@ export function parseServerMessage(input: unknown) {
 
 /**
  * Hook events the normalizer understands. Other names are accepted but ignored. `PermissionRequest`
- * is deliberately absent: it is a long-poll handled by `/hook/permission`, never normalized.
+ * is deliberately absent: the daemon only tracks it as a pending request, it is never normalized.
  */
 export const KNOWN_HOOK_EVENTS = [
   'SessionStart',

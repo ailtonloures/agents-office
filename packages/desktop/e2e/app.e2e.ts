@@ -148,6 +148,53 @@ test('opens the office, keeps the daemon on window close, quits everything on qu
   }
 });
 
+test('a permission request notifies and the terminal answer closes the notification', async () => {
+  const box = await sandbox();
+  const app = await launch(box);
+  try {
+    await until(async () => (await windowState(app))?.url === officeUrl(box), 'office URL');
+    const page = await app.firstWindow();
+    await page.waitForFunction(
+      () => (window as unknown as { __office?: { connected: boolean } }).__office?.connected,
+    );
+    await app.evaluate(({ Notification }) => {
+      const shown: string[] = [];
+      const closed: string[] = [];
+      (globalThis as { __shown?: string[] }).__shown = shown;
+      (globalThis as { __closed?: string[] }).__closed = closed;
+      Notification.isSupported = () => true;
+      Notification.prototype.show = function show(this: { body: string }) {
+        shown.push(this.body);
+      };
+      Notification.prototype.close = function close(this: { body: string }) {
+        closed.push(this.body);
+      };
+    });
+    // With the window hidden, the request raises a notification that points to the terminal.
+    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.close());
+    await until(async () => (await windowState(app))?.visible === false, 'hidden window');
+    const post = (body: Record<string, unknown>) =>
+      fetch(`${officeUrl(box)}hook`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ session_id: 's-perm', cwd: '/anon/demo', ...body }),
+      });
+    const tool = { tool_name: 'Bash', tool_input: { command: 'pnpm test' } };
+    expect((await post({ hook_event_name: 'PermissionRequest', ...tool })).status).toBe(204);
+    await expect
+      .poll(() => app.evaluate(() => (globalThis as { __shown?: string[] }).__shown ?? []))
+      .toEqual([expect.stringContaining('Responda no terminal')]);
+    // The tool ran (answered in the terminal): the notification is closed.
+    await post({ hook_event_name: 'PostToolUse', ...tool, tool_response: { stdout: 'ok' } });
+    await expect
+      .poll(() => app.evaluate(() => (globalThis as { __closed?: string[] }).__closed ?? []))
+      .toEqual([expect.stringContaining('pnpm test')]);
+  } finally {
+    await app.close().catch(() => {});
+    cleanup(box);
+  }
+});
+
 test('restarts the daemon when it crashes', async () => {
   const box = await sandbox();
   const app = await launch(box);

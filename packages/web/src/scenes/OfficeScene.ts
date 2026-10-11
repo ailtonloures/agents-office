@@ -24,7 +24,6 @@ import {
 } from '../ui/hudLogic';
 import { ROLE_COLOR, STATUS_COLOR } from '../ui/nameTag';
 import { DARK_PANEL, drawPanel } from '../ui/panel';
-import { PermissionCard } from '../ui/permissionCard';
 import { pendingActorIds } from '../ui/permissionLogic';
 import { PromptBar } from '../ui/promptBar';
 import { doorAt, roomCwd } from '../ui/sessionBinding';
@@ -81,7 +80,6 @@ export class OfficeScene extends Phaser.Scene {
   private client!: OfficeClient;
   private hud!: Hud;
   private dialog!: DialogBox;
-  private permissionCard!: PermissionCard;
   private prompt!: PromptBar;
   private help!: HelpPanel;
   private player!: PlayerAvatar;
@@ -151,9 +149,6 @@ export class OfficeScene extends Phaser.Scene {
       .setDepth(DEPTH.vignette);
     this.hud = new Hud(this);
     this.dialog = new DialogBox(this);
-    this.permissionCard = new PermissionCard(this, (id, decision) =>
-      this.client.decide(id, decision),
-    );
     this.prompt = new PromptBar(this);
     this.help = new HelpPanel(this, ROLE_COLOR, STATUS_COLOR);
 
@@ -194,7 +189,6 @@ export class OfficeScene extends Phaser.Scene {
       this.prompt.destroy();
       this.help.destroy();
       this.dialog.destroy();
-      this.permissionCard.destroy();
       this.decor.destroy();
       this.lighting.destroy();
       this.screens.destroy();
@@ -225,7 +219,6 @@ export class OfficeScene extends Phaser.Scene {
         this.jumpTo(spot.tile, spot.facing);
         return true;
       },
-      decidePermission: (id, decision) => this.client.decide(id, decision),
       approachDoor: (roomId) => {
         const front = roomFront(this.layout, roomId);
         if (!front) return false;
@@ -246,7 +239,6 @@ export class OfficeScene extends Phaser.Scene {
     this.vignette.setTexture(ensureVignette(this.textures, width, height));
     this.hud.layout(width);
     this.dialog.layout(width, height);
-    this.permissionCard.layout(width);
     this.prompt.layout(width, height);
     this.help.layout(width, height);
     this.toast?.setX(Math.round(width / 2));
@@ -284,7 +276,6 @@ export class OfficeScene extends Phaser.Scene {
       };
       // While the help is open, any of its keys (or A/B) just closes it.
       const unlessHelp = (handler: (event: KeyboardEvent) => void) => (event: KeyboardEvent) => {
-        if (this.permissionCard.isTyping) return; // The reason field owns the keyboard.
         if (this.help.isOpen) {
           this.help.setOpen(false);
           return;
@@ -316,12 +307,9 @@ export class OfficeScene extends Phaser.Scene {
         ['M'],
         unlessHelp(() => this.toggleOverview()),
       );
-      press(['H'], () => {
-        if (!this.permissionCard.isTyping) this.toggleHelp();
-      });
+      press(['H'], () => this.toggleHelp());
       keyboard.on('keydown', (event: KeyboardEvent) => {
-        if (!this.help.isOpen && !this.overview && this.permissionCard.handleKey(event)) return;
-        if (event.key === '?' && !this.permissionCard.isTyping) this.toggleHelp();
+        if (event.key === '?') this.toggleHelp();
       });
     }
     this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => this.onPointer(pointer));
@@ -334,7 +322,7 @@ export class OfficeScene extends Phaser.Scene {
   }
 
   private heldDirection(): Direction | undefined {
-    if (this.help?.isOpen || this.permissionCard?.isTyping) return undefined;
+    if (this.help?.isOpen) return undefined;
     const { cursors, w, a, s, d } = this.keys ?? {};
     if (!cursors || !w || !a || !s || !d) return undefined;
     return this.directionInput.update({
@@ -418,12 +406,6 @@ export class OfficeScene extends Phaser.Scene {
   }
 
   private onPointer(pointer: Phaser.Input.Pointer): void {
-    if (
-      !this.help.isOpen &&
-      !this.overview &&
-      this.permissionCard.handlePointer(pointer.x, pointer.y)
-    )
-      return;
     if (this.help.isOpen) {
       this.help.setOpen(false);
       return;
@@ -703,7 +685,6 @@ export class OfficeScene extends Phaser.Scene {
     this.controller.setTagsVisible(!this.overview);
     this.hud.setVisible(!this.overview);
     this.prompt.setVisible(!this.overview);
-    this.permissionCard.setVisible(!this.overview);
     this.vignette.setVisible(!this.overview);
     this.toast?.setVisible(!this.overview);
     if (this.overview) this.dialog.close();
@@ -798,8 +779,6 @@ export class OfficeScene extends Phaser.Scene {
     // Facing someone, the prompt names them: the player's own tag would only cover their card.
     this.player.setTagVisible(!this.overview && facingId === undefined);
     this.prompt.update(delta);
-    this.permissionCard.set(permissions, model);
-    this.permissionCard.update(delta);
     const counts = hudCounts(model, permissions);
     this.hud.update(delta, counts, this.connected);
     const position = player.motion.position();
@@ -819,12 +798,7 @@ export class OfficeScene extends Phaser.Scene {
         targetId: this.dialogTarget,
         pages: this.dialog.openPages,
       },
-      permissions: {
-        queue: [...permissions],
-        cardOpen: this.permissionCard.isOpen,
-        typing: this.permissionCard.isTyping,
-        cardRect: this.permissionCard.rect,
-      },
+      permissions: { queue: [...permissions] },
       rooms: this.layout.rooms.map((room) => ({
         id: room.id,
         name: room.name,

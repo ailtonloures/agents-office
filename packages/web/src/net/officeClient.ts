@@ -2,7 +2,6 @@ import {
   createEmptyModel,
   type OfficeEvent,
   type OfficeModel,
-  type PermissionDecision,
   type PermissionRequest,
   type ProfessionsConfig,
   parseServerMessage,
@@ -91,24 +90,6 @@ export class OfficeClient extends TypedEmitter<OfficeClientEvents> {
   /** Pending permission requests, oldest first. */
   getPermissions(): readonly PermissionRequest[] {
     return this.pending;
-  }
-
-  /**
-   * Sends the user's decision for a pending request and drops it from the local queue right away
-   * (the daemon confirms with `permission.resolved`). Returns false when the socket is not open.
-   */
-  decide(id: string, decision: PermissionDecision): boolean {
-    const socket = this.socket;
-    if (!socket || !this.connected) return false;
-    if (!this.pending.some((request) => request.id === id)) return false;
-    try {
-      socket.send(JSON.stringify({ kind: 'permission.decide', id, decision }));
-    } catch (error) {
-      this.warn(`could not send the decision: ${(error as Error).message}`);
-      return false;
-    }
-    this.setPermissions(applyResolved(this.pending, id));
-    return true;
   }
 
   start(): void {

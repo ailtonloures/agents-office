@@ -8,6 +8,8 @@ related: [agents-office.prd.md, desktop-terminal-sessions.prd.md]
 
 # PRD: Agents Office Desktop e aprovação de permissões
 
+> **Nota de substituição:** a parte de "responder permissões pela UI" (cartão Aprovar/Negar/Terminal, atalhos, hook bloqueante de 24 h) foi substituída por [permission-notify-only.prd.md](permission-notify-only.prd.md): o app só avisa (notificação, balão `!`, contador) e a decisão é sempre no terminal; a notificação fecha sozinha quando o pedido é resolvido lá. O restante deste PRD (app Electron, bandeja, daemon embutido, instalação de hooks) continua válido.
+
 ## Problem Statement
 
 O Agents Office hoje roda como um daemon avulso (`npx agents-office`) e uma aba de navegador. Isso obriga o usuário a lembrar de iniciar o processo, manter um terminal ocupado e uma aba aberta, e não há um "lugar" único e nomeado onde o escritório viva. Além disso, quando o Claude Code precisa de permissão para executar algo (um `Bash`, uma edição), o escritório só **mostra** que o agente está aguardando (balão `!`); a resposta continua sendo dada no terminal onde aquela sessão roda. O usuário vê o problema no escritório, mas precisa trocar de janela para resolvê-lo.

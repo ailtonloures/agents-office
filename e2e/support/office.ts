@@ -16,18 +16,11 @@ declare global {
       dialog: { open: boolean; targetId: string | undefined; pages: string[][] };
       permissions: {
         queue: { id: string; tool: string; actorId: string; inputSummary: string }[];
-        cardOpen: boolean;
-        typing: boolean;
-        cardRect?: { x: number; y: number; width: number; height: number };
       };
       actions?: {
         approachCharacter(id: string): boolean;
         approachBoard(): boolean;
         approachDoor(roomId: string): boolean;
-        decidePermission(
-          id: string,
-          decision: { behavior: 'allow' | 'deny' | 'defer'; message?: string },
-        ): boolean;
       };
     };
     /** Terminal panel of the desktop shell (see packages/web/src/ui/terminalPanel.ts). */

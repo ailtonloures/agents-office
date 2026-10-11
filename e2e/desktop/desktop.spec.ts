@@ -288,17 +288,22 @@ const windowState = (app: ElectronApplication) =>
   });
 
 test.describe(`desktop app (${mode})`, () => {
-  test('permission flow: fixture, character, notification, card, approve -> allow', async () => {
+  test('permission flow: fixture, character, notification, terminal answer closes it', async () => {
     const box = await sandbox();
     const app = await launch(box);
     try {
       // Record the system notifications the main process raises (no desktop session needed).
       await app.evaluate(({ Notification }) => {
         const shown: { title: string; body: string }[] = [];
+        const closed: string[] = [];
         (globalThis as { __notes?: typeof shown }).__notes = shown;
+        (globalThis as { __closed?: string[] }).__closed = closed;
         Notification.isSupported = () => true;
         Notification.prototype.show = function show(this: { title: string; body: string }) {
           shown.push({ title: this.title, body: this.body });
+        };
+        Notification.prototype.close = function close(this: { body: string }) {
+          closed.push(this.body);
         };
       });
       await until(async () => (await windowState(app))?.url === box.url, 'office URL');
@@ -315,7 +320,7 @@ test.describe(`desktop app (${mode})`, () => {
       await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.close());
       await until(async () => (await windowState(app))?.visible === false, 'hidden window');
 
-      const answer = fetch(`${box.url}hook/permission`, {
+      const answer = fetch(`${box.url}hook`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
@@ -337,25 +342,48 @@ test.describe(`desktop app (${mode})`, () => {
           ),
         )
         .toEqual([expect.stringContaining('pnpm test')]);
+      // The notification says the answer goes in the terminal and is still open.
+      const notes = await app.evaluate(
+        () => (globalThis as { __notes?: { body: string }[] }).__notes ?? [],
+      );
+      expect(notes[0]?.body).toContain('Responda no terminal');
+      expect(await app.evaluate(() => (globalThis as { __closed?: string[] }).__closed)).toEqual(
+        [],
+      );
 
-      // Opening the window from the tray shows the pending card; Y approves it.
+      // The hook returns at once (notify-only) and opening the window shows the pending request.
+      expect((await answer).status).toBe(204);
       await app.evaluate(({ BrowserWindow }) => {
         const win = BrowserWindow.getAllWindows()[0];
         win?.show();
         win?.focus();
       });
       await expect
-        .poll(() => page.evaluate(() => window.__office?.permissions.cardOpen))
-        .toBe(true);
-      await page.keyboard.press('y');
-      const response = await answer;
-      expect(response.status).toBe(200);
-      expect(await response.json()).toEqual({
-        hookSpecificOutput: { hookEventName: 'PermissionRequest', decision: { behavior: 'allow' } },
+        .poll(() => page.evaluate(() => window.__office?.permissions.queue.length))
+        .toBe(1);
+      // Answering in the terminal (the tool ran) clears it.
+      await fetch(`${box.url}hook`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          hook_event_name: 'PostToolUse',
+          session_id: info.sessionId,
+          transcript_path: `${box.projectsDir}/${info.projectSlug}/${info.sessionId}.jsonl`,
+          cwd: '/anon/projects/demo-app',
+          permission_mode: 'default',
+          tool_name: 'Bash',
+          tool_input: { command: 'pnpm test', description: 'Run the tests' },
+          tool_use_id: 'toolu_x',
+          tool_response: { stdout: 'ok' },
+        }),
       });
       await expect
-        .poll(() => page.evaluate(() => window.__office?.permissions.cardOpen))
-        .toBe(false);
+        .poll(() => page.evaluate(() => window.__office?.permissions.queue.length))
+        .toBe(0);
+      // ... and the system notification of that request is closed (not left orphaned).
+      await expect
+        .poll(() => app.evaluate(() => (globalThis as { __closed?: string[] }).__closed ?? []))
+        .toEqual([expect.stringContaining('pnpm test')]);
     } finally {
       await app.close().catch(() => {});
       dispose(box);
@@ -709,7 +737,7 @@ test.describe(`desktop app (${mode})`, () => {
       dispose(box);
     }
   });
-  test('terminal panel: the permission card is decided by click without leaving the terminal', async () => {
+  test('terminal panel: a permission request does not take the keyboard from the terminal', async () => {
     const box = await sandbox();
     const fake = join(box.home, 'claude');
     writeFileSync(fake, '#!/bin/sh\necho READY\nsleep 30\n');
@@ -743,7 +771,7 @@ test.describe(`desktop app (${mode})`, () => {
         .poll(() => page.evaluate(() => window.__terminalPanel?.keyboard))
         .toBe('terminal');
 
-      const answer = fetch(`${box.url}hook/permission`, {
+      const answer = fetch(`${box.url}hook`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
@@ -756,23 +784,10 @@ test.describe(`desktop app (${mode})`, () => {
           tool_input: { command: 'pnpm test' },
         }),
       });
+      expect((await answer).status).toBe(204);
       await expect
-        .poll(() => page.evaluate(() => window.__office?.permissions.cardOpen))
-        .toBe(true);
-
-      // Click "Aprovar" (the first button of the card).
-      const point = await page.evaluate(() => {
-        const rect = window.__office?.permissions.cardRect as { x: number; y: number };
-        const canvas = document.querySelector('canvas') as HTMLCanvasElement;
-        const bounds = canvas.getBoundingClientRect();
-        const zoom = bounds.width / canvas.width;
-        return { x: bounds.left + (rect.x + 30) * zoom, y: bounds.top + (rect.y + 88) * zoom };
-      });
-      await page.mouse.click(point.x, point.y);
-      const response = await answer;
-      expect(await response.json()).toEqual({
-        hookSpecificOutput: { hookEventName: 'PermissionRequest', decision: { behavior: 'allow' } },
-      });
+        .poll(() => page.evaluate(() => window.__office?.permissions.queue.length))
+        .toBe(1);
       expect(await page.evaluate(() => window.__terminalPanel?.keyboard)).toBe('terminal');
       // Clicking elsewhere in the office does hand the keyboard back to the player.
       await page.mouse.click(10, 10);
@@ -1231,8 +1246,8 @@ test.describe(`desktop app (${mode})`, () => {
         .poll(() => page.evaluate(() => window.__terminalPanel?.tabs[0]?.title ?? ''))
         .toContain('flow-project · ativa');
 
-      // 4. A permission request of that session shows the card; approving it answers the hook.
-      const answer = fetch(`${box.url}hook/permission`, {
+      // 4. A permission request of that session is pending in the office; the hook returns at once.
+      const answer = fetch(`${box.url}hook`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
@@ -1244,20 +1259,10 @@ test.describe(`desktop app (${mode})`, () => {
           tool_input: { command: 'pnpm test' },
         }),
       });
+      expect((await answer).status).toBe(204);
       await expect
-        .poll(() => page.evaluate(() => window.__office?.permissions.cardOpen))
-        .toBe(true);
-      const point = await page.evaluate(() => {
-        const rect = window.__office?.permissions.cardRect as { x: number; y: number };
-        const canvas = document.querySelector('canvas') as HTMLCanvasElement;
-        const bounds = canvas.getBoundingClientRect();
-        const zoom = bounds.width / canvas.width;
-        return { x: bounds.left + (rect.x + 30) * zoom, y: bounds.top + (rect.y + 88) * zoom };
-      });
-      await page.mouse.click(point.x, point.y);
-      expect(await (await answer).json()).toEqual({
-        hookSpecificOutput: { hookEventName: 'PermissionRequest', decision: { behavior: 'allow' } },
-      });
+        .poll(() => page.evaluate(() => window.__office?.permissions.queue.length))
+        .toBe(1);
 
       // 5. The VS Code button of the tab calls the (fake) `code` with exactly the folder.
       await page.getByTestId('terminal-vscode').click();

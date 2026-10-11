@@ -1,7 +1,6 @@
 import type {
   ActorStatus,
   OfficeModel,
-  PermissionDecision,
   PermissionRequest,
   Profession,
 } from '@agents-office/shared';
@@ -32,22 +31,14 @@ export interface DebugState {
   /** The HUD text and the dialog state. */
   hud: { text: string };
   dialog: { open: boolean; targetId: string | undefined; pages: readonly (readonly string[])[] };
-  /** Pending permission requests (oldest first) and the state of the card. */
-  permissions: {
-    queue: PermissionRequest[];
-    cardOpen: boolean;
-    typing: boolean;
-    /** Card rectangle in game pixels (screen-fixed), for click routing outside Phaser. */
-    cardRect?: { x: number; y: number; width: number; height: number };
-  };
+  /** Pending permission requests (oldest first). */
+  permissions: { queue: PermissionRequest[] };
   /** Helpers installed by the scene for E2E tests (teleport next to a character / the board). */
   actions?: {
     approachCharacter(id: string): boolean;
     approachBoard(): boolean;
     /** Teleports to the corridor tile facing the room's door; false when the room is unknown. */
     approachDoor(roomId: string): boolean;
-    /** Sends a decision as if the card's button had been used; false when it was not sent. */
-    decidePermission(id: string, decision: PermissionDecision): boolean;
   };
   rooms: { id: string; name: string; x: number; y: number; w: number; h: number; sign: string }[];
 }
@@ -66,7 +57,7 @@ export function createDebugState(): DebugState {
     player: { x: 0, y: 0, facing: 'down', moving: false },
     hud: { text: '' },
     dialog: { open: false, targetId: undefined, pages: [] },
-    permissions: { queue: [], cardOpen: false, typing: false },
+    permissions: { queue: [] },
     rooms: [],
   };
 }

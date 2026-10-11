@@ -6,7 +6,7 @@ import { IsoTimestampSchema } from './events';
 // ---------------------------------------------------------------------------
 
 /**
- * A pending permission request shown to the user as a card. The raw `tool_input` is deliberately
+ * A pending permission request the user is notified about (the answer is given in the terminal). The raw `tool_input` is deliberately
  * not part of it: only a short summary travels to the UI and nothing is logged.
  */
 export const PermissionRequestSchema = z.looseObject({
@@ -24,24 +24,8 @@ export const PermissionRequestSchema = z.looseObject({
 });
 export type PermissionRequest = z.infer<typeof PermissionRequestSchema>;
 
-/** What the user chose. `defer` leaves the question to the terminal prompt (which is always there). */
-export const PermissionDecisionSchema = z.discriminatedUnion('behavior', [
-  z.looseObject({ behavior: z.literal('allow') }),
-  z.looseObject({ behavior: z.literal('deny'), message: z.string().optional() }),
-  z.looseObject({ behavior: z.literal('defer') }),
-]);
-export type PermissionDecision = z.infer<typeof PermissionDecisionSchema>;
-
-/**
- * How a pending request ended: `ui` (the user decided or deferred), `released` (daemon released it,
- * e.g. no UI connected), `terminal` (answered in the terminal prompt), `hook-gone` (the hook
- * process went away).
- */
-export const PermissionResolvedBySchema = z.enum(['ui', 'released', 'terminal', 'hook-gone']);
-export type PermissionResolvedBy = z.infer<typeof PermissionResolvedBySchema>;
-
 // Envelope messages are plain objects (like `snapshot`/`event`) so `kind` narrows the union; the
-// payloads inside (request, decision) are tolerant loose objects.
+// payload inside (request) is a tolerant loose object.
 
 /** Daemon -> UI: a new pending request. */
 export const PermissionRequestedMessageSchema = z.object({
@@ -49,12 +33,10 @@ export const PermissionRequestedMessageSchema = z.object({
   request: PermissionRequestSchema,
 });
 
-/** Daemon -> UI: a request is no longer pending (remove the card). */
+/** Daemon -> UI: a request is no longer pending (answered in the terminal or the session moved on). */
 export const PermissionResolvedMessageSchema = z.object({
   kind: z.literal('permission.resolved'),
   id: z.string().min(1),
-  by: PermissionResolvedBySchema,
-  decision: PermissionDecisionSchema.optional(),
 });
 
 /** Daemon -> UI: all pending requests, sent right after `snapshot` when a UI client connects. */
@@ -63,58 +45,6 @@ export const PermissionSnapshotMessageSchema = z.object({
   pending: z.array(PermissionRequestSchema),
 });
 
-/** UI -> daemon: the user's decision. Accepted only from clients that connected as `?role=ui`. */
-export const PermissionDecideMessageSchema = z.object({
-  kind: z.literal('permission.decide'),
-  id: z.string().min(1),
-  decision: PermissionDecisionSchema,
-});
-
-export const ClientMessageSchema = z.discriminatedUnion('kind', [PermissionDecideMessageSchema]);
-
 export type PermissionRequestedMessage = z.infer<typeof PermissionRequestedMessageSchema>;
 export type PermissionResolvedMessage = z.infer<typeof PermissionResolvedMessageSchema>;
 export type PermissionSnapshotMessage = z.infer<typeof PermissionSnapshotMessageSchema>;
-export type PermissionDecideMessage = z.infer<typeof PermissionDecideMessageSchema>;
-export type ClientMessage = z.infer<typeof ClientMessageSchema>;
-
-/** Validates a decoded client -> server WebSocket message. Never throws. */
-export function parseClientMessage(input: unknown) {
-  return ClientMessageSchema.safeParse(input);
-}
-
-// ---------------------------------------------------------------------------
-// Hook response
-// ---------------------------------------------------------------------------
-
-/** Stdout JSON of the `PermissionRequest` hook for an allow/deny decision. */
-export interface PermissionHookOutput {
-  hookSpecificOutput: {
-    hookEventName: 'PermissionRequest';
-    decision: { behavior: 'allow' } | { behavior: 'deny'; message?: string };
-  };
-}
-
-/**
- * Builds the hook output for a decision. `defer` has no output: the hook must exit 0 with an empty
- * stdout so the terminal prompt (already on screen) keeps going. Never use exit 2.
- */
-export function permissionHookOutput(decision: PermissionDecision): PermissionHookOutput | null {
-  if (decision.behavior === 'allow') {
-    return {
-      hookSpecificOutput: { hookEventName: 'PermissionRequest', decision: { behavior: 'allow' } },
-    };
-  }
-  if (decision.behavior === 'deny') {
-    return {
-      hookSpecificOutput: {
-        hookEventName: 'PermissionRequest',
-        decision:
-          decision.message !== undefined
-            ? { behavior: 'deny', message: decision.message }
-            : { behavior: 'deny' },
-      },
-    };
-  }
-  return null;
-}

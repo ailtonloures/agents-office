@@ -48,58 +48,16 @@ exits quickly; it never blocks Claude Code, even when the daemon is not running.
 use absolute paths to the installed copy, so run `hooks install` again after moving or
 upgrading a global install.
 
-`hooks install` also registers a `PermissionRequest` hook (with `timeout` 86400 s) so permission
-requests can be approved from the office UI. That hook waits for the daemon's answer and prints
-the decision for Claude Code. If the daemon is off, no UI is connected, the request is answered in
-the terminal, or anything fails, it prints nothing and exits 0: Claude Code's normal terminal
-prompt (always on screen in parallel) stays in charge. Running `hooks install` again on an older
-installation adds only this new event.
-
-### Flags
-
-| Flag | Meaning |
-| --- | --- |
-| `--port <n>` | Port to listen on (default `4777`, env `AGENTS_OFFICE_PORT`) |
-| `--projects-dir <path>` | Claude Code projects directory (default `~/.claude/projects`, env `AGENTS_OFFICE_PROJECTS_DIR`) |
-| `--professions <path>` | `professions.json` overriding the default tool to profession table |
-| `--skin <dir>` | Use an external skin (see below) |
-| `--no-open` | Do not open the browser |
-| `--unsafe-host <host>` | Bind a non-loopback host. There is no authentication: only use it on networks you trust |
-
-`hooks` accepts `--settings <path>`, `--port <n>` and `--dry-run`.
-
-### Controls
-
-Arrows/WASD walk. `Z`/`Enter`/`Space` talk to whoever (or whatever, like the Hall of Fame board)
-you are facing, and advance the dialog. `X`/`Esc` close it. `Tab` jumps to the room with the
-latest activity, `Shift+Tab` cycles through agents that are waiting for you. Clicking a character
-also opens its dialog.
-
-## Skins and assets
-
-The bundled default skin is original, procedurally generated pixel art released under **CC0 1.0**
-(see `packages/web/public/skins/default/LICENSES.md`, which lists every asset; a test fails if a
-file is added without being listed there). The published package contains no third-party assets.
-
-You can use a commercial pack such as [LimeZu's Modern Interiors/Office](https://limezu.itch.io/)
-locally **without redistributing it**: build a skin directory in the same format as the default
-one (a `skin.json` that maps tiles, character layers and font to your image files; see
-`packages/web/public/skins/default/skin.json` and `packages/web/scripts/generate-default-skin.mjs`)
-and run (the frame size is up to you; idle frames, extra poses and decor tiles are optional and
-fall back to the basic ones):
-
-```bash
-npx agents-office --skin ~/my-skins/limezu
-```
-
-The directory is served only by your local daemon under `/skin/*`. Never commit or publish packs
-you only have a personal licence for. If the external skin is invalid, the office falls back to
-the default one and shows a warning.
+`hooks install` also registers a `PermissionRequest` hook so the office can warn you that Claude Code
+is waiting for a permission. Like every other event it is fire-and-forget: it never prints a
+decision and never delays the prompt, which appears in the terminal immediately. The office does
+not approve or deny anything; answer in the terminal. Running `hooks install` again on an older
+installation adds this event and drops the old long `timeout` from it.
 
 ## Desktop app
 
 The desktop app (Electron) wraps the same office in its own window, starts the daemon for you, lives
-in the system tray and shows a system notification when Claude Code asks for a permission. It
+in the system tray and shows a system notification when Claude Code asks for a permission (answered in the terminal). It
 runs on **Linux and macOS only** and has **no automatic update** in this version.
 
 ### Install
@@ -134,13 +92,16 @@ offers it. Nothing is written until you confirm, a backup (`settings.json.agents
 kept, and removing the hooks restores the file. The installed command uses the app's own runtime,
 so Node does not need to be installed.
 
-### Approving permissions
+### Permission requests
 
-With the hooks installed, a `PermissionRequest` from Claude Code appears as a card in the office
-(press **Y** to approve, **N** to deny) and, when the window is hidden or unfocused, as a system
-notification and a marker on the tray icon. Closing the window keeps the app and the daemon running
-in the tray; **Sair** in the tray menu quits both. If the app, the daemon or the card goes
-unanswered, Claude Code's terminal prompt stays in charge.
+With the hooks installed, a `PermissionRequest` from Claude Code only **notifies**: the agent shows a
+`!` bubble, the HUD and tray icon count the pending requests and, when the window is hidden or
+unfocused, a system notification says which tool is asking and to answer in the terminal. There are
+no approve/deny buttons or keys in the app. When you approve or deny in the terminal (or the session
+ends, or you send another prompt) the notification, bubble and counter go away on their own. If the
+system cannot close notifications programmatically, the notification carries a native **Fechar**
+button instead. Closing the window keeps the app and the daemon running in the tray; **Sair** in the
+tray menu quits both.
 
 ### Limitations
 

@@ -23,13 +23,8 @@ const MATCHER_EVENTS: ReadonlySet<string> = new Set([
   'PermissionRequest',
 ]);
 
-/**
- * Hook `timeout` (seconds) per event. PermissionRequest waits for a human, so it gets 24 h (accepted
- * by Claude Code per spike 013; never 0, negative or a string). Other events use the default.
- */
-const EVENT_TIMEOUT_SECONDS: Readonly<Partial<Record<string, number>>> = {
-  PermissionRequest: 86400,
-};
+/** `timeout` (seconds) that earlier versions wrote on PermissionRequest; removed on install. */
+const LEGACY_TIMEOUT_SECONDS = 86400;
 
 /** Matches `.../agents-office.mjs hook` (optionally quoted / followed by flags). */
 const MARKER = /agents-office(?:\.mjs)?["']?\s+hook(?:\s|$)/;
@@ -127,22 +122,14 @@ export function applyInstall(
         if (!isOurCommand(hook.command)) continue;
         found = true;
         hook.command = command;
-        const timeout = EVENT_TIMEOUT_SECONDS[event];
-        if (timeout !== undefined) hook.timeout = timeout;
+        // Migration: the old PermissionRequest entry waited for a decision with a 24 h timeout.
+        if (hook.timeout === LEGACY_TIMEOUT_SECONDS) delete hook.timeout;
       }
     }
     if (!found) {
       groups.push({
         ...(MATCHER_EVENTS.has(event) ? { matcher: '*' } : {}),
-        hooks: [
-          {
-            type: 'command',
-            command,
-            ...(EVENT_TIMEOUT_SECONDS[event] !== undefined
-              ? { timeout: EVENT_TIMEOUT_SECONDS[event] }
-              : {}),
-          },
-        ],
+        hooks: [{ type: 'command', command }],
       });
     }
     hooks[event] = groups;

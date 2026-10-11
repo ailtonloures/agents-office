@@ -12,8 +12,6 @@ export interface HookRunOptions {
   env: Record<string, string | undefined>;
   argv: string[];
   fetchImpl?: typeof fetch;
-  /** Where the permission decision is printed (default `process.stdout`). */
-  stdout?: { write(text: string): unknown };
 }
 
 async function readStdin(stdin: HookRunOptions['stdin']): Promise<string | undefined> {
@@ -44,17 +42,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 /**
  * Forwards the hook payload read from stdin to the daemon. Never throws: any failure (daemon off,
  * bad JSON, timeout, oversized input) is swallowed so Claude Code is never disturbed. Callers
- * should exit 0 afterwards.
- *
- * Regular events are fire-and-forget (300 ms budget, no stdout). `PermissionRequest` is a
- * long-poll to `/hook/permission` with no timeout: on 200 the decision JSON is printed to stdout;
- * on 204, any error, or when the process is told to terminate, nothing is printed (Claude Code
- * then falls back to the terminal prompt, which is already on screen). Never exit 2.
+ * should exit 0 afterwards. Every event, `PermissionRequest` included, is fire-and-forget (300 ms
+ * budget, no stdout): the permission prompt is answered in the terminal, never by the hook.
  */
 export async function runHook(options: HookRunOptions): Promise<void> {
-  const aborter = new AbortController();
-  const onTerminate = (): void => aborter.abort();
-  const signals = ['SIGTERM', 'SIGINT', 'SIGHUP'] as const;
   try {
     const body = await readStdin(options.stdin);
     if (body === undefined) return;
@@ -64,25 +55,15 @@ export async function runHook(options: HookRunOptions): Promise<void> {
       terminalId && isRecord(parsed) && parsed.terminalId === undefined
         ? JSON.stringify({ ...parsed, terminalId })
         : body;
-    const isPermission = isRecord(parsed) && parsed.hook_event_name === 'PermissionRequest';
     const port = resolvePort(options.argv, options.env);
     const doFetch = options.fetchImpl ?? fetch;
-    const url = `http://127.0.0.1:${port}${isPermission ? '/hook/permission' : '/hook'}`;
-    const init = { method: 'POST', headers: { 'content-type': 'application/json' }, body: payload };
-    if (!isPermission) {
-      await doFetch(url, { ...init, signal: AbortSignal.timeout(POST_TIMEOUT_MS) });
-      return;
-    }
-    // Closing the connection on termination lets the broker drop the pending request.
-    for (const signal of signals) process.once(signal, onTerminate);
-    const response = await doFetch(url, { ...init, signal: aborter.signal });
-    if (response.status !== 200) return;
-    const text = await response.text();
-    if (aborter.signal.aborted || text.length === 0) return;
-    (options.stdout ?? process.stdout).write(text);
+    await doFetch(`http://127.0.0.1:${port}/hook`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: payload,
+      signal: AbortSignal.timeout(POST_TIMEOUT_MS),
+    });
   } catch {
     // Intentionally silent.
-  } finally {
-    for (const signal of signals) process.off(signal, onTerminate);
   }
 }

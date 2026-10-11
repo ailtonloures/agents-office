@@ -14,5 +14,4 @@ export {
   createPermissionBroker,
   type PermissionBroker,
   type PermissionBrokerOptions,
-  type PermissionOutcome,
 } from './permissionBroker';

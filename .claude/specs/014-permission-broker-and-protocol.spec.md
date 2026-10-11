@@ -11,6 +11,8 @@ created: 2026-10-10
 
 # 014 - PermissionBroker, rota /hook/permission e protocolo
 
+> **Nota (substituída):** parte deste spec foi superada pelos specs 029–031 ([PRD](../prds/permission-notify-only.prd.md)). O daemon não segura mais o hook nem aceita `permission.decide`; `/hook/permission` é só uma rota legada que responde 204 e o broker virou rastreador de pendências (`permission.resolved` é `{kind, id}`, sem `by`/`decision`).
+
 ## Overview
 Adiciona ao daemon o mecanismo de pedidos de permissão: tipos e mensagens de protocolo no `shared`, o `PermissionBroker` (fila de pendências com conexões HTTP de hook seguradas) e a rota long-poll `POST /hook/permission`. A decisão só é aceita vinda de clientes de UI pelo WebSocket. Implementa a **Seam 1** para permissões.
 

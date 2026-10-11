@@ -8,8 +8,17 @@ export interface PermissionNotice {
 
 export interface PermissionUpdate {
   pending: number;
+  /**
+   * Ids that stopped being pending in this update (resolved in the terminal, omitted by a fresh
+   * snapshot, or dropped with the connection). Absent when there are none.
+   */
+  resolvedIds?: string[];
   /** Set when a brand-new request arrived (never for a snapshot or a repeated id). */
   notice?: PermissionNotice;
+}
+
+function withResolved(update: PermissionUpdate, resolvedIds: string[]): PermissionUpdate {
+  return resolvedIds.length > 0 ? { ...update, resolvedIds } : update;
 }
 
 /**
@@ -23,8 +32,11 @@ export class PermissionTracker {
     return this.pending.size;
   }
 
-  clear(): void {
+  /** Forgets every pending id and returns them (they all count as resolved). */
+  clear(): string[] {
+    const ids = [...this.pending];
     this.pending.clear();
+    return ids;
   }
 
   /** Feeds one decoded WebSocket frame. Unknown or invalid frames leave the state untouched. */
@@ -34,9 +46,11 @@ export class PermissionTracker {
     const message = parsed.data;
     switch (message.kind) {
       case 'permission.snapshot': {
+        const incoming = new Set(message.pending.map((request) => request.id));
+        const resolvedIds = [...this.pending].filter((id) => !incoming.has(id));
         this.pending.clear();
-        for (const request of message.pending) this.pending.add(request.id);
-        return { pending: this.pending.size };
+        for (const id of incoming) this.pending.add(id);
+        return withResolved({ pending: this.pending.size }, resolvedIds);
       }
       case 'permission.requested': {
         const { request } = message;
@@ -49,13 +63,13 @@ export class PermissionTracker {
           notice: {
             id: request.id,
             title: 'Pedido de permissão do Claude Code',
-            body: summary.length > 0 ? `${request.tool}: ${summary}` : request.tool,
+            body: `${summary.length > 0 ? `${request.tool}: ${summary}` : request.tool}\nResponda no terminal.`,
           },
         };
       }
       case 'permission.resolved': {
-        this.pending.delete(message.id);
-        return { pending: this.pending.size };
+        const wasPending = this.pending.delete(message.id);
+        return withResolved({ pending: this.pending.size }, wasPending ? [message.id] : []);
       }
       default:
         return { pending: this.pending.size };
@@ -107,8 +121,7 @@ export class PermissionWatcher {
       socket.onclose = null;
       socket.close();
     }
-    this.tracker.clear();
-    this.deps.onUpdate({ pending: 0 });
+    this.deps.onUpdate(withResolved({ pending: 0 }, this.tracker.clear()));
   }
 
   private connect(): void {
@@ -126,9 +139,9 @@ export class PermissionWatcher {
     socket.onerror = () => {};
     socket.onclose = () => {
       if (this.socket === socket) this.socket = undefined;
-      // The daemon releases everything when the last UI leaves, so nothing is pending any more.
-      this.tracker.clear();
-      this.deps.onUpdate({ pending: 0 });
+      // Without the stream nothing can be tracked: every pending request counts as resolved, so no
+      // notification is left orphaned (the snapshot after reconnecting restores what is real).
+      this.deps.onUpdate(withResolved({ pending: 0 }, this.tracker.clear()));
       if (this.stopped) return;
       const setTimer = this.deps.setTimer ?? ((fn, ms) => setTimeout(fn, ms));
       this.timer = setTimer(() => {

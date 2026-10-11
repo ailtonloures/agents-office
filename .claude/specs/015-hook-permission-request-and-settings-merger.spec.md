@@ -11,6 +11,8 @@ created: 2026-10-10
 
 # 015 - Hook PermissionRequest no CLI e no SettingsMerger
 
+> **Nota (substituída):** parte deste spec foi superada pelos specs 029–031 ([PRD](../prds/permission-notify-only.prd.md)). O hook `PermissionRequest` agora é não bloqueante, igual aos demais eventos (sem long-poll, sem decisão no stdout) e a instalação não grava mais `timeout` de 24 h; entradas antigas são migradas removendo o timeout.
+
 ## Overview
 Faz o comando `hook` tratar o evento `PermissionRequest` (POST long-poll sem timeout curto, imprimindo a decisão no stdout) e inclui esse evento, com `timeout` alto, no `hooks install|uninstall|status`. Os demais eventos mantêm o caminho rápido de 300 ms.
 

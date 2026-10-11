@@ -11,16 +11,9 @@ import {
   applyRequested,
   applyResolved,
   applySnapshot,
-  cardContent,
-  decisionFor,
-  editReason,
   pendingActorIds,
   queueView,
-  REASON_MAX,
-  requesterName,
-  shortcutFor,
   sortQueue,
-  toolLabel,
 } from '../src/ui/permissionLogic';
 
 const req = (id: string, patch: Partial<PermissionRequest> = {}): PermissionRequest => ({
@@ -80,65 +73,6 @@ describe('queue', () => {
   it('maps requests to the asking characters', () => {
     const ids = pendingActorIds([req('a'), req('b', { actorId: 'a1', agentType: 'x' })]);
     expect([...ids].sort()).toEqual(['a1', 's1']);
-  });
-});
-
-describe('text', () => {
-  it('labels tools in Portuguese and falls back to the name', () => {
-    expect(toolLabel('Bash')).toBe('Rodar comando');
-    expect(toolLabel('Edit')).toBe('Editar arquivo');
-    expect(toolLabel('mcp__git__push')).toBe('Ferramenta MCP git / push');
-    expect(toolLabel('Weird')).toBe('Usar Weird');
-  });
-
-  it('names the Tech Lead and subagents', () => {
-    const model = officeModel();
-    expect(requesterName(model, req('a'))).toBe('Tech Lead');
-    expect(requesterName(model, req('b', { actorId: 'a1', agentType: 'code-reviewer' }))).toBe(
-      'Code Reviewer',
-    );
-    expect(
-      requesterName(createEmptyModel(), req('c', { actorId: 'zz', agentType: 'explore' })),
-    ).toBe('Explorer');
-  });
-
-  it('builds the card lines with project, tool, summary and queue', () => {
-    const model = officeModel();
-    const content = cardContent(model, req('a', { inputSummary: 'x '.repeat(100) }), 2);
-    expect(content.who).toBe('Tech Lead · demo-app');
-    expect(content.tool).toBe('Rodar comando (Bash)');
-    expect(content.summary).toHaveLength(3);
-    expect(content.summary.every((line) => line.length <= 42)).toBe(true);
-    expect(content.summary[2]?.endsWith('…')).toBe(true);
-    expect(content.queue).toBe('+2 na fila');
-    expect(cardContent(model, req('a'), 0).queue).toBe('');
-  });
-});
-
-describe('input', () => {
-  it('maps Y / N / T (any case)', () => {
-    expect(shortcutFor('y')).toBe('allow');
-    expect(shortcutFor('N')).toBe('deny');
-    expect(shortcutFor('t')).toBe('defer');
-    expect(shortcutFor('z')).toBeUndefined();
-  });
-
-  it('builds decisions; a blank reason is a plain deny', () => {
-    expect(decisionFor('allow')).toEqual({ behavior: 'allow' });
-    expect(decisionFor('defer')).toEqual({ behavior: 'defer' });
-    expect(decisionFor('deny', '   ')).toEqual({ behavior: 'deny' });
-    expect(decisionFor('deny', 'use  pnpm')).toEqual({ behavior: 'deny', message: 'use pnpm' });
-  });
-
-  it('edits the reason: characters, backspace, limits, modifiers', () => {
-    let text = '';
-    for (const key of ['n', 'a', 'o']) text = editReason(text, { key });
-    expect(text).toBe('nao');
-    expect(editReason(text, { key: 'Backspace' })).toBe('na');
-    expect(editReason(text, { key: 'Shift' })).toBe('nao');
-    expect(editReason(text, { key: 'c', ctrlKey: true })).toBe('nao');
-    expect(editReason('x'.repeat(REASON_MAX), { key: 'y' })).toHaveLength(REASON_MAX);
-    expect(editReason('', { key: ' ' })).toBe('');
   });
 });
 

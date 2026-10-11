@@ -25,8 +25,10 @@ export interface TrayLike {
 export interface ShellDeps {
   window: WindowLike;
   tray: TrayLike;
-  /** Shows a system notification; `onClick` brings the window forward. */
+  /** Shows the system notification of request `notice.id`; `onClick` brings the window forward. */
   notify(notice: PermissionNotice, onClick: () => void): void;
+  /** Closes the system notification of request `id` (no-op when none is shown). */
+  dismiss(id: string): void;
   /** Asks the app to quit (`app.quit()`). */
   quit(): void;
 }
@@ -116,6 +118,11 @@ export class Shell {
     const { window } = this.deps;
     if (window.isVisible() && window.isFocused()) return;
     this.deps.notify(notice, () => this.showWindow());
+  }
+
+  /** Requests resolved (in the terminal, by a snapshot or a lost connection): take their notices down. */
+  onPermissionResolved(ids: readonly string[]): void {
+    for (const id of ids) this.deps.dismiss(id);
   }
 
   private refresh(): void {

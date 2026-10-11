@@ -83,3 +83,6 @@ Campos: `session_id`, `transcript_path`, `cwd`, `prompt_id`, `permission_mode`, 
 - Card keys: Y approve, N opens the reason field (Enter sends the deny, Esc goes back), T leaves it to the terminal. While typing, `isTyping` blocks movement and the other shortcuts. Z/Enter never approve (too easy to hit by accident).
 - HUD `! n` = pending requests + waiting actors that do not already have a pending request (no double count: the Notification makes the same actor `waiting` ~6 s later). The `!` balloon is forced through `CharacterController.setAsking(actorIds)` so it shows at once, before the Notification arrives.
 - `window.__office.permissions` = `{ queue, cardOpen, typing }`; `actions.decidePermission(id, decision)`. Phaser only delivers keys fast enough in E2E when `keyboard.type` has a small delay.
+
+---
+> **Atualização (specs 029–031):** as conclusões acima sobre decisão pela UI (allow/deny no stdout, timeout de 24 h, long-poll) não se aplicam mais: o hook é não bloqueante e o app só notifica. O que continua válido: formato do payload, ausência de `tool_use_id`, o prompt do terminal aparecer em paralelo, e a sequência de eventos usada para detectar a resolução. Ver `permission-notify-only.md`.

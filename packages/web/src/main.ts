@@ -86,22 +86,8 @@ if (terminalBridge) {
       }
     },
   });
-  const canvasPointer = (event: MouseEvent) => {
-    if (panel.terminalFocused && overCard(event)) {
-      // Deciding on the permission card must not take the keyboard from the terminal.
-      event.preventDefault();
-      return;
-    }
+  const canvasPointer = () => {
     panel.focusPlayer();
-  };
-  const overCard = (event: MouseEvent): boolean => {
-    const rect = window.__office?.permissions.cardRect;
-    if (!rect || !window.__office?.permissions.cardOpen) return false;
-    const bounds = game.canvas.getBoundingClientRect();
-    const scale = bounds.width / game.scale.width;
-    const x = (event.clientX - bounds.left) / scale;
-    const y = (event.clientY - bounds.top) / scale;
-    return x >= rect.x && x < rect.x + rect.width && y >= rect.y && y < rect.y + rect.height;
   };
   game.canvas.addEventListener('mousedown', canvasPointer);
 

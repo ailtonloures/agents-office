@@ -221,40 +221,11 @@ describe('OfficeClient permissions', () => {
       request: request('a', '2026-10-10T12:00:01Z'),
     });
     expect(client.getPermissions().map((r) => r.id)).toEqual(['a', 'b']);
-    // Answered in the terminal: the card goes away silently, an unknown id changes nothing.
-    sockets[0]?.push({ kind: 'permission.resolved', id: 'a', by: 'terminal' });
-    sockets[0]?.push({ kind: 'permission.resolved', id: 'zzz', by: 'terminal' });
+    // Answered in the terminal: the request goes away silently, an unknown id changes nothing.
+    sockets[0]?.push({ kind: 'permission.resolved', id: 'a' });
+    sockets[0]?.push({ kind: 'permission.resolved', id: 'zzz' });
     expect(client.getPermissions().map((r) => r.id)).toEqual(['b']);
     expect(seen).toEqual([['b'], ['a', 'b'], ['b']]);
-  });
-
-  it('decide sends permission.decide and drops the request locally', () => {
-    const client = makeClient();
-    client.start();
-    sockets[0]?.open();
-    sockets[0]?.push({ kind: 'permission.snapshot', pending: [request('a'), request('b')] });
-    expect(client.decide('a', { behavior: 'deny', message: 'no' })).toBe(true);
-    expect(JSON.parse(sockets[0]?.sent[0] ?? '')).toEqual({
-      kind: 'permission.decide',
-      id: 'a',
-      decision: { behavior: 'deny', message: 'no' },
-    });
-    expect(client.getPermissions().map((r) => r.id)).toEqual(['b']);
-    // A late resolved for the same id (broadcast by the daemon) is harmless.
-    sockets[0]?.push({ kind: 'permission.resolved', id: 'a', by: 'ui' });
-    expect(client.getPermissions().map((r) => r.id)).toEqual(['b']);
-  });
-
-  it('decide refuses unknown ids and a closed connection', () => {
-    const client = makeClient();
-    expect(client.decide('a', { behavior: 'allow' })).toBe(false);
-    client.start();
-    sockets[0]?.open();
-    sockets[0]?.push({ kind: 'permission.snapshot', pending: [request('a')] });
-    expect(client.decide('nope', { behavior: 'allow' })).toBe(false);
-    sockets[0]?.drop();
-    expect(client.decide('a', { behavior: 'allow' })).toBe(false);
-    expect(sockets[0]?.sent).toEqual([]);
   });
 
   it('empties the queue when the stream drops (the next snapshot restores it)', () => {

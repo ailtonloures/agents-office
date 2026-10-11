@@ -61,7 +61,6 @@ interface Client {
   socket: WebSocket;
   messages: Record<string, unknown>[];
   ofKind(kind: string): Record<string, unknown>[];
-  decide(id: string, decision: Record<string, unknown>): void;
 }
 
 async function connect(role?: 'ui'): Promise<Client> {
@@ -76,21 +75,14 @@ async function connect(role?: 'ui'): Promise<Client> {
   await waitFor(() => messages.length > 0, 'snapshot');
   if (role)
     await waitFor(() => messages.some((m) => m.kind === 'permission.snapshot'), 'perm snapshot');
-  return {
-    socket,
-    messages,
-    ofKind: (kind) => messages.filter((m) => m.kind === kind),
-    decide: (id, decision) =>
-      socket.send(JSON.stringify({ kind: 'permission.decide', id, decision })),
-  };
+  return { socket, messages, ofKind: (kind) => messages.filter((m) => m.kind === kind) };
 }
 
-function post(path: string, body: unknown, signal?: AbortSignal): Promise<Response> {
+function post(path: string, body: unknown): Promise<Response> {
   return fetch(`http://127.0.0.1:${port}${path}`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(body),
-    ...(signal ? { signal } : {}),
   });
 }
 
@@ -111,10 +103,15 @@ function postToolUseFor(request: Record<string, unknown>, extra: Record<string, 
   };
 }
 
-describe('permission broker over HTTP + WebSocket (Seam 1)', () => {
-  it('allow: UI receives the request, decides, and the hook gets the allow JSON', async () => {
+describe('permission tracker over HTTP + WebSocket (notify-only)', () => {
+  it('POST /hook with PermissionRequest answers 204 at once and emits permission.requested', async () => {
     const ui = await connect('ui');
-    const response = post('/hook/permission', mainRequest());
+    const started = Date.now();
+    const response = await post('/hook', mainRequest());
+    expect(response.status).toBe(204);
+    expect(await response.text()).toBe('');
+    expect(Date.now() - started).toBeLessThan(1000);
+
     await waitFor(() => ui.ofKind('permission.requested').length === 1, 'permission.requested');
     const request = ui.ofKind('permission.requested')[0]?.request as PermissionRequest;
     expect(request).toMatchObject({
@@ -126,45 +123,36 @@ describe('permission broker over HTTP + WebSocket (Seam 1)', () => {
     expect(request.agentType).toBeUndefined();
     expect(request.projectId).toBe('-tmp-spike-proj');
     expect((await health()).pendingPermissions).toBe(1);
-
-    ui.decide('perm-1', { behavior: 'allow' });
-    const answered = await response;
-    expect(answered.status).toBe(200);
-    expect(await answered.json()).toEqual({
-      hookSpecificOutput: { hookEventName: 'PermissionRequest', decision: { behavior: 'allow' } },
-    });
-    await waitFor(() => ui.ofKind('permission.resolved').length === 1, 'permission.resolved');
-    expect(ui.ofKind('permission.resolved')[0]).toMatchObject({ id: 'perm-1', by: 'ui' });
-    expect((await health()).pendingPermissions).toBe(0);
   });
 
-  it('deny: the message reaches the hook output', async () => {
+  it('tracks the request even when no UI is connected, and only role=ui clients get messages', async () => {
+    const plain = await connect();
+    expect((await post('/hook', mainRequest())).status).toBe(204);
+    expect((await health()).pendingPermissions).toBe(1);
     const ui = await connect('ui');
-    const response = post('/hook/permission', mainRequest());
+    expect(ui.ofKind('permission.snapshot')[0]).toMatchObject({ pending: [{ id: 'perm-1' }] });
+    expect(plain.ofKind('permission.requested')).toHaveLength(0);
+    expect(plain.ofKind('permission.snapshot')).toHaveLength(0);
+  });
+
+  it('a PermissionRequest does not enter the office model', async () => {
+    await post('/hook', mainRequest());
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(Object.keys(daemon?.getModel().agents ?? {})).toHaveLength(0);
+  });
+
+  it('the legacy POST /hook/permission also answers 204 at once (old hooks never block)', async () => {
+    const ui = await connect('ui');
+    const response = await post('/hook/permission', mainRequest());
+    expect(response.status).toBe(204);
+    expect(await response.text()).toBe('');
     await waitFor(() => ui.ofKind('permission.requested').length === 1, 'request');
-    ui.decide('perm-1', { behavior: 'deny', message: 'Not now' });
-    const answered = await response;
-    expect(answered.status).toBe(200);
-    expect(await answered.json()).toEqual({
-      hookSpecificOutput: {
-        hookEventName: 'PermissionRequest',
-        decision: { behavior: 'deny', message: 'Not now' },
-      },
-    });
+    expect((await post('/hook/permission', { nope: true })).status).toBe(400);
   });
 
-  it('defer answers 204 and resolves the card as ui', async () => {
+  it('a request answered in the terminal (PostToolUse, no tool_use_id on the request) is resolved', async () => {
     const ui = await connect('ui');
-    const response = post('/hook/permission', mainRequest());
-    await waitFor(() => ui.ofKind('permission.requested').length === 1, 'request');
-    ui.decide('perm-1', { behavior: 'defer' });
-    expect((await response).status).toBe(204);
-    await waitFor(() => ui.ofKind('permission.resolved').length === 1, 'resolved');
-  });
-
-  it('a request answered in the terminal (PostToolUse, no tool_use_id on the request) is removed and gets 204', async () => {
-    const ui = await connect('ui');
-    const response = post('/hook/permission', subagentRequest());
+    await post('/hook', subagentRequest());
     await waitFor(() => ui.ofKind('permission.requested').length === 1, 'request');
     const request = ui.ofKind('permission.requested')[0]?.request as PermissionRequest;
     expect(request.actorId).toBe('a35a2e5df361b1221');
@@ -178,179 +166,128 @@ describe('permission broker over HTTP + WebSocket (Seam 1)', () => {
     expect((await health()).pendingPermissions).toBe(1);
 
     expect((await post('/hook', postToolUseFor(subagentRequest()))).status).toBe(204);
-    expect((await response).status).toBe(204);
     await waitFor(() => ui.ofKind('permission.resolved').length === 1, 'resolved');
-    expect(ui.ofKind('permission.resolved')[0]).toMatchObject({ id: 'perm-1', by: 'terminal' });
+    expect(ui.ofKind('permission.resolved')[0]).toEqual({
+      kind: 'permission.resolved',
+      id: 'perm-1',
+    });
     expect((await health()).pendingPermissions).toBe(0);
   });
 
-  it.each(['Stop', 'UserPromptSubmit', 'SessionEnd'])(
-    'falls back to %s of the session to clear the request',
+  it.each(['PostToolUseFailure', 'PermissionDenied'])(
+    '%s of the same tool and input resolves the request',
     async (event) => {
       const ui = await connect('ui');
-      const response = post('/hook/permission', mainRequest());
+      await post('/hook', mainRequest());
+      await waitFor(() => ui.ofKind('permission.requested').length === 1, 'request');
+      await post('/hook', { ...mainRequest(), hook_event_name: event, tool_use_id: 'toolu_x' });
+      await waitFor(() => ui.ofKind('permission.resolved').length === 1, 'resolved');
+    },
+  );
+
+  it.each(['Stop', 'UserPromptSubmit', 'SessionEnd'])(
+    '%s of the session resolves the request',
+    async (event) => {
+      const ui = await connect('ui');
+      await post('/hook', mainRequest());
       await waitFor(() => ui.ofKind('permission.requested').length === 1, 'request');
       await post('/hook', { hook_event_name: event, session_id: 'another-session' });
       expect((await health()).pendingPermissions).toBe(1);
       await post('/hook', { hook_event_name: event, session_id: mainRequest().session_id });
-      expect((await response).status).toBe(204);
-      expect(ui.ofKind('permission.resolved')[0]).toMatchObject({ by: 'terminal' });
+      await waitFor(() => ui.ofKind('permission.resolved').length === 1, 'resolved');
+      expect((await health()).pendingPermissions).toBe(0);
     },
   );
 
-  it('SubagentStop clears the subagent request only', async () => {
+  it('SubagentStop resolves the subagent request only', async () => {
     const ui = await connect('ui');
-    const sub = post('/hook/permission', subagentRequest());
+    await post('/hook', subagentRequest());
     await waitFor(() => ui.ofKind('permission.requested').length === 1, 'sub request');
-    const main = post('/hook/permission', mainRequest());
+    await post('/hook', mainRequest());
     await waitFor(() => ui.ofKind('permission.requested').length === 2, 'main request');
     await post('/hook', {
       hook_event_name: 'SubagentStop',
       session_id: mainRequest().session_id,
       agent_id: 'a35a2e5df361b1221',
     });
-    expect((await sub).status).toBe(204);
+    await waitFor(() => ui.ofKind('permission.resolved').length === 1, 'resolved');
+    expect(ui.ofKind('permission.resolved')[0]).toMatchObject({ id: 'perm-1' });
     expect((await health()).pendingPermissions).toBe(1);
-    ui.decide('perm-2', { behavior: 'allow' });
-    expect((await main).status).toBe(200);
   });
 
-  it('resolves two simultaneous requests out of order', async () => {
+  it('keeps two simultaneous requests independent and resolves them out of order', async () => {
     const ui = await connect('ui');
-    const first = post('/hook/permission', mainRequest());
-    await waitFor(() => ui.ofKind('permission.requested').length === 1, 'first');
-    const second = post('/hook/permission', subagentRequest());
-    await waitFor(() => ui.ofKind('permission.requested').length === 2, 'second');
+    await post('/hook', mainRequest());
+    await post('/hook', subagentRequest());
+    await waitFor(() => ui.ofKind('permission.requested').length === 2, 'both');
     expect((await health()).pendingPermissions).toBe(2);
-
-    ui.decide('perm-2', { behavior: 'deny', message: 'second' });
-    const secondAnswer = (await (await second).json()) as {
-      hookSpecificOutput: { decision: unknown };
-    };
-    expect(secondAnswer.hookSpecificOutput.decision).toEqual({
-      behavior: 'deny',
-      message: 'second',
-    });
+    await post('/hook', postToolUseFor(subagentRequest()));
+    await waitFor(() => ui.ofKind('permission.resolved').length === 1, 'second resolved');
+    expect(ui.ofKind('permission.resolved')[0]).toMatchObject({ id: 'perm-2' });
     expect((await health()).pendingPermissions).toBe(1);
-    ui.decide('perm-1', { behavior: 'allow' });
-    expect(
-      ((await (await first).json()) as { hookSpecificOutput: { decision: unknown } })
-        .hookSpecificOutput.decision,
-    ).toEqual({
-      behavior: 'allow',
-    });
   });
 
-  it('a late UI gets the pending requests in permission.snapshot', async () => {
+  it('a late UI gets the pending requests in permission.snapshot, and none once resolved', async () => {
     const ui = await connect('ui');
-    const response = post('/hook/permission', mainRequest());
+    await post('/hook', mainRequest());
     await waitFor(() => ui.ofKind('permission.requested').length === 1, 'request');
     const late = await connect('ui');
     expect(late.ofKind('permission.snapshot')[0]).toMatchObject({ pending: [{ id: 'perm-1' }] });
-    ui.decide('perm-1', { behavior: 'allow' });
-    await response;
+    await post('/hook', { hook_event_name: 'Stop', session_id: mainRequest().session_id });
+    await waitFor(() => late.ofKind('permission.resolved').length === 1, 'resolved');
+    const later = await connect('ui');
+    expect(later.ofKind('permission.snapshot')[0]).toMatchObject({ pending: [] });
   });
 
-  it('releases (204) every pending request when the last UI disconnects', async () => {
+  it('keeps pending requests when the last UI disconnects', async () => {
     const ui = await connect('ui');
-    const other = await connect('ui');
-    const response = post('/hook/permission', mainRequest());
+    await post('/hook', mainRequest());
     await waitFor(() => ui.ofKind('permission.requested').length === 1, 'request');
     ui.socket.close();
     await new Promise((resolve) => setTimeout(resolve, 100));
-    expect((await health()).pendingPermissions).toBe(1); // another UI is still there
-    other.socket.close();
-    expect((await response).status).toBe(204);
-    expect((await health()).pendingPermissions).toBe(0);
+    expect((await health()).pendingPermissions).toBe(1);
   });
 
-  it('answers 204 immediately when no UI is connected', async () => {
-    const plain = await connect(); // a client without the ui role does not count
-    const response = await post('/hook/permission', mainRequest());
-    expect(response.status).toBe(204);
-    expect(plain.ofKind('permission.requested')).toHaveLength(0);
-    expect((await health()).pendingPermissions).toBe(0);
-  });
-
-  it('removes the pending request when the hook connection aborts', async () => {
-    const ui = await connect('ui');
-    const controller = new AbortController();
-    const response = post('/hook/permission', mainRequest(), controller.signal).catch(
-      () => undefined,
-    );
-    await waitFor(() => ui.ofKind('permission.requested').length === 1, 'request');
-    controller.abort();
-    await response;
-    await waitFor(() => ui.ofKind('permission.resolved').length === 1, 'resolved');
-    expect(ui.ofKind('permission.resolved')[0]).toMatchObject({ id: 'perm-1', by: 'hook-gone' });
-    expect((await health()).pendingPermissions).toBe(0);
-  });
-
-  it('ignores decisions sent by a client without the ui role', async () => {
+  it('ignores decision messages from any client', async () => {
     const ui = await connect('ui');
     const plain = await connect();
-    const response = post('/hook/permission', mainRequest());
+    await post('/hook', mainRequest());
     await waitFor(() => ui.ofKind('permission.requested').length === 1, 'request');
-    plain.decide('perm-1', { behavior: 'allow' });
+    for (const client of [ui, plain]) {
+      client.socket.send(
+        JSON.stringify({
+          kind: 'permission.decide',
+          id: 'perm-1',
+          decision: { behavior: 'allow' },
+        }),
+      );
+    }
     await new Promise((resolve) => setTimeout(resolve, 150));
     expect((await health()).pendingPermissions).toBe(1);
-    expect(plain.ofKind('permission.requested')).toHaveLength(0);
-    ui.decide('perm-1', { behavior: 'deny' });
-    expect((await (await response).json()) as unknown).toMatchObject({
-      hookSpecificOutput: { decision: { behavior: 'deny' } },
-    });
-  });
-
-  it('the regular POST /hook never decides a request', async () => {
-    const ui = await connect('ui');
-    const response = post('/hook/permission', mainRequest());
-    await waitFor(() => ui.ofKind('permission.requested').length === 1, 'request');
-    // Posting the PermissionRequest itself, or decision-looking payloads, creates/decides nothing.
-    const posted = await post('/hook', {
-      ...mainRequest(),
-      decision: { behavior: 'allow' },
-      hookSpecificOutput: { decision: { behavior: 'allow' } },
-    });
-    expect(posted.status).toBe(204);
-    await post('/hook', { hook_event_name: 'Notification', session_id: mainRequest().session_id });
-    await new Promise((resolve) => setTimeout(resolve, 150));
-    expect((await health()).pendingPermissions).toBe(1);
-    expect(ui.ofKind('permission.requested')).toHaveLength(1);
-    ui.decide('perm-1', { behavior: 'allow' });
-    expect((await response).status).toBe(200);
+    expect(ui.ofKind('permission.resolved')).toHaveLength(0);
+    expect(ui.socket.readyState).toBe(WebSocket.OPEN);
   });
 
   it('rejects an invalid payload with 400', async () => {
-    expect((await post('/hook/permission', { nope: true })).status).toBe(400);
-  });
-
-  it('releases pending hook connections on stop', async () => {
-    const ui = await connect('ui');
-    const response = post('/hook/permission', mainRequest());
-    await waitFor(() => ui.ofKind('permission.requested').length === 1, 'request');
-    await daemon?.stop();
-    expect((await response).status).toBe(204);
+    expect((await post('/hook', { nope: true })).status).toBe(400);
   });
 });
 
 describe('PermissionBroker (unit)', () => {
   const messages: ServerMessage[] = [];
-  let ui = true;
   const broker = () =>
     createPermissionBroker({
       now: () => Date.parse('2026-10-10T12:00:00.000Z'),
       generateId: () => 'id-1',
-      hasUi: () => ui,
       emit: (m) => messages.push(m),
     });
   beforeEach(() => {
     messages.length = 0;
-    ui = true;
   });
 
-  it('uses the injected clock and id, and summarizes the input instead of exposing it', async () => {
+  it('uses the injected clock and id, and summarizes the input instead of exposing it', () => {
     const b = broker();
-    const outcome = b.request({
+    b.track({
       hook_event_name: 'PermissionRequest',
       session_id: 's1',
       tool_name: 'Bash',
@@ -366,15 +303,20 @@ describe('PermissionBroker (unit)', () => {
         ts: '2026-10-10T12:00:00.000Z',
       },
     ]);
-    expect(b.decide('nope', { behavior: 'allow' })).toBe(false);
-    expect(b.decide('id-1', { behavior: 'allow' })).toBe(true);
-    await expect(outcome).resolves.toEqual({ behavior: 'allow' });
-    expect(b.pendingCount).toBe(0);
+    expect(messages).toEqual([{ kind: 'permission.requested', request: b.snapshot()[0] }]);
+    expect(b.pendingCount).toBe(1);
   });
 
-  it('matches tool_input regardless of key order and releaseAll releases everything', async () => {
+  it('ignores a request without tool name', () => {
     const b = broker();
-    const outcome = b.request({
+    expect(b.track({ hook_event_name: 'PermissionRequest', session_id: 's1' })).toBeUndefined();
+    expect(b.pendingCount).toBe(0);
+    expect(messages).toHaveLength(0);
+  });
+
+  it('matches tool_input regardless of key order', () => {
+    const b = broker();
+    b.track({
       hook_event_name: 'PermissionRequest',
       session_id: 's1',
       tool_name: 'Edit',
@@ -388,31 +330,7 @@ describe('PermissionBroker (unit)', () => {
         tool_input: { b: { d: 3, c: 2 }, a: 1 },
       }),
     ).toBe(1);
-    await expect(outcome).resolves.toBe('release');
-    const again = b.request({
-      hook_event_name: 'PermissionRequest',
-      session_id: 's1',
-      tool_name: 'Read',
-    });
-    b.releaseAll();
-    await expect(again).resolves.toBe('release');
-    expect(messages.filter((m) => m.kind === 'permission.resolved')).toHaveLength(2);
-  });
-
-  it('releases right away without UI and when already aborted', async () => {
-    const b = broker();
-    ui = false;
-    await expect(
-      b.request({ hook_event_name: 'PermissionRequest', session_id: 's1', tool_name: 'Bash' }),
-    ).resolves.toBe('release');
-    ui = true;
-    const aborted = AbortSignal.abort();
-    await expect(
-      b.request(
-        { hook_event_name: 'PermissionRequest', session_id: 's1', tool_name: 'Bash' },
-        aborted,
-      ),
-    ).resolves.toBe('release');
-    expect(messages).toHaveLength(0);
+    expect(messages.at(-1)).toEqual({ kind: 'permission.resolved', id: 'id-1' });
+    expect(b.pendingCount).toBe(0);
   });
 });

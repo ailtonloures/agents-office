@@ -161,24 +161,46 @@ describe('hooks install/uninstall (Seam 3)', { timeout: 30_000 }, () => {
     expect(existsSync(`${settingsPath}.agents-office.bak`)).toBe(false);
   });
 
-  it('installs PermissionRequest with a 24 h timeout and no other event has a timeout', async () => {
+  it('installs PermissionRequest with matcher and no timeout on any event', async () => {
     await install();
     const installed = JSON.parse(readFileSync(settingsPath, 'utf8'));
     const group = installed.hooks.PermissionRequest[0];
+    expect(group.matcher).toBe('*');
     expect(group.hooks).toHaveLength(1);
-    expect(group.hooks[0]).toMatchObject({ type: 'command', timeout: 86400 });
+    expect(group.hooks[0]).toMatchObject({ type: 'command' });
     expect(isOurCommand(group.hooks[0].command)).toBe(true);
     for (const event of HOOK_EVENTS) {
-      if (event === 'PermissionRequest') continue;
       expect(installed.hooks[event][0].hooks[0].timeout).toBeUndefined();
     }
   });
 
-  it('--dry-run shows the PermissionRequest timeout in the diff', async () => {
+  it('--dry-run registers PermissionRequest without a timeout', async () => {
     const result = await install('--dry-run');
     expect(result.stdout).toContain('"PermissionRequest"');
-    expect(result.stdout).toMatch(/\+\s+"timeout": 86400/);
+    expect(result.stdout).not.toContain('"timeout"');
     expect(existsSync(settingsPath)).toBe(false);
+  });
+
+  it('migrates the legacy 24 h timeout away, idempotently, keeping third-party timeouts', async () => {
+    await install();
+    const full = JSON.parse(readFileSync(settingsPath, 'utf8'));
+    full.hooks.PermissionRequest[0].hooks[0].timeout = 86400;
+    full.hooks.PermissionRequest[0].hooks.push({
+      type: 'command',
+      command: 'other',
+      timeout: 86400,
+    });
+    full.hooks.Stop[0].hooks[0].timeout = 30;
+    writeFileSync(settingsPath, `${JSON.stringify(full, null, 2)}\n`);
+
+    expect((await install()).code).toBe(0);
+    const after = JSON.parse(readFileSync(settingsPath, 'utf8'));
+    expect(after.hooks.PermissionRequest[0].hooks[0].timeout).toBeUndefined();
+    expect(after.hooks.PermissionRequest[0].hooks[1].timeout).toBe(86400); // not ours: untouched
+    expect(after.hooks.Stop[0].hooks[0].timeout).toBe(30);
+    const again = readFileSync(settingsPath, 'utf8');
+    await install();
+    expect(readFileSync(settingsPath, 'utf8')).toBe(again);
   });
 
   it('migrates an old install (9 events) by adding only PermissionRequest, then uninstalls byte-identical', async () => {
@@ -254,70 +276,26 @@ describe('hook command: PermissionRequest', () => {
       socket.once('error', reject);
     });
     await waitFor(() => messages.some((m) => m.kind === 'permission.snapshot'));
-    return {
-      messages,
-      requested: () => messages.filter((m) => m.kind === 'permission.requested'),
-      decide: (id: string, decision: Record<string, unknown>) =>
-        socket.send(JSON.stringify({ kind: 'permission.decide', id, decision })),
-    };
+    return { requested: () => messages.filter((m) => m.kind === 'permission.requested') };
   }
 
-  it('prints the allow decision decided by the UI', async () => {
+  it('sends the request, prints nothing and exits 0 right away without waiting for a decision', async () => {
     const port = await startDaemon();
     const ui = await connectUi(port);
-    const result = run(['hook'], permissionPayload(), {
+    const done = await run(['hook'], permissionPayload(), {
       AGENTS_OFFICE_PORT: String(port),
       AGENTS_OFFICE_TERMINAL_ID: 'term-1',
     });
-    await waitFor(() => ui.requested().length === 1);
-    const request = ui.requested()[0]?.request as { id: string };
-    ui.decide(request.id, { behavior: 'allow' });
-    const done = await result;
-    expect(done.code).toBe(0);
-    expect(JSON.parse(done.stdout)).toEqual({
-      hookSpecificOutput: { hookEventName: 'PermissionRequest', decision: { behavior: 'allow' } },
-    });
-  });
-
-  it('prints the deny decision with its message', async () => {
-    const port = await startDaemon();
-    const ui = await connectUi(port);
-    const result = run(['hook'], permissionPayload(), { AGENTS_OFFICE_PORT: String(port) });
-    await waitFor(() => ui.requested().length === 1);
-    const request = ui.requested()[0]?.request as { id: string };
-    ui.decide(request.id, { behavior: 'deny', message: 'not now' });
-    const done = await result;
-    expect(done.code).toBe(0);
-    expect(JSON.parse(done.stdout)).toEqual({
-      hookSpecificOutput: {
-        hookEventName: 'PermissionRequest',
-        decision: { behavior: 'deny', message: 'not now' },
-      },
-    });
-  });
-
-  it('exits 0 with empty stdout when the request is answered in the terminal', async () => {
-    const port = await startDaemon();
-    const ui = await connectUi(port);
-    const result = run(['hook'], permissionPayload(), { AGENTS_OFFICE_PORT: String(port) });
-    await waitFor(() => ui.requested().length === 1);
-    await fetch(`http://127.0.0.1:${port}/hook`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        hook_event_name: 'PostToolUse',
-        session_id: 'perm-session',
-        tool_name: 'Bash',
-        tool_input: { command: 'ls' },
-        tool_use_id: 'toolu_1',
-      }),
-    });
-    const done = await result;
     expect(done.code).toBe(0);
     expect(done.stdout).toBe('');
+    expect(done.ms).toBeLessThan(2000);
+    await waitFor(() => ui.requested().length === 1);
+    expect(ui.requested()[0]).toMatchObject({
+      request: { tool: 'Bash', sessionId: 'perm-session' },
+    });
   });
 
-  it('exits 0 with empty stdout when no UI is connected (204)', async () => {
+  it('exits 0 with empty stdout when no UI is connected', async () => {
     const port = await startDaemon();
     const done = await run(['hook'], permissionPayload(), { AGENTS_OFFICE_PORT: String(port) });
     expect(done.code).toBe(0);
@@ -329,23 +307,6 @@ describe('hook command: PermissionRequest', () => {
     expect(done.code).toBe(0);
     expect(done.stdout).toBe('');
     expect(done.ms).toBeLessThan(500);
-  });
-
-  it('closes the connection on SIGTERM so the broker drops the pending request', async () => {
-    const port = await startDaemon();
-    const ui = await connectUi(port);
-    const child = spawn(process.execPath, [BIN, 'hook'], {
-      env: { ...process.env, HOME: home, AGENTS_OFFICE_PORT: String(port) },
-    });
-    const exited = new Promise<number | null>((resolve) => child.on('close', resolve));
-    child.stdin.end(permissionPayload());
-    await waitFor(() => ui.requested().length === 1);
-    child.kill('SIGTERM');
-    expect(await exited).toBe(0);
-    await waitFor(() => ui.messages.some((m) => m.kind === 'permission.resolved'));
-    expect(ui.messages.find((m) => m.kind === 'permission.resolved')).toMatchObject({
-      by: 'hook-gone',
-    });
   });
 });
 

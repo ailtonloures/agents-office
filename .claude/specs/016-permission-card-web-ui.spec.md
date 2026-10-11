@@ -11,6 +11,8 @@ created: 2026-10-10
 
 # 016 - PermissionCard na web e integração com o HUD
 
+> **Nota (substituída):** parte deste spec foi superada pelos specs 029–031 ([PRD](../prds/permission-notify-only.prd.md)). O `PermissionCard` e as teclas Y/N/T foram removidos; a web mantém só balão `!`, fila de pendências e contador no HUD. A notificação do sistema é fechada pelo desktop ao resolver no terminal (spec 031).
+
 ## Overview
 Mostra os pedidos pendentes na web: balão `!` no personagem solicitante, cartão sobre o escritório com ferramenta/resumo/projeto e os botões Aprovar, Negar (motivo opcional) e Deixar para o terminal, fila de vários pedidos e contagem no HUD. O `OfficeClient` passa a se identificar como UI e a enviar `permission.decide`.
 

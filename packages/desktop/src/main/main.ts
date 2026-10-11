@@ -31,6 +31,7 @@ import {
 } from './hooksService';
 import { registerTerminalIpc } from './ipc';
 import { classifyNavigation } from './navigation';
+import { NotificationCenter } from './notificationCenter';
 import { PermissionWatcher } from './permissionWatcher';
 import { probeHealth, resolvePort } from './probe';
 import { ProjectCatalog } from './projectCatalog';
@@ -228,12 +229,14 @@ function main(): void {
     trusted,
   });
 
-  const notify = (title: string, body: string, onClick?: () => void): void => {
-    if (!Notification.isSupported()) return;
-    const notification = new Notification({ title, body });
-    if (onClick) notification.on('click', onClick);
-    notification.show();
-  };
+  const notifications = new NotificationCenter({
+    isSupported: () => Notification.isSupported(),
+    create: (options) => new Notification(options),
+    // Electron's close() is a no-op on some Linux notification servers: offer the native button.
+    canClose: () => process.platform !== 'linux',
+  });
+  const notify = (title: string, body: string, onClick?: () => void): void =>
+    notifications.notify(title, body, onClick);
 
   const trayAdapter: TrayLike = {
     setToolTip: (text) => tray?.setToolTip(text),
@@ -283,6 +286,7 @@ function main(): void {
       createSocket: (url) => new WebSocket(url) as never,
       onUpdate: (update) => {
         shellState?.setPending(update.pending);
+        if (update.resolvedIds) shellState?.onPermissionResolved(update.resolvedIds);
         if (update.notice) shellState?.onPermissionNotice(update.notice);
       },
     });
@@ -303,7 +307,7 @@ function main(): void {
         if (status.state === 'external' && previous.state !== 'external') {
           notify(
             'Conectado a um daemon existente',
-            `Já há um agents-office na porta ${status.port} (v${status.version}). A aprovação de permissões pela interface depende dele.`,
+            `Já há um agents-office na porta ${status.port} (v${status.version}). Os pedidos de permissão continuam sendo respondidos no terminal; os avisos dependem dele.`,
           );
         }
         break;
@@ -395,7 +399,9 @@ function main(): void {
     shellState = new Shell({
       window,
       tray: trayAdapter,
-      notify: (notice, onClick) => notify(notice.title, notice.body, onClick),
+      notify: (notice, onClick) =>
+        notifications.notifyPermission(notice.id, notice.title, notice.body, onClick),
+      dismiss: (id) => notifications.dismiss(id),
       quit: quitInteractively,
     });
     void window.loadURL(errorPageUrl('Agents Office', 'Iniciando o daemon...'));

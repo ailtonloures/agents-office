@@ -6,12 +6,11 @@ import { fileURLToPath } from 'node:url';
 import {
   createEmptyModel,
   type EventMessage,
+  isLive,
   type OfficeEvent,
   type OfficeModel,
   type PermissionSnapshotMessage,
-  parseClientMessage,
   parseHookPayload,
-  permissionHookOutput,
   type ServerMessage,
   type SnapshotMessage,
 } from '@agents-office/shared';
@@ -112,7 +111,7 @@ export function createDaemon(options: DaemonOptions): Daemon {
   const app = Fastify({ logger: false });
   type Client = { send(data: string): void; readyState: number };
   const clients = new Set<Client>();
-  /** Sockets that connected as `/stream?role=ui`: the only ones that receive and send permissions. */
+  /** Sockets that connected as `/stream?role=ui`: the only ones that receive permission messages. */
   const uiClients = new Set<Client>();
   let model: OfficeModel = createEmptyModel();
   let hooksSeenAt: string | undefined;
@@ -155,7 +154,6 @@ export function createDaemon(options: DaemonOptions): Daemon {
   const broker = createPermissionBroker({
     now: () => clock.now(),
     generateId: options.generateId ?? randomUUID,
-    hasUi: () => uiClients.size > 0,
     emit: (message) => sendTo(uiClients, message),
     log,
   });
@@ -174,8 +172,8 @@ export function createDaemon(options: DaemonOptions): Daemon {
     instance.get('/health', async () => ({
       ok: true,
       version: options.version ?? '0.0.0',
-      sessions: Object.keys(model.sessions).length,
-      agents: Object.keys(model.agents).length,
+      sessions: Object.values(model.sessions).filter(isLive).length,
+      agents: Object.values(model.agents).filter(isLive).length,
       pendingPermissions: broker.pendingCount,
       ...(hooksSeenAt !== undefined ? { hooksSeenAt } : {}),
     }));
@@ -187,32 +185,27 @@ export function createDaemon(options: DaemonOptions): Daemon {
       const receivedAt = new Date(clock.now()).toISOString();
       hooksSeenAt = receivedAt;
       const payload = parsed.data;
-      // A regular hook can only prove a request was answered in the terminal; it never decides.
+      if (payload.hook_event_name === 'PermissionRequest') {
+        // Notify-only: register the pending request and answer at once. Never blocks the hook.
+        broker.track(payload);
+        return reply.code(204).send();
+      }
+      // A regular hook can only prove a request was answered in the terminal.
       broker.resolveExternally(payload);
       // Answer right away; Claude Code waits on the hook command.
       setImmediate(() => ingest({ kind: 'hook', payload, receivedAt }));
       return reply.code(204).send();
     });
 
-    // Long-poll: the connection is held until the user decides, the request is released or the
-    // hook process goes away. No server-side timeout applies.
+    // Legacy blocking route of old hooks (spec 015): same as `/hook` for a permission request,
+    // answered at once without a decision so an old hook can never hold the terminal prompt.
     instance.post('/hook/permission', async (request, reply) => {
       const parsed = parseHookPayload(request.body);
       if (!parsed.success)
         return reply.code(400).send({ ok: false, error: 'invalid hook payload' });
-      request.raw.setTimeout(0);
-      request.raw.socket.setTimeout(0);
-      const aborter = new AbortController();
-      const onClose = () => {
-        if (!reply.raw.writableEnded) aborter.abort();
-      };
-      reply.raw.once('close', onClose);
-      const outcome = await broker.request(parsed.data, aborter.signal);
-      reply.raw.off('close', onClose);
-      if (aborter.signal.aborted) return reply;
-      const output = outcome === 'release' ? null : permissionHookOutput(outcome);
-      if (output === null) return reply.code(204).send();
-      return reply.code(200).send(output);
+      hooksSeenAt = new Date(clock.now()).toISOString();
+      broker.track(parsed.data);
+      return reply.code(204).send();
     });
 
     instance.get('/stream', { websocket: true }, (socket, request) => {
@@ -220,7 +213,7 @@ export function createDaemon(options: DaemonOptions): Daemon {
       clients.add(socket);
       const dropped = () => {
         clients.delete(socket);
-        if (uiClients.delete(socket) && uiClients.size === 0) broker.releaseAll();
+        uiClients.delete(socket);
       };
       socket.on('close', dropped);
       socket.on('error', dropped);
@@ -233,17 +226,7 @@ export function createDaemon(options: DaemonOptions): Daemon {
         pending: broker.snapshot(),
       };
       socket.send(JSON.stringify(permissions));
-      socket.on('message', (data: Buffer) => {
-        let decoded: unknown;
-        try {
-          decoded = JSON.parse(data.toString());
-        } catch {
-          return;
-        }
-        const message = parseClientMessage(decoded);
-        if (message.success && message.data.kind === 'permission.decide')
-          broker.decide(message.data.id, message.data.decision);
-      });
+      // Client messages (e.g. an old `permission.decide`) are ignored: decisions happen in the terminal.
     });
 
     instance.get('/skin/*', async (request, reply) => {
@@ -290,7 +273,6 @@ export function createDaemon(options: DaemonOptions): Daemon {
       if (timer) clearInterval(timer);
       await watcher.stop();
       uiClients.clear();
-      broker.releaseAll();
       for (const client of app.websocketServer?.clients ?? []) client.terminate();
       clients.clear();
       if (started) await app.close();

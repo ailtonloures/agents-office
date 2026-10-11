@@ -30,22 +30,39 @@ function hookPayload(event: string, extra: Record<string, unknown> = {}) {
   };
 }
 
-/** Starts the long-poll of the PermissionRequest hook; the promise settles with the daemon's answer. */
+/** The PermissionRequest hook is notify-only: the daemon registers the request and answers at once. */
 function askPermission(extra: Record<string, unknown> = {}) {
-  return fetch(`${daemon.url}/hook/permission`, {
+  return fetch(`${daemon.url}/hook`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(hookPayload('PermissionRequest', extra)),
   });
 }
 
-async function body(response: Response) {
-  return response.status === 200 ? ((await response.json()) as unknown) : undefined;
+/** What the terminal reports once the user answered there: the tool ran. */
+function answerInTerminal(extra: Record<string, unknown> = {}) {
+  return fetch(`${daemon.url}/hook`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(
+      hookPayload('PostToolUse', {
+        tool_use_id: 'toolu_x',
+        tool_response: { stdout: 'ok' },
+        ...extra,
+      }),
+    ),
+  });
 }
 
 const queueLength = (page: Page) =>
   page.evaluate(() => window.__office?.permissions.queue.length ?? 0);
-const cardOpen = (page: Page) => page.evaluate(() => window.__office?.permissions.cardOpen);
+
+/** The card is gone for good: the debug state no longer has any trace of it. */
+const hasCardState = (page: Page) =>
+  page.evaluate(() => {
+    const permissions = window.__office?.permissions as Record<string, unknown> | undefined;
+    return permissions ? 'cardOpen' in permissions || 'cardRect' in permissions : false;
+  });
 
 /** An office with the Tech Lead in it, ready for permission requests. */
 async function startOffice(page: Page): Promise<void> {
@@ -56,135 +73,79 @@ async function startOffice(page: Page): Promise<void> {
     .toBe(1);
 }
 
-test('permission 1. approving with Y answers the hook with allow and clears the card', async ({
+test('permission 1. a request shows the balloon counter and no card, and the hook returns at once', async ({
   page,
 }) => {
   await startOffice(page);
-  expect(await cardOpen(page)).toBe(false);
-  const answer = askPermission();
+  expect(await queueLength(page)).toBe(0);
+  const response = await askPermission();
+  expect(response.status).toBe(204);
+  expect(await response.text()).toBe('');
 
-  await expect.poll(() => cardOpen(page)).toBe(true);
+  await expect.poll(() => queueLength(page)).toBe(1);
   await expect.poll(() => hudText(page)).toContain('! 1');
   const request = await page.evaluate(() => window.__office?.permissions.queue[0]);
   expect(request).toMatchObject({
     tool: 'Bash',
     inputSummary: expect.stringContaining('pnpm test'),
   });
+  expect(await hasCardState(page)).toBe(false);
   await page.waitForTimeout(600);
-  await shot(page, 'perm-1-card');
+  await shot(page, 'perm-1-request');
 
-  await page.keyboard.press('y');
-  const response = await answer;
-  expect(response.status).toBe(200);
-  expect(await body(response)).toEqual({
-    hookSpecificOutput: { hookEventName: 'PermissionRequest', decision: { behavior: 'allow' } },
-  });
-  await expect.poll(() => cardOpen(page)).toBe(false);
-  await expect.poll(() => hudText(page)).toContain('! 0');
-});
-
-test('permission 2. denying with N asks for a reason and sends it to Claude', async ({ page }) => {
-  await startOffice(page);
-  const answer = askPermission();
-  await expect.poll(() => cardOpen(page)).toBe(true);
-
-  await page.keyboard.press('n');
-  await expect.poll(() => page.evaluate(() => window.__office?.permissions.typing)).toBe(true);
-  await page.keyboard.type('use pnpm instead', { delay: 25 });
+  // The old Y/N/T shortcuts do nothing: the request stays until the terminal answers.
+  for (const key of ['y', 'n', 't']) await page.keyboard.press(key);
   await page.waitForTimeout(300);
-  await shot(page, 'perm-2-reason');
-  await page.keyboard.press('Enter');
-
-  const response = await answer;
-  expect(await body(response)).toEqual({
-    hookSpecificOutput: {
-      hookEventName: 'PermissionRequest',
-      decision: { behavior: 'deny', message: 'use pnpm instead' },
-    },
-  });
-  await expect.poll(() => cardOpen(page)).toBe(false);
+  expect(await queueLength(page)).toBe(1);
+  await expect.poll(() => hudText(page)).toContain('! 1');
 });
 
-test('permission 3. leaving it to the terminal (T) dismisses the card with an empty answer', async ({
-  page,
-}) => {
+test('permission 2. an answer given in the terminal removes the request', async ({ page }) => {
   await startOffice(page);
-  const answer = askPermission();
-  await expect.poll(() => cardOpen(page)).toBe(true);
-  await page.keyboard.press('t');
-  const response = await answer;
-  expect(response.status).toBe(204);
-  await expect.poll(() => cardOpen(page)).toBe(false);
-  await expect.poll(() => hudText(page)).toContain('! 0');
-});
-
-test('permission 4. a queue shows the oldest first and the HUD matches it', async ({ page }) => {
-  await startOffice(page);
-  const first = askPermission({ tool_input: { command: 'first command' } });
+  expect((await askPermission()).status).toBe(204);
   await expect.poll(() => queueLength(page)).toBe(1);
-  const second = askPermission({ tool_name: 'Write', tool_input: { file_path: '/tmp/x.txt' } });
+
+  expect((await answerInTerminal()).status).toBe(204);
+  await expect.poll(() => queueLength(page)).toBe(0);
+  await expect.poll(() => hudText(page)).toContain('! 0');
+  await shot(page, 'perm-2-resolved');
+});
+
+test('permission 3. a queue counts every pending request, oldest first', async ({ page }) => {
+  await startOffice(page);
+  await askPermission({ tool_input: { command: 'first command' } });
+  await expect.poll(() => queueLength(page)).toBe(1);
+  await askPermission({ tool_name: 'Write', tool_input: { file_path: '/tmp/x.txt' } });
   await expect.poll(() => queueLength(page)).toBe(2);
   await expect.poll(() => hudText(page)).toContain('! 2');
-  const ids = await page.evaluate(() => window.__office?.permissions.queue.map((r) => r.id) ?? []);
-  await shot(page, 'perm-4-queue');
+  const tools = await page.evaluate(
+    () => window.__office?.permissions.queue.map((r) => r.tool) ?? [],
+  );
+  expect(tools).toEqual(['Bash', 'Write']);
+  await shot(page, 'perm-3-queue');
 
-  // The debug action decides by id, like a click on the card would.
-  expect(
-    await page.evaluate(
-      (id) => window.__office?.actions?.decidePermission(id, { behavior: 'allow' }),
-      ids[0] as string,
-    ),
-  ).toBe(true);
-  expect((await first).status).toBe(200);
+  // Each tool result answers one request (the one with the same tool and input).
+  await answerInTerminal({ tool_input: { command: 'first command' } });
+  await expect.poll(() => queueLength(page)).toBe(1);
   await expect.poll(() => hudText(page)).toContain('! 1');
-  expect(await cardOpen(page)).toBe(true);
-  expect(await page.evaluate(() => window.__office?.permissions.queue[0]?.tool)).toBe('Write');
-
-  await page.keyboard.press('n');
-  await page.keyboard.press('Enter'); // no reason: a plain deny
-  const response = await second;
-  expect(await body(response)).toEqual({
-    hookSpecificOutput: { hookEventName: 'PermissionRequest', decision: { behavior: 'deny' } },
-  });
+  await answerInTerminal({ tool_name: 'Write', tool_input: { file_path: '/tmp/x.txt' } });
   await expect.poll(() => queueLength(page)).toBe(0);
 });
 
-test('permission 5. an answer given in the terminal closes the card on its own', async ({
-  page,
-}) => {
-  await startOffice(page);
-  const answer = askPermission();
-  await expect.poll(() => cardOpen(page)).toBe(true);
-
-  // The user answered the terminal prompt: the tool ran and Claude Code reports PostToolUse.
-  const post = await fetch(`${daemon.url}/hook`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(
-      hookPayload('PostToolUse', { tool_use_id: 'toolu_x', tool_response: { stdout: 'ok' } }),
-    ),
-  });
-  expect(post.status).toBe(204);
-  expect((await answer).status).toBe(204);
-  await expect.poll(() => cardOpen(page)).toBe(false);
-  await expect.poll(() => hudText(page)).toContain('! 0');
-});
-
-test('permission 6. a second window opened later gets the pending request (snapshot)', async ({
+test('permission 4. a second window opened later gets the pending request (snapshot)', async ({
   page,
   context,
 }) => {
   await startOffice(page);
-  const answer = askPermission();
-  await expect.poll(() => cardOpen(page)).toBe(true);
+  await askPermission();
+  await expect.poll(() => queueLength(page)).toBe(1);
 
   const other = await context.newPage();
   await openOffice(other, daemon.url);
-  await expect.poll(() => cardOpen(other)).toBe(true);
-  expect(await queueLength(other)).toBe(1);
-  await other.keyboard.press('y');
-  expect((await answer).status).toBe(200);
-  // Both windows drop the card: the answering one at once, the other through permission.resolved.
-  await expect.poll(() => cardOpen(page)).toBe(false);
-  await expect.poll(() => cardOpen(other)).toBe(false);
+  await expect.poll(() => queueLength(other)).toBe(1);
+  await expect.poll(() => hudText(other)).toContain('! 1');
+
+  await answerInTerminal();
+  await expect.poll(() => queueLength(page)).toBe(0);
+  await expect.poll(() => queueLength(other)).toBe(0);
 });

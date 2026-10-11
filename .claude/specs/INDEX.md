@@ -32,9 +32,10 @@ PRD: [agents-office.prd.md](../prds/agents-office.prd.md)
 | 026 | Estilo de botão compartilhado com efeito de clique | high | done | feature, web, ui, css | — |
 | 027 | Layout da modal "Hooks do Claude Code" | medium | done | feature, web, ui, css, hooks | 026 |
 | 028 | Layout da modal "Iniciar sessão" sem rolagem horizontal | high | done | feature, web, ui, css, projects | 026 |
-| 029 | Hook PermissionRequest não bloqueante e daemon rastreador | high | pending | feature, daemon, shared, hooks, testing | 014, 015 |
-| 030 | Remover o PermissionCard da web mantendo balão e contador | high | pending | feature, web, ui, testing | 029 |
-| 031 | Fechar a notificação do sistema ao resolver no terminal | high | pending | feature, desktop, notifications, docs, testing | 029 |
+| 029 | Hook PermissionRequest não bloqueante e daemon rastreador | high | done | feature, daemon, shared, hooks, testing | 014, 015 |
+| 030 | Remover o PermissionCard da web mantendo balão e contador | high | done | feature, web, ui, testing | 029 |
+| 031 | Fechar a notificação do sistema ao resolver no terminal | high | done | feature, desktop, notifications, docs, testing | 029 |
+| 032 | Contador de sessões e agentes conta apenas atores vivos | high | done | feature, web, daemon, shared, testing | — |
 
 Fases do PRD: 001–002 = Fase 0 (spike) · 003–011 = Fase 1 (MVP) · 006, 012 = parte da Fase 2. Replay, minimapa e Tauri (Fase 3) ficam fora deste lote.
 
