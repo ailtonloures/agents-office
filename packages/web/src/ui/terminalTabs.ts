@@ -16,12 +16,18 @@ export interface TerminalTab {
 
 export type FocusOwner = 'player' | 'terminal';
 
+export type PanelDock = 'bottom' | 'left' | 'right';
+
 export interface PanelModel {
   tabs: readonly TerminalTab[];
   activeId: string | undefined;
   collapsed: boolean;
   /** Height of the expanded panel in CSS pixels. */
   height: number;
+  /** Side of the window the panel is docked to. */
+  dock: PanelDock;
+  /** Width of the expanded panel in CSS pixels (used when docked left or right). */
+  width: number;
   /** Who receives the keyboard: the player (Phaser canvas) or the active terminal. */
   focus: FocusOwner;
 }
@@ -30,11 +36,47 @@ export const DEFAULT_PANEL_HEIGHT = 280;
 export const MIN_PANEL_HEIGHT = 120;
 /** The office keeps at least this many pixels of height, whatever the panel size. */
 export const MIN_OFFICE_HEIGHT = 160;
+export const DEFAULT_PANEL_WIDTH = 480;
+export const MIN_PANEL_WIDTH = 240;
+/** The office keeps at least this many pixels of width, whatever the panel size. */
+export const MIN_OFFICE_WIDTH = 256;
 /** Height of the tab strip, which stays visible when the panel is collapsed. */
 export const TAB_BAR_HEIGHT = 30;
 
-export function createPanelModel(height = DEFAULT_PANEL_HEIGHT): PanelModel {
-  return { tabs: [], activeId: undefined, collapsed: false, height, focus: 'player' };
+export function createPanelModel(
+  height = DEFAULT_PANEL_HEIGHT,
+  width = DEFAULT_PANEL_WIDTH,
+  dock: PanelDock = 'bottom',
+): PanelModel {
+  return { tabs: [], activeId: undefined, collapsed: false, height, dock, width, focus: 'player' };
+}
+
+export interface StoredPanel {
+  height?: number;
+  width?: number;
+  dock: PanelDock;
+  collapsed: boolean;
+}
+
+const DOCKS: readonly PanelDock[] = ['bottom', 'left', 'right'];
+
+function validSize(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : undefined;
+}
+
+/**
+ * Reads the persisted panel state. Older values without `dock`/`width` assume `bottom` and the
+ * default width (left undefined); invalid fields are discarded.
+ */
+export function parseStoredPanel(raw: unknown): StoredPanel {
+  const value = typeof raw === 'object' && raw !== null ? (raw as Record<string, unknown>) : {};
+  const dock = DOCKS.find((d) => d === value.dock) ?? 'bottom';
+  const stored: StoredPanel = { dock, collapsed: value.collapsed === true };
+  const height = validSize(value.height);
+  const width = validSize(value.width);
+  if (height !== undefined) stored.height = height;
+  if (width !== undefined) stored.width = width;
+  return stored;
 }
 
 /** Last path segment of the working directory (`/a/b/` -> `b`, `C:\a\b` -> `b`). */
@@ -142,10 +184,42 @@ export function setHeight(model: PanelModel, height: number, windowHeight: numbe
   return { ...model, height: clampHeight(height, windowHeight) };
 }
 
-/** Pixels the panel takes from the window (0 without tabs). */
+/** Keeps the panel between its minimum and what leaves the office its minimum width. */
+export function clampWidth(width: number, windowWidth: number): number {
+  const max = Math.max(MIN_PANEL_WIDTH, windowWidth - MIN_OFFICE_WIDTH);
+  return Math.round(Math.min(max, Math.max(MIN_PANEL_WIDTH, width)));
+}
+
+export function setWidth(model: PanelModel, width: number, windowWidth: number): PanelModel {
+  return { ...model, width: clampWidth(width, windowWidth) };
+}
+
+export function setDock(model: PanelModel, dock: PanelDock): PanelModel {
+  return model.dock === dock ? model : { ...model, dock };
+}
+
+/** Minimizes the panel (idempotent); the keyboard goes back to the player. */
+export function collapse(model: PanelModel): PanelModel {
+  return model.collapsed ? model : { ...model, collapsed: true, focus: 'player' };
+}
+
+export interface OccupiedSize {
+  axis: 'height' | 'width';
+  size: number;
+}
+
+/** Space the panel takes from the window: height when docked at the bottom, width on the sides. */
+export function panelOccupiedSize(model: PanelModel): OccupiedSize {
+  const axis = model.dock === 'bottom' ? 'height' : 'width';
+  if (model.tabs.length === 0) return { axis, size: 0 };
+  if (model.collapsed) return { axis, size: TAB_BAR_HEIGHT };
+  return { axis, size: axis === 'height' ? model.height : model.width };
+}
+
+/** Pixels of height the panel takes from the window (0 without tabs or when docked sideways). */
 export function panelOccupiedHeight(model: PanelModel): number {
-  if (model.tabs.length === 0) return 0;
-  return model.collapsed ? TAB_BAR_HEIGHT : model.height;
+  const { axis, size } = panelOccupiedSize(model);
+  return axis === 'height' ? size : 0;
 }
 
 /** Who gets the keys: the terminal only when it is visible and focused. */

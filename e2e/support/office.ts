@@ -17,6 +17,7 @@ declare global {
       /** True while the overview (M) is active. */
       overview: boolean;
       hud: { text: string };
+      rooms: { id: string; w: number; h: number }[];
       /** Screen-fixed UI in game pixels and the cameras that draw it (spec 037). */
       ui: {
         screen: { width: number; height: number };
@@ -33,6 +34,7 @@ declare global {
       actions?: {
         approachCharacter(id: string): boolean;
         approachBoard(): boolean;
+        clientPointOf(id: string): { x: number; y: number } | undefined;
         approachDoor(roomId: string): boolean;
       };
     };
@@ -42,7 +44,10 @@ declare global {
       activeId: string | undefined;
       collapsed: boolean;
       height: number;
+      width: number;
+      dock: 'bottom' | 'left' | 'right';
       occupied: number;
+      occupiedSize: number;
       focus: 'player' | 'terminal';
       keyboard: 'player' | 'terminal';
       cols: number;

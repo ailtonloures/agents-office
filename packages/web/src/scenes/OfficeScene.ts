@@ -7,6 +7,7 @@ import type { OfficeClient } from '../net/officeClient';
 import { PlayerAvatar } from '../player/player';
 import { DirectionInput, directionBetween } from '../player/playerMotion';
 import { type Direction, type LoadedSkin, SKIN_KEYS, tileFrame } from '../skin';
+import { decideClick } from '../ui/clickDecision';
 import { DialogBox } from '../ui/dialogBox';
 import { type DialogAction, pagesFor, sessionActions } from '../ui/dialogContent';
 import { hallOfFamePages } from '../ui/hallOfFame';
@@ -239,6 +240,20 @@ export class OfficeScene extends Phaser.Scene {
         this.jumpTo(spot.tile, spot.facing);
         return true;
       },
+      clientPointOf: (id) => {
+        const world = this.controller.centerOf(id);
+        if (!world) return undefined;
+        const camera = this.cameras.main;
+        const box = this.game.canvas.getBoundingClientRect();
+        return {
+          x:
+            box.left +
+            ((world.x - camera.worldView.x) * camera.zoom * box.width) / this.scale.width,
+          y:
+            box.top +
+            ((world.y - camera.worldView.y) * camera.zoom * box.height) / this.scale.height,
+        };
+      },
       approachDoor: (roomId) => {
         const front = roomFront(this.layout, roomId);
         if (!front) return false;
@@ -467,10 +482,26 @@ export class OfficeScene extends Phaser.Scene {
       this.dialog.advance();
       return;
     }
+    const desktop = this.desktopActions();
     // pointer.worldX/Y follow the topmost camera (the UI one, zoom 1): project through the main one.
     const world = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
     const target = this.controller.characterAtPoint(world.x, world.y);
-    if (target) this.openDialog(target);
+    const session = target ? this.client.getModel().sessions[target] : undefined;
+    const decision = decideClick({
+      target: session ? 'tech-lead' : target ? 'other' : 'empty',
+      session,
+      desktop: desktop !== undefined,
+      // The scene cannot see the tabs: openTerminal() answers false for a closed one.
+      tabExists: true,
+      overlayOpen: false,
+    });
+    if (decision === 'collapse') desktop?.collapseTerminal();
+    else if (target && decision === 'open-terminal' && session?.terminalId) {
+      if (!desktop?.openTerminal(session.terminalId)) {
+        this.openDialog(target);
+        this.showToast('TERMINAL FECHADO', 0xe8c14a);
+      }
+    } else if (target && decision === 'open-dialog') this.openDialog(target);
   }
 
   private openDialog(id: string): void {
@@ -529,7 +560,11 @@ export class OfficeScene extends Phaser.Scene {
 
   /** Regenerates the layout when its inputs changed and applies the difference to the scene. */
   private refreshLayout(): void {
-    const input = this.layoutInputs.build(this.client.getModel(), this.controller.sessionsInUse());
+    const input = this.layoutInputs.build(
+      this.client.getModel(),
+      this.controller.sessionsInUse(),
+      this.controller.agentsInUse(),
+    );
     const key = JSON.stringify(input);
     if (key === this.layoutKey) return;
     this.layoutKey = key;

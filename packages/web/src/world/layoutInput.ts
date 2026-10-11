@@ -1,4 +1,4 @@
-import type { OfficeModel } from '@agents-office/shared';
+import { isLive, type OfficeModel } from '@agents-office/shared';
 import type { LayoutProjectInput } from './roomLayout';
 
 interface KnownSession {
@@ -9,7 +9,8 @@ interface KnownSession {
 /**
  * Turns the model into layout generator input and keeps rooms alive while characters are still
  * leaving: the daemon drops a session (and its project) from the model the moment it ends, but the
- * scene needs the room, its desks and its door until everybody has walked out. Sessions in
+ * scene needs the room, its desks and its door until everybody has walked out. Finished agents only
+ * count while `retainedAgents` still holds their character. Sessions in
  * `retained` that are no longer in the model are kept with their last known shape and order.
  */
 export class LayoutInputBuilder {
@@ -19,7 +20,11 @@ export class LayoutInputBuilder {
   private readonly sessions = new Map<string, KnownSession>();
   private readonly order = new Map<string, string[]>();
 
-  build(model: OfficeModel, retained: ReadonlySet<string> = new Set()): LayoutProjectInput[] {
+  build(
+    model: OfficeModel,
+    retained: ReadonlySet<string> = new Set(),
+    retainedAgents: ReadonlySet<string> = new Set(),
+  ): LayoutProjectInput[] {
     const fresh = Object.values(model.projects)
       .filter((project) => !this.firstSeen.has(project.id))
       .sort(
@@ -37,9 +42,11 @@ export class LayoutInputBuilder {
       for (const id of ids) {
         const session = model.sessions[id];
         if (!session) continue;
-        const agentCount = session.agentIds.filter(
-          (agentId) => model.agents[agentId] && model.agents[agentId].status !== 'ended',
-        ).length;
+        // Finished agents stay in the model, but their desk goes once the character has left.
+        const agentCount = session.agentIds.filter((agentId) => {
+          const agent = model.agents[agentId];
+          return agent && (isLive(agent) || retainedAgents.has(agentId));
+        }).length;
         this.sessions.set(id, { projectId: project.id, agentCount });
       }
     }

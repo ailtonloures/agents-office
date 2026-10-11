@@ -45,7 +45,7 @@ export function mountZoomControls(game: Phaser.Game, parent: HTMLElement): void 
     button.textContent = text;
     button.setAttribute('aria-label', label);
     button.title = label;
-    // Keep the click away from the canvas (the avatar walks to clicked tiles).
+    // Keep the click away from the canvas (a click on the canvas selects or dismisses characters).
     for (const type of ['pointerdown', 'mousedown', 'click'])
       button.addEventListener(type, (event) => event.stopPropagation());
     button.addEventListener('click', () => game.events.emit(ZOOM_STEP_EVENT, direction));

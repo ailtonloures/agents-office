@@ -53,6 +53,8 @@ export interface DebugState {
   actions?: {
     approachCharacter(id: string): boolean;
     approachBoard(): boolean;
+    /** Page (client) coordinates of the centre of a character, to click on it. */
+    clientPointOf(id: string): { x: number; y: number } | undefined;
     /** Teleports to the corridor tile facing the room's door; false when the room is unknown. */
     approachDoor(roomId: string): boolean;
   };

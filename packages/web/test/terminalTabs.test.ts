@@ -4,21 +4,29 @@ import {
   addTab,
   applyActivity,
   clampHeight,
+  clampWidth,
   clipboardAction,
+  collapse,
   createPanelModel,
   exitMessage,
   isToggleShortcut,
   keyboardOwner,
   MIN_OFFICE_HEIGHT,
+  MIN_OFFICE_WIDTH,
   MIN_PANEL_HEIGHT,
+  MIN_PANEL_WIDTH,
   markExited,
   needsCloseConfirm,
   panelOccupiedHeight,
+  panelOccupiedSize,
+  parseStoredPanel,
   projectName,
   removeTab,
   setActive,
+  setDock,
   setFocus,
   setHeight,
+  setWidth,
   TAB_BAR_HEIGHT,
   type TerminalTab,
   tabTitle,
@@ -181,5 +189,81 @@ describe('terminalBridgeOf', () => {
   it('returns the bridge inside the shell', () => {
     const terminal = { start: () => Promise.resolve() };
     expect(terminalBridgeOf({ agentsOfficeDesktop: { desktop: true, terminal } })).toBe(terminal);
+  });
+});
+
+describe('dock and width', () => {
+  const withTabs = (m = createPanelModel()) => addTab(m, tab('1'));
+
+  it('defaults to the bottom with the default width', () => {
+    const m = createPanelModel();
+    expect(m.dock).toBe('bottom');
+    expect(m.width).toBe(480);
+  });
+
+  it('changes the dock and keeps the model when unchanged', () => {
+    const m = createPanelModel();
+    expect(setDock(m, 'left').dock).toBe('left');
+    expect(setDock(m, 'bottom')).toBe(m);
+  });
+
+  it('clamps the width between the panel minimum and the office minimum', () => {
+    expect(clampWidth(10, 1200)).toBe(MIN_PANEL_WIDTH);
+    expect(clampWidth(5000, 1200)).toBe(1200 - MIN_OFFICE_WIDTH);
+    expect(clampWidth(300.4, 1200)).toBe(300);
+    expect(clampWidth(500, 300)).toBe(MIN_PANEL_WIDTH);
+    expect(setWidth(createPanelModel(), 9999, 1000).width).toBe(1000 - MIN_OFFICE_WIDTH);
+  });
+
+  it('reports the occupied size by dock', () => {
+    const m = withTabs();
+    expect(panelOccupiedSize(createPanelModel())).toEqual({ axis: 'height', size: 0 });
+    expect(panelOccupiedSize(m)).toEqual({ axis: 'height', size: m.height });
+    const left = setDock(m, 'left');
+    expect(panelOccupiedSize(left)).toEqual({ axis: 'width', size: m.width });
+    expect(panelOccupiedSize(setDock(m, 'right'))).toEqual({ axis: 'width', size: m.width });
+    expect(panelOccupiedSize(collapse(left))).toEqual({ axis: 'width', size: TAB_BAR_HEIGHT });
+    expect(panelOccupiedSize(collapse(m))).toEqual({ axis: 'height', size: TAB_BAR_HEIGHT });
+    expect(panelOccupiedSize(setDock(createPanelModel(), 'right'))).toEqual({
+      axis: 'width',
+      size: 0,
+    });
+  });
+
+  it('collapses idempotently and returns the keyboard to the player', () => {
+    const focused = setFocus(withTabs(), 'terminal');
+    const once = collapse(focused);
+    expect(once.collapsed).toBe(true);
+    expect(once.focus).toBe('player');
+    expect(collapse(once)).toBe(once);
+  });
+});
+
+describe('stored panel', () => {
+  it('migrates old values without dock and width', () => {
+    expect(parseStoredPanel({ height: 300, collapsed: true })).toEqual({
+      height: 300,
+      dock: 'bottom',
+      collapsed: true,
+    });
+  });
+
+  it('keeps valid dock and width', () => {
+    expect(parseStoredPanel({ height: 200, width: 500, dock: 'right', collapsed: false })).toEqual({
+      height: 200,
+      width: 500,
+      dock: 'right',
+      collapsed: false,
+    });
+  });
+
+  it('discards invalid values', () => {
+    expect(parseStoredPanel({ height: -3, width: 'x', dock: 'top', collapsed: 'yes' })).toEqual({
+      dock: 'bottom',
+      collapsed: false,
+    });
+    expect(parseStoredPanel(null)).toEqual({ dock: 'bottom', collapsed: false });
+    expect(parseStoredPanel('junk')).toEqual({ dock: 'bottom', collapsed: false });
+    expect(parseStoredPanel({ height: Number.NaN })).toEqual({ dock: 'bottom', collapsed: false });
   });
 });

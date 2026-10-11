@@ -7,6 +7,8 @@ export interface DesktopActions {
   openProjectPicker(cwd?: string): void;
   /** Focuses the terminal tab `terminalId`; false when the tab does not exist (anymore). */
   openTerminal(terminalId: string): boolean;
+  /** Minimizes the terminal panel and gives the keyboard back to the game. */
+  collapseTerminal(): void;
   /** Opens the folder in VS Code; a failure is shown as a toast (never throws). */
   openInVSCode(cwd: string): Promise<void>;
 }

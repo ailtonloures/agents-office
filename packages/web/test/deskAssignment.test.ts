@@ -94,4 +94,23 @@ describe('DeskAssignments', () => {
     for (const name of names.filter((n) => !expectedLost.includes(n)))
       expect(desks.deskIdOf(name)).toBeDefined();
   });
+
+  it('reseats the active agent that lost its desk when the layout shrinks', () => {
+    const big = layoutWith(CUBICLES_PER_CHUNK * 2);
+    const small = layoutWith(CUBICLES_PER_CHUNK);
+    const desks = new DeskAssignments();
+    const names = Array.from({ length: CUBICLES_PER_CHUNK * 2 }, (_, i) => `a${i}`);
+    for (const n of names) desks.assign(n, 'p0', big.desks);
+    // The agents of the vanishing chunk finished and left; the last one is still working.
+    const keptIds = new Set(small.desks.map((d) => d.id));
+    const gone = names.filter((n) => !keptIds.has(desks.deskIdOf(n) as string));
+    const active = gone.pop() as string;
+    for (const n of gone) desks.release(n);
+    const finishedKept = names.find((n) => keptIds.has(desks.deskIdOf(n) as string)) as string;
+    desks.release(finishedKept);
+    expect(desks.reconcile(small.desks)).toEqual([active]);
+    const seat = desks.assign(active, 'p0', small.desks);
+    expect(seat).toBeDefined();
+    expect(keptIds.has(seat?.id as string)).toBe(true);
+  });
 });

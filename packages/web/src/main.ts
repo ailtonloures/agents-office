@@ -76,7 +76,7 @@ else if (!debugCharacters) client.start();
 
 // The Hooks screen only exists inside the desktop shell (it needs the IPC bridge).
 const hooksBridge = hooksBridgeOf(window);
-if (hooksBridge) mountSettingsPanel(hooksBridge);
+if (hooksBridge) mountSettingsPanel(hooksBridge, gameParent);
 
 // The terminal panel only exists inside the desktop shell (it needs the pty bridge).
 const terminalBridge = terminalBridgeOf(window);
@@ -107,7 +107,14 @@ if (terminalBridge) {
   // that follow the state of the session bound to each tab.
   window.__desktopActions = {
     openProjectPicker: (cwd) => window.__projectPicker?.open(cwd),
-    openTerminal: (terminalId) => panel.focusSession(terminalId),
+    openTerminal: (terminalId) => {
+      const opened = panel.focusSession(terminalId);
+      // The canvas mousedown (focusPlayer) runs before Phaser's pointerdown that got us here, but
+      // defer to the next frame anyway so the xterm always ends up with the keyboard.
+      if (opened) requestAnimationFrame(() => panel.focusSession(terminalId));
+      return opened;
+    },
+    collapseTerminal: () => panel.collapse(),
     openInVSCode: async (cwd) => {
       if (externalBridge) await openInVSCodeWithToast(externalBridge, cwd);
     },
@@ -133,7 +140,7 @@ if (terminalBridge) {
   // The project picker (needs the pty and catalog bridges) lives outside the game canvas.
   const pickerBridges = pickerBridgesOf(window);
   if (pickerBridges) {
-    window.__projectPicker = mountProjectPicker(pickerBridges, {
+    window.__projectPicker = mountProjectPicker(pickerBridges, gameParent, {
       knownCwds: () => officeCwds(client.getModel()),
       onKeyboardCapture: (captured) => {
         const keyboard = game.input.keyboard;

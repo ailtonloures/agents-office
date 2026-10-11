@@ -197,6 +197,11 @@ export class CharacterController {
     return new Set([...this.chars.values()].map((c) => c.sessionId));
   }
 
+  /** Agents (and Tech Leads) that still have a character in the scene: their desk must stay. */
+  agentsInUse(): ReadonlySet<string> {
+    return new Set(this.chars.keys());
+  }
+
   debugCharacters(model: OfficeModel): DebugCharacter[] {
     return [...this.chars.values()]
       .filter((c) => c.spawned)
@@ -264,6 +269,14 @@ export class CharacterController {
       )
       .sort((a, b) => b.sprite.depth - a.sprite.depth);
     return hits[0]?.id;
+  }
+
+  /** World point at the centre of a spawned character's sprite (E2E click helper). */
+  centerOf(id: string): { x: number; y: number } | undefined {
+    const c = this.chars.get(id);
+    if (!c?.spawned) return undefined;
+    const { centerX, centerY } = c.sprite.getBounds();
+    return { x: centerX, y: centerY };
   }
 
   /** Tile of a spawned character (where it stands, or leaves when walking). */

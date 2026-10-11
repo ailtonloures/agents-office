@@ -21,7 +21,7 @@ import {
 } from './projectPicker';
 
 const CSS = `
-.ao-picker-btn{position:fixed;left:72px;bottom:8px;z-index:20;padding:4px 8px}
+.ao-picker-btn{position:absolute;left:72px;bottom:8px;z-index:20;padding:4px 8px}
 .ao-picker{position:fixed;inset:0;z-index:30;background:rgba(5,6,12,.8);display:flex;
   align-items:center;justify-content:center;font:13px monospace;color:#f0e6b8}
 .ao-picker-box{background:#1b1d2a;border:3px solid #f0c040;width:min(760px,94vw);
@@ -86,9 +86,13 @@ export interface ProjectPickerOptions {
   button?: boolean;
 }
 
-/** Mounts the "Iniciar sessão" screen outside the game. Call only when both bridges exist. */
+/**
+ * Mounts the "Iniciar sessão" screen. The "Sessões" button lives inside `gameParent` (the office
+ * area); the modal stays on `document.body`. Call only when both bridges exist.
+ */
 export function mountProjectPicker(
   bridges: PickerBridges,
+  gameParent: HTMLElement,
   options: ProjectPickerOptions = {},
 ): ProjectPickerHandle {
   document.head.append(el('style', { textContent: CSS }));
@@ -408,7 +412,7 @@ export function mountProjectPicker(
     button.className = 'ao-picker-btn';
     button.title = 'Iniciar uma sessão do Claude Code em um projeto';
     button.onclick = () => void open();
-    document.body.append(button);
+    gameParent.append(button);
   }
 
   return { open, close };

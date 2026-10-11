@@ -51,12 +51,17 @@ test('1. parallel subagents: 1 tech lead + 3 agents working, then they leave', a
   await shot(page, '1-2-three-agents-working');
 
   // Let the agents finish: they deliver their report and leave the office.
+  const roomArea = () =>
+    page.evaluate(() => (window.__office?.rooms ?? []).reduce((sum, r) => sum + r.w * r.h, 0));
+  const withAgents = await roomArea();
   await feeder.rest(100);
   await expect
     .poll(async () => (await characters(page)).filter((c) => c.role === 'agent').length, {
       timeout: 45_000,
     })
     .toBe(0);
+  // Their cubicles go away with them: the room shrinks.
+  await expect.poll(roomArea).toBeLessThan(withAgents);
   const finished = await page.evaluate(() =>
     Object.values(window.__office?.model.agents ?? {}).map((a) => a.status),
   );
@@ -429,4 +434,266 @@ test('11. orphan events open no "Unknown" room and the HUD counts only real sess
   };
   expect(health).toMatchObject({ sessions: 2, agents: 0 });
   await shot(page, '11-no-unknown-room');
+});
+
+test('12. Hooks button and notice live inside #game and follow its rectangle', async ({ page }) => {
+  await page.addInitScript(() => {
+    const status = {
+      path: '/tmp/settings.json',
+      total: 1,
+      installedCount: 0,
+      events: [{ event: 'Stop', installed: false }],
+    };
+    (window as unknown as Record<string, unknown>).agentsOfficeDesktop = {
+      desktop: true,
+      hooks: { status: async () => status },
+    };
+  });
+  await openOffice(page, daemon.url);
+  const button = page.getByTestId('hooks-open');
+  const banner = page.getByTestId('hooks-banner');
+  await expect(button).toBeVisible();
+  await expect(banner).toBeVisible();
+  for (const locator of [button, banner]) {
+    expect(await locator.evaluate((node) => !!node.closest('#game'))).toBe(true);
+    expect(await locator.evaluate((node) => getComputedStyle(node).position)).toBe('absolute');
+  }
+  const game = await page.locator('#game').boundingBox();
+  if (!game) throw new Error('#game has no box');
+  for (const locator of [button, banner]) {
+    const box = await locator.boundingBox();
+    if (!box) throw new Error('no box');
+    expect(box.x).toBeGreaterThanOrEqual(game.x);
+    expect(box.y).toBeGreaterThanOrEqual(game.y);
+    expect(box.x + box.width).toBeLessThanOrEqual(game.x + game.width);
+    expect(box.y + box.height).toBeLessThanOrEqual(game.y + game.height);
+  }
+});
+
+test('13. clicking a Tech Lead opens its terminal, empty space minimizes, external ones open the dialog', async ({
+  page,
+}) => {
+  // Simulated desktop bridge: records what the scene asks the shell to do.
+  await page.addInitScript(() => {
+    const calls: string[] = [];
+    const open = new Set(['term-1']);
+    (window as unknown as Record<string, unknown>).__calls = calls;
+    (window as unknown as Record<string, unknown>).__desktopActions = {
+      openProjectPicker: () => {},
+      openTerminal: (id: string) => {
+        calls.push(`open:${id}`);
+        return open.has(id);
+      },
+      collapseTerminal: () => calls.push('collapse'),
+      openInVSCode: async () => {},
+    };
+  });
+  await openOffice(page, daemon.url);
+  const hook = async (body: Record<string, unknown>) => {
+    const response = await fetch(`${daemon.url}/hook`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    expect(response.status).toBe(204);
+  };
+  await hook({
+    hook_event_name: 'SessionStart',
+    session_id: 'internal-1',
+    cwd: '/work/inside',
+    terminalId: 'term-1',
+  });
+  await hook({ hook_event_name: 'SessionStart', session_id: 'external-1', cwd: '/work/outside' });
+  await hook({
+    hook_event_name: 'SessionStart',
+    session_id: 'closed-1',
+    cwd: '/work/closed',
+    terminalId: 'term-gone',
+  });
+  await expect.poll(async () => (await characters(page)).length).toBe(3);
+  await expect
+    .poll(async () => (await characters(page)).every((c) => c.phase === 'at-desk'), {
+      timeout: 30_000,
+    })
+    .toBe(true);
+
+  const calls = () => page.evaluate(() => (window as unknown as { __calls: string[] }).__calls);
+  const clickOn = async (id: string) => {
+    // Bring the camera next to the character, then click on the point it really has on screen.
+    await page.evaluate((cid) => window.__office?.actions?.approachCharacter(cid), id);
+    const viewport = page.viewportSize();
+    let point: { x: number; y: number } | undefined;
+    await expect
+      .poll(
+        async () => {
+          point = await page.evaluate((cid) => window.__office?.actions?.clientPointOf(cid), id);
+          return (
+            !!point &&
+            !!viewport &&
+            point.x > 0 &&
+            point.y > 0 &&
+            point.x < viewport.width &&
+            point.y < viewport.height
+          );
+        },
+        { intervals: [200] },
+      )
+      .toBe(true);
+    if (!point) throw new Error(`no point for ${id}`);
+    await page.mouse.click(point.x, point.y);
+  };
+  const dialogOpen = () => page.evaluate(() => window.__office?.dialog.open === true);
+
+  await clickOn('internal-1');
+  await expect.poll(calls).toEqual(['open:term-1']);
+  expect(await dialogOpen()).toBe(false);
+
+  // A click on the empty floor minimizes.
+  await page.mouse.click(3, 3);
+  await expect.poll(calls).toEqual(['open:term-1', 'collapse']);
+
+  // An external Tech Lead only opens its dialog (no terminal call).
+  await clickOn('external-1');
+  await expect.poll(dialogOpen).toBe(true);
+  expect(await calls()).toEqual(['open:term-1', 'collapse']);
+
+  // With the dialog open a click only dismisses it: no minimize.
+  await page.keyboard.press('Escape');
+  await expect.poll(dialogOpen).toBe(false);
+  await clickOn('external-1');
+  await expect.poll(dialogOpen).toBe(true);
+  await page.mouse.click(3, 3);
+  expect(await calls()).toEqual(['open:term-1', 'collapse']);
+  await page.keyboard.press('Escape');
+
+  // A closed tab falls back to the dialog.
+  await clickOn('closed-1');
+  await expect.poll(dialogOpen).toBe(true);
+  expect(await calls()).toEqual(['open:term-1', 'collapse', 'open:term-gone']);
+});
+
+test('14. terminal dock: left, right and bottom resize #game, keep controls inside it and persist', async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    const noop = async () => {};
+    const status = {
+      path: '/tmp/settings.json',
+      total: 1,
+      installedCount: 0,
+      events: [{ event: 'Stop', installed: false }],
+    };
+    (window as unknown as Record<string, unknown>).agentsOfficeDesktop = {
+      desktop: true,
+      hooks: { status: async () => status },
+      projects: { list: async () => [], sessions: async () => [], markUsed: noop },
+      terminal: {
+        start: async () => ({ ok: false, code: 'spawn-failed', message: 'fake' }),
+        write: noop,
+        resize: noop,
+        kill: noop,
+        list: async () => [
+          {
+            id: 'fake-1',
+            cwd: '/work/dock',
+            pid: 1,
+            startedAt: new Date().toISOString(),
+            cols: 80,
+            rows: 24,
+          },
+        ],
+        buffer: async () => 'hello dock\r\n',
+        getConfig: async () => ({}),
+        setConfig: async () => ({ ok: true }),
+        lostSessions: async () => [],
+        dismissLost: noop,
+        noteSession: noop,
+        onData: () => () => {},
+        onExit: () => () => {},
+      },
+    };
+  });
+  await page.setViewportSize({ width: 1200, height: 800 });
+  await openOffice(page, daemon.url);
+  await expect(page.getByTestId('terminal-panel')).toBeVisible();
+
+  const rect = async (selector: string) => {
+    const box = await page.locator(selector).boundingBox();
+    if (!box) throw new Error(`no box for ${selector}`);
+    return box;
+  };
+  const inside = (
+    inner: { x: number; y: number; width: number; height: number },
+    outer: typeof inner,
+  ) =>
+    inner.x >= outer.x - 0.5 &&
+    inner.y >= outer.y - 0.5 &&
+    inner.x + inner.width <= outer.x + outer.width + 0.5 &&
+    inner.y + inner.height <= outer.y + outer.height + 0.5;
+  const overlaps = (a: { x: number; y: number; width: number; height: number }, b: typeof a) =>
+    a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
+
+  const checkControls = async () => {
+    const panel = await rect('#ao-terminal');
+    const game = await rect('#game');
+    expect(overlaps(panel, game)).toBe(false);
+    for (const id of ['hooks-open', 'picker-open', 'zoom-in']) {
+      const locator = page.getByTestId(id);
+      await expect(locator).toBeVisible();
+      expect(await locator.evaluate((node) => !!node.closest('#game'))).toBe(true);
+      const box = await rect(`[data-testid="${id}"]`);
+      expect(inside(box, game)).toBe(true);
+      expect(overlaps(box, panel)).toBe(false);
+    }
+  };
+
+  const bottomGame = await rect('#game');
+  expect(bottomGame.width).toBe(1200);
+  await checkControls();
+
+  await page.getByTestId('terminal-dock-left').click();
+  await expect.poll(async () => (await rect('#game')).width).toBeLessThan(1200);
+  let game = await rect('#game');
+  let panel = await rect('#ao-terminal');
+  expect(game.height).toBe(800);
+  expect(panel.x).toBe(0);
+  expect(game.x).toBeCloseTo(panel.width, 0);
+  await checkControls();
+
+  // Dragging the right edge resizes the panel.
+  const before = panel.width;
+  await page.mouse.move(panel.x + panel.width, 400);
+  await page.mouse.down();
+  await page.mouse.move(panel.x + panel.width + 100, 400, { steps: 4 });
+  await page.mouse.up();
+  await expect.poll(async () => (await rect('#ao-terminal')).width).toBeCloseTo(before + 100, -1);
+  await checkControls();
+
+  await page.getByTestId('terminal-dock-right').click();
+  await expect.poll(async () => (await rect('#ao-terminal')).x).toBeGreaterThan(300);
+  game = await rect('#game');
+  panel = await rect('#ao-terminal');
+  expect(game.x).toBe(0);
+  expect(panel.x + panel.width).toBeCloseTo(1200, 0);
+  await checkControls();
+
+  // The shortcut keeps working on the sides: minimizes to a thin strip, expands back.
+  const expanded = panel.width;
+  await page.getByTestId('terminal-toggle').click();
+  await expect.poll(async () => (await rect('#ao-terminal')).width).toBeLessThan(40);
+  await checkControls();
+  await page.getByTestId('terminal-toggle').click();
+  await expect.poll(async () => (await rect('#ao-terminal')).width).toBeCloseTo(expanded, 0);
+
+  // Reopening the app keeps dock and size.
+  await page.reload();
+  await page.waitForFunction(() => window.__office?.connected === true);
+  await expect(page.getByTestId('terminal-panel')).toBeVisible();
+  await expect.poll(() => page.evaluate(() => window.__terminalPanel?.dock)).toBe('right');
+  expect((await rect('#ao-terminal')).width).toBeCloseTo(expanded, 0);
+
+  await page.getByTestId('terminal-dock-bottom').click();
+  await expect.poll(async () => (await rect('#game')).width).toBe(1200);
+  expect((await rect('#game')).height).toBeLessThan(800);
+  await checkControls();
 });

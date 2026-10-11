@@ -9,10 +9,10 @@ import {
 } from './settingsLogic';
 
 const CSS = `
-.ao-hooks-btn{position:fixed;left:8px;bottom:8px;z-index:20;padding:4px 8px}
-.ao-hooks-banner{position:fixed;left:50%;bottom:44px;transform:translateX(-50%);z-index:20;
+.ao-hooks-btn{position:absolute;left:8px;bottom:8px;z-index:20;padding:4px 8px}
+.ao-hooks-banner{position:absolute;left:50%;bottom:44px;transform:translateX(-50%);z-index:20;
   font:13px monospace;background:#1b1d2a;color:#f0e6b8;border:2px solid #f0c040;padding:8px 12px;
-  display:flex;gap:8px;align-items:center;max-width:90vw}
+  display:flex;gap:8px;align-items:center;max-width:calc(100% - 16px);box-sizing:border-box}
 .ao-hooks-panel{position:fixed;inset:0;z-index:30;background:rgba(5,6,12,.8);display:flex;
   align-items:center;justify-content:center;font:13px monospace;color:#f0e6b8}
 .ao-hooks-box{background:#1b1d2a;border:3px solid #f0c040;padding:20px 24px;width:min(720px,92vw);
@@ -59,8 +59,11 @@ function writeDismissed(): void {
   }
 }
 
-/** Mounts the "Hooks" screen and the first-run notice. Call only when the bridge exists. */
-export function mountSettingsPanel(bridge: HooksBridge): void {
+/**
+ * Mounts the "Hooks" screen and the first-run notice. The button and the notice live inside
+ * `gameParent` (the office area); the modal stays on `document.body`. Call only when the bridge exists.
+ */
+export function mountSettingsPanel(bridge: HooksBridge, gameParent: HTMLElement): void {
   document.head.append(el('style', { textContent: CSS }));
   let panel: HTMLElement | undefined;
   let banner: HTMLElement | undefined;
@@ -214,7 +217,7 @@ export function mountSettingsPanel(bridge: HooksBridge): void {
   const button = el('button', { textContent: 'Hooks' }, 'hooks-open');
   button.className = 'ao-hooks-btn';
   button.onclick = () => void openPanel();
-  document.body.append(button);
+  gameParent.append(button);
 
   void bridge
     .status()
@@ -240,7 +243,7 @@ export function mountSettingsPanel(bridge: HooksBridge): void {
         open,
         dismiss,
       );
-      document.body.append(note);
+      gameParent.append(note);
       banner = note;
     })
     .catch(() => {

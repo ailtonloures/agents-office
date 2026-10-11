@@ -13,21 +13,31 @@ import {
   addTab,
   applyActivity,
   clampHeight,
+  clampWidth,
   clipboardAction,
+  collapse,
   createPanelModel,
+  DEFAULT_PANEL_HEIGHT,
+  DEFAULT_PANEL_WIDTH,
   exitMessage,
   type FocusOwner,
   isToggleShortcut,
   keyboardOwner,
   markExited,
   needsCloseConfirm,
+  type PanelDock,
   type PanelModel,
   panelOccupiedHeight,
+  panelOccupiedSize,
+  parseStoredPanel,
   projectName,
   removeTab,
+  type StoredPanel,
   setActive,
+  setDock,
   setFocus,
   setHeight,
+  setWidth,
   TAB_BAR_HEIGHT,
   tabTitle,
   toggleCollapsed,
@@ -38,11 +48,20 @@ const SCROLLBACK = 5000;
 
 const CSS = `
 #ao-terminal{box-sizing:border-box;flex:none;display:flex;flex-direction:column;position:relative;background:#0d1020;
-  border-top:2px solid #3a3f5c;font:12px monospace;color:#f0e6b8;min-height:0}
+  border-top:2px solid #3a3f5c;font:12px monospace;color:#f0e6b8;min-height:0;min-width:0}
+#ao-terminal[data-dock="left"]{border-top:0;border-right:2px solid #3a3f5c;order:-1}
+#ao-terminal[data-dock="right"]{border-top:0;border-left:2px solid #3a3f5c}
 #ao-terminal[hidden]{display:none}
-#ao-terminal[data-focus="terminal"]{border-top-color:#f0c040}
+#ao-terminal[data-focus="terminal"]{border-color:#f0c040}
 #ao-terminal .ao-term-resizer{position:absolute;left:0;right:0;top:-5px;height:8px;cursor:ns-resize;z-index:2}
+#ao-terminal[data-dock="left"] .ao-term-resizer{top:0;bottom:0;left:auto;right:-5px;width:8px;height:auto;cursor:ew-resize}
+#ao-terminal[data-dock="right"] .ao-term-resizer{top:0;bottom:0;left:-5px;right:auto;width:8px;height:auto;cursor:ew-resize}
 #ao-terminal[data-collapsed="true"] .ao-term-resizer{display:none}
+#ao-terminal[data-collapsed="true"]:not([data-dock="bottom"]) .ao-term-bar>:not(.ao-term-toggle){display:none}
+#ao-terminal[data-collapsed="true"]:not([data-dock="bottom"]) .ao-term-toggle{flex:1;padding:0}
+#ao-terminal[data-collapsed="true"]:not([data-dock="bottom"]) .ao-term-bar{flex:1;height:auto}
+#ao-terminal .ao-term-docks{display:flex;align-items:center}
+#ao-terminal .ao-term-dock[data-active="true"]{color:#f0c040}
 #ao-terminal .ao-term-bar{flex:none;height:${TAB_BAR_HEIGHT - 2}px;display:flex;align-items:stretch;
   background:#1b1d2a;overflow:hidden}
 #ao-terminal .ao-term-tabs{display:flex;flex:1;overflow-x:auto;min-width:0}
@@ -66,6 +85,7 @@ const CSS = `
   background:#3a2a2a;border-bottom:2px solid #ff7b7b}
 #ao-terminal .ao-term-ended button,#ao-terminal .ao-term-confirm button{font:12px monospace;
   padding:3px 10px;background:#1b1d2a;color:#f0e6b8;border:2px solid #f0c040;cursor:pointer}
+body[data-dock="left"] #game,body[data-dock="right"] #game{width:auto;min-width:0}
 #game::after{content:"";position:absolute;inset:0;pointer-events:none;z-index:1}
 body[data-keyboard="player"][data-has-terminal="true"] #game::after{box-shadow:inset 0 0 0 2px #f0c040}
 `;
@@ -96,7 +116,11 @@ export interface TerminalPanelDebug {
   activeId: string | undefined;
   collapsed: boolean;
   height: number;
+  width: number;
+  dock: PanelDock;
   occupied: number;
+  /** Pixels taken from the window along the dock axis (height at the bottom, width on the sides). */
+  occupiedSize: number;
   focus: FocusOwner;
   keyboard: FocusOwner;
   cols: number;
@@ -137,17 +161,19 @@ export interface TerminalPanel {
   setActivity(activity: Readonly<Record<string, string>>): void;
   /** The pointer went to the office: keys go to the player again. */
   focusPlayer(): void;
+  /** Minimizes the panel (keeps tabs and sessions) and gives the keyboard back to the game. */
+  collapse(): void;
   /** True when the terminal owns the keyboard. */
   readonly terminalFocused: boolean;
   destroy(): void;
 }
 
-function readStored(): { height?: number; collapsed?: boolean } {
+function readStored(): StoredPanel {
   try {
     const raw = localStorage.getItem(TERMINAL_PANEL_KEY);
-    return raw ? (JSON.parse(raw) as { height?: number; collapsed?: boolean }) : {};
+    return parseStoredPanel(raw ? JSON.parse(raw) : undefined);
   } catch {
-    return {};
+    return parseStoredPanel(undefined);
   }
 }
 
@@ -155,7 +181,12 @@ function writeStored(model: PanelModel): void {
   try {
     localStorage.setItem(
       TERMINAL_PANEL_KEY,
-      JSON.stringify({ height: model.height, collapsed: model.collapsed }),
+      JSON.stringify({
+        height: model.height,
+        width: model.width,
+        dock: model.dock,
+        collapsed: model.collapsed,
+      }),
     );
   } catch {
     // Not remembering the size is harmless.
@@ -175,14 +206,18 @@ function el<K extends keyof HTMLElementTagNameMap>(
   return node;
 }
 
-/** Mounts the docked panel below `gameParent`. Call only when the terminal bridge exists. */
+/** Mounts the docked panel next to `gameParent` (bottom, left or right). Call only when the terminal bridge exists. */
 export function mountTerminalPanel(
   bridge: TerminalBridge,
   options: TerminalPanelOptions,
 ): TerminalPanel {
   document.head.append(Object.assign(document.createElement('style'), { textContent: CSS }));
   const stored = readStored();
-  let model = createPanelModel(clampHeight(stored.height ?? 280, window.innerHeight));
+  let model = createPanelModel(
+    clampHeight(stored.height ?? DEFAULT_PANEL_HEIGHT, window.innerHeight),
+    clampWidth(stored.width ?? DEFAULT_PANEL_WIDTH, window.innerWidth),
+    stored.dock,
+  );
   if (stored.collapsed) model = { ...model, collapsed: true };
 
   const root = el('div', undefined, 'terminal-panel');
@@ -193,7 +228,28 @@ export function mountTerminalPanel(
   const tabsEl = el('div', 'ao-term-tabs', 'terminal-tabs');
   const focusLabel = el('span', 'ao-term-focus', 'terminal-focus');
   const toggleBtn = el('button', 'ao-term-btn', 'terminal-toggle');
+  toggleBtn.classList.add('ao-term-toggle');
   toggleBtn.title = 'Recolher / expandir (Ctrl+`)';
+  const docksEl = el('div', 'ao-term-docks', 'terminal-docks');
+  const dockButtons = new Map<PanelDock, HTMLButtonElement>();
+  const DOCK_OPTIONS: readonly { dock: PanelDock; glyph: string; title: string }[] = [
+    { dock: 'left', glyph: '◧', title: 'Encaixar à esquerda' },
+    { dock: 'bottom', glyph: '⬓', title: 'Encaixar embaixo' },
+    { dock: 'right', glyph: '◨', title: 'Encaixar à direita' },
+  ];
+  for (const option of DOCK_OPTIONS) {
+    const button = el(
+      'button',
+      'ao-term-btn ao-term-dock',
+      `terminal-dock-${option.dock}`,
+      option.glyph,
+    );
+    button.title = option.title;
+    button.setAttribute('aria-label', option.title);
+    button.addEventListener('click', () => changeDock(option.dock));
+    dockButtons.set(option.dock, button);
+    docksEl.append(button);
+  }
   const vscodeBtn = el('button', 'ao-term-btn', 'terminal-vscode', 'VS Code');
   vscodeBtn.title = 'Abrir a pasta da aba no VS Code';
   vscodeBtn.hidden = !options.onOpenInVSCode;
@@ -204,7 +260,7 @@ export function mountTerminalPanel(
   const confirmEl = el('div', 'ao-term-confirm', 'terminal-confirm');
   confirmEl.hidden = true;
   const body = el('div', 'ao-term-body');
-  bar.append(tabsEl, focusLabel, vscodeBtn, toggleBtn);
+  bar.append(tabsEl, focusLabel, vscodeBtn, docksEl, toggleBtn);
   root.append(resizer, bar, confirmEl, body);
   options.gameParent.after(root);
 
@@ -267,7 +323,10 @@ export function mountTerminalPanel(
       activeId: model.activeId,
       collapsed: model.collapsed,
       height: model.height,
+      width: model.width,
+      dock: model.dock,
       occupied: panelOccupiedHeight(model),
+      occupiedSize: panelOccupiedSize(model).size,
       focus: model.focus,
       keyboard: keyboardOwner(model),
       // Live: the size changes on every fit, after the last render.
@@ -294,8 +353,13 @@ export function mountTerminalPanel(
     model = applyActivity(model, activity);
     root.hidden = model.tabs.length === 0;
     root.dataset.collapsed = String(model.collapsed);
-    root.style.height = `${panelOccupiedHeight(model)}px`;
-    toggleBtn.textContent = model.collapsed ? '▴' : '▾';
+    root.dataset.dock = model.dock;
+    document.body.dataset.dock = model.dock;
+    const occupied = panelOccupiedSize(model);
+    root.style.height = occupied.axis === 'height' ? `${occupied.size}px` : '';
+    root.style.width = occupied.axis === 'width' ? `${occupied.size}px` : '';
+    toggleBtn.textContent = toggleGlyph();
+    for (const [dock, button] of dockButtons) button.dataset.active = String(dock === model.dock);
     tabsEl.replaceChildren(
       ...model.tabs.map((tab) => {
         const node = el('div', 'ao-term-tab', `terminal-tab-${tab.id}`);
@@ -320,6 +384,22 @@ export function mountTerminalPanel(
     applyOwner();
     publishDebug();
     emitLayout();
+  }
+
+  /** Arrow pointing where the panel goes when pressed: expands towards the office, collapses to its edge. */
+  function toggleGlyph(): string {
+    if (model.dock === 'bottom') return model.collapsed ? '▴' : '▾';
+    const towardsEdge = model.dock === 'left' ? '◂' : '▸';
+    const towardsOffice = model.dock === 'left' ? '▸' : '◂';
+    return model.collapsed ? towardsOffice : towardsEdge;
+  }
+
+  function changeDock(dock: PanelDock): void {
+    if (dock === model.dock) return;
+    model = setDock(model, dock);
+    writeStored(model);
+    render();
+    if (model.focus === 'terminal') focusActive();
   }
 
   function renderConfirm(): void {
@@ -549,12 +629,17 @@ export function mountTerminalPanel(
   }
   toggleBtn.addEventListener('click', toggle);
 
-  // Resize by dragging the top edge.
+  // Resize by dragging the edge facing the office (vertical axis at the bottom, horizontal on the sides).
   resizer.addEventListener('pointerdown', (event) => {
     event.preventDefault();
     resizer.setPointerCapture(event.pointerId);
     const move = (e: PointerEvent): void => {
-      model = setHeight(model, window.innerHeight - e.clientY, window.innerHeight);
+      if (model.dock === 'bottom') {
+        model = setHeight(model, window.innerHeight - e.clientY, window.innerHeight);
+      } else {
+        const width = model.dock === 'left' ? e.clientX : window.innerWidth - e.clientX;
+        model = setWidth(model, width, window.innerWidth);
+      }
       render();
     };
     const up = (): void => {
@@ -570,8 +655,9 @@ export function mountTerminalPanel(
 
   const onWindowResize = (): void => {
     const height = clampHeight(model.height, window.innerHeight);
-    if (height !== model.height) {
-      model = { ...model, height };
+    const width = clampWidth(model.width, window.innerWidth);
+    if (height !== model.height || width !== model.width) {
+      model = { ...model, height, width };
       render();
     } else fitActive();
   };
@@ -611,6 +697,13 @@ export function mountTerminalPanel(
       (document.activeElement as HTMLElement | null)?.blur();
       applyOwner();
       publishDebug();
+    },
+    collapse() {
+      if (model.collapsed) return;
+      model = collapse(model);
+      writeStored(model);
+      render();
+      (document.activeElement as HTMLElement | null)?.blur();
     },
     get terminalFocused() {
       return keyboardOwner(model) === 'terminal';

@@ -17,6 +17,10 @@
         display: flex;
         flex-direction: column;
       }
+      body[data-dock='left'],
+      body[data-dock='right'] {
+        flex-direction: row;
+      }
       #game {
         flex: 1;
         min-height: 0;
