@@ -11,6 +11,8 @@ export const REGISTRY_SKIN = 'skin';
 export const REGISTRY_SKIN_WARNING = 'skinWarning';
 /** Scene started once the skin is loaded (default: the office). */
 export const REGISTRY_START_SCENE = 'startScene';
+/** Game event emitted by the first real scene once it has been created (hides the splash). */
+export const EVENT_SCENE_READY = 'sceneReady';
 
 /** Resolves the skin (external `/skin/skin.json` or the bundled default) and loads its assets. */
 export class BootScene extends Phaser.Scene {

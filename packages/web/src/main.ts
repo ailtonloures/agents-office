@@ -3,7 +3,7 @@ import { installDebugState } from './debug/debugState';
 import { startDemo } from './net/demo';
 import { OfficeClient } from './net/officeClient';
 import { computeViewport, type Viewport, viewportChanged } from './scale';
-import { BootScene, REGISTRY_START_SCENE } from './scenes/BootScene';
+import { BootScene, EVENT_SCENE_READY, REGISTRY_START_SCENE } from './scenes/BootScene';
 import { CharactersDebugScene, DEBUG_CHARACTERS_SCENE } from './scenes/CharactersDebugScene';
 import { OfficeScene, REGISTRY_CLIENT } from './scenes/OfficeScene';
 import { externalBridgeOf, openInVSCodeWithToast } from './ui/externalOpen';
@@ -56,9 +56,8 @@ const hideSplash = () => {
   splash.classList.add('hidden');
   setTimeout(() => splash.remove(), 400);
 };
-for (const key of ['OfficeScene', DEBUG_CHARACTERS_SCENE]) {
-  game.scene.getScene(key).events.once(Phaser.Scenes.Events.CREATE, hideSplash);
-}
+// Scenes only exist in the scene manager once the game has booted, so they announce themselves.
+game.events.once(EVENT_SCENE_READY, hideSplash);
 // BootScene awaits network requests before OfficeScene starts, so the client is set in time.
 game.registry.set(REGISTRY_CLIENT, client);
 if (debugCharacters) game.registry.set(REGISTRY_START_SCENE, DEBUG_CHARACTERS_SCENE);

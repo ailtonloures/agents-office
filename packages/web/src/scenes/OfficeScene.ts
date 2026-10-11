@@ -46,7 +46,7 @@ import {
   ZOOM_STEP_EVENT,
   type ZoomDirection,
 } from '../zoom';
-import { REGISTRY_SKIN, REGISTRY_SKIN_WARNING } from './BootScene';
+import { EVENT_SCENE_READY, REGISTRY_SKIN, REGISTRY_SKIN_WARNING } from './BootScene';
 
 export const REGISTRY_CLIENT = 'officeClient';
 
@@ -149,6 +149,7 @@ export class OfficeScene extends Phaser.Scene {
   }
 
   create(): void {
+    this.events.once(Phaser.Scenes.Events.CREATE, () => this.game.events.emit(EVENT_SCENE_READY));
     this.client = this.registry.get(REGISTRY_CLIENT) as OfficeClient;
     this.cameras.main.setBackgroundColor(BACKGROUND);
 

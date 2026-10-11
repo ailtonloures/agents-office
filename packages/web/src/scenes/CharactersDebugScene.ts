@@ -6,7 +6,7 @@ import {
   CharacterFactory,
 } from '../characters/characterFactory';
 import { SKIN_KEYS, type Skin } from '../skin';
-import { REGISTRY_SKIN } from './BootScene';
+import { EVENT_SCENE_READY, REGISTRY_SKIN } from './BootScene';
 
 export const DEBUG_CHARACTERS_SCENE = 'CharactersDebugScene';
 const COLUMNS = 8;
@@ -28,6 +28,7 @@ export class CharactersDebugScene extends Phaser.Scene {
   }
 
   create(): void {
+    this.events.once(Phaser.Scenes.Events.CREATE, () => this.game.events.emit(EVENT_SCENE_READY));
     const { skin } = this.registry.get(REGISTRY_SKIN) as { skin: Skin };
     const factory = new CharacterFactory(this.textures, this.anims, skin);
     this.cameras.main.setBackgroundColor(0x1d2233);
