@@ -37,6 +37,7 @@ describe('liveness', () => {
     expect(DEFAULT_LIVENESS_CONFIG).toEqual({
       idleAfterMs: 2 * MIN,
       expireAfterMs: 15 * MIN,
+      agentExpireAfterMs: 5 * MIN,
       initialWindowMs: 15 * MIN,
     });
   });
@@ -92,5 +93,45 @@ describe('liveness', () => {
   it('honours a custom config', () => {
     const events = tick(office(), T0 + 10_000, { idleAfterMs: 5_000, expireAfterMs: 60_000 });
     expect(events.map((e) => e.type)).toEqual(['actor.idle', 'actor.idle']);
+  });
+
+  describe('idle agent expiry', () => {
+    function idleOffice(): OfficeModel {
+      let model = office();
+      for (const e of tick(model, T0 + 2 * MIN)) model = reduce(model, e);
+      return model;
+    }
+
+    it('finishes an idle agent silent for 5 minutes, leaving the session alone', () => {
+      const events = tick(idleOffice(), T0 + 5 * MIN);
+      expect(events).toEqual([
+        { type: 'agent.finished', agentId: 'a1', ts: iso(T0 + 5 * MIN), source: 'clock' },
+      ]);
+    });
+
+    it('does nothing for an idle agent below the limit', () => {
+      expect(tick(idleOffice(), T0 + 5 * MIN - 1)).toEqual([]);
+    });
+
+    it('does not finish working or thinking agents, only idles them', () => {
+      const events = tick(office(), T0 + 6 * MIN);
+      expect(events.map((e) => e.type)).toEqual(['actor.idle', 'actor.idle']);
+    });
+
+    it('does not repeat the event once the agent is finished', () => {
+      let model = idleOffice();
+      for (const e of tick(model, T0 + 5 * MIN)) model = reduce(model, e);
+      expect(model.agents.a1?.status).toBe('finished');
+      expect(model.agents.a1?.lastActivityTs).toBe(iso(T0));
+      expect(tick(model, T0 + 6 * MIN)).toEqual([]);
+    });
+
+    it('respects a custom agentExpireAfterMs', () => {
+      const model = idleOffice();
+      expect(tick(model, T0 + 3 * MIN, { agentExpireAfterMs: 3 * MIN }).map((e) => e.type)).toEqual(
+        ['agent.finished'],
+      );
+      expect(tick(model, T0 + 6 * MIN, { agentExpireAfterMs: 10 * MIN })).toEqual([]);
+    });
   });
 });

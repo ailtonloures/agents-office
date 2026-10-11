@@ -5,6 +5,8 @@ export interface LivenessConfig {
   idleAfterMs: number;
   /** Silence after which a session expires (default 15 min). */
   expireAfterMs: number;
+  /** Silence after which an idle agent is finished and leaves the office (default 5 min). */
+  agentExpireAfterMs: number;
   /** Window of past activity the watcher loads on startup (default 15 min; used by spec 004). */
   initialWindowMs: number;
 }
@@ -12,6 +14,7 @@ export interface LivenessConfig {
 export const DEFAULT_LIVENESS_CONFIG: LivenessConfig = {
   idleAfterMs: 120_000,
   expireAfterMs: 900_000,
+  agentExpireAfterMs: 300_000,
   initialWindowMs: 900_000,
 };
 
@@ -21,14 +24,18 @@ const SETTLED: ReadonlySet<ActorStatus> = new Set(['idle', 'finished', 'ended'])
 /**
  * Derives the time-based events for `now` (epoch ms, injected: this module never reads the
  * clock). Sessions silent for `expireAfterMs` end with `reason: 'expired'`; other actors silent
- * for `idleAfterMs` go idle. A session's silence also counts the activity of its subagents.
+ * for `idleAfterMs` go idle, and idle agents silent for `agentExpireAfterMs` finish (`agent.finished`,
+ * a safety net for agents that are never replaced). A session's silence also counts the activity of its subagents.
  */
 export function tick(
   model: OfficeModel,
   now: number,
   config: Partial<LivenessConfig> = {},
 ): OfficeEvent[] {
-  const { idleAfterMs, expireAfterMs } = { ...DEFAULT_LIVENESS_CONFIG, ...config };
+  const { idleAfterMs, expireAfterMs, agentExpireAfterMs } = {
+    ...DEFAULT_LIVENESS_CONFIG,
+    ...config,
+  };
   const ts = new Date(now).toISOString();
   const events: OfficeEvent[] = [];
 
@@ -51,8 +58,13 @@ export function tick(
       events.push({ type: 'actor.idle', actorId: session.id, ts, source: 'clock' });
     }
     for (const agent of agents) {
+      const silence = now - lastActivity(agent.lastActivityTs);
+      if (agent.status === 'idle' && silence >= agentExpireAfterMs) {
+        events.push({ type: 'agent.finished', agentId: agent.id, ts, source: 'clock' });
+        continue;
+      }
       if (SETTLED.has(agent.status)) continue;
-      if (now - lastActivity(agent.lastActivityTs) >= idleAfterMs) {
+      if (silence >= idleAfterMs) {
         events.push({ type: 'actor.idle', actorId: agent.id, ts, source: 'clock' });
       }
     }
