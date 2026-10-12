@@ -1,5 +1,6 @@
 import type { HooksBridge, HooksStatus } from '@agents-office/shared';
 import { BUTTON_CSS } from './buttonStyles';
+import { getCornerBar } from './cornerBar';
 import {
   classifyDiffLine,
   HOOKS_PROMPT_KEY,
@@ -9,7 +10,7 @@ import {
 } from './settingsLogic';
 
 const CSS = `
-.ao-hooks-btn{position:absolute;left:8px;bottom:8px;z-index:20;padding:4px 8px}
+.ao-hooks-btn{padding:4px 8px}
 .ao-hooks-banner{position:absolute;left:50%;bottom:44px;transform:translateX(-50%);z-index:20;
   font:13px monospace;background:#1b1d2a;color:#f0e6b8;border:2px solid #f0c040;padding:8px 12px;
   display:flex;gap:8px;align-items:center;max-width:calc(100% - 16px);box-sizing:border-box}
@@ -217,7 +218,7 @@ export function mountSettingsPanel(bridge: HooksBridge, gameParent: HTMLElement)
   const button = el('button', { textContent: 'Hooks' }, 'hooks-open');
   button.className = 'ao-hooks-btn';
   button.onclick = () => void openPanel();
-  gameParent.append(button);
+  getCornerBar(gameParent).append(button);
 
   void bridge
     .status()

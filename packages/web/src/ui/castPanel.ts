@@ -49,10 +49,11 @@ import {
   validateForm,
 } from './castLogic';
 import { commsBridgeOf } from './commsBinding';
+import { getCornerBar } from './cornerBar';
 import { PERMISSION_MODES, permissionModeInfo } from './projectPicker';
 
 const CSS = `
-.ao-cast-btn{position:absolute;left:156px;bottom:8px;z-index:20;padding:4px 8px}
+.ao-cast-btn{padding:4px 8px}
 .ao-cast{position:fixed;inset:0;z-index:30;background:rgba(5,6,12,.8);display:flex;
   align-items:center;justify-content:center;font:13px monospace;color:#f0e6b8}
 .ao-cast-box{background:#1b1d2a;border:3px solid #f0c040;width:min(820px,94vw);max-height:90vh;
@@ -1017,7 +1018,7 @@ export function mountCastPanel(
     button.className = 'ao-cast-btn';
     button.title = 'Perfis de agente e elenco do projeto';
     button.onclick = () => void open();
-    gameParent.append(button);
+    getCornerBar(gameParent).append(button);
   }
 
   return { open, close };
