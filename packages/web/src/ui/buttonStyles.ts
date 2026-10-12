@@ -8,6 +8,8 @@ const BUTTONS = [
   '.ao-cast-btn',
   '.ao-picker-btn',
   '.ao-zoom-btn',
+  '.ao-locale-btn',
+  '.ao-locale-item',
 ];
 
 const each = (suffix: string): string =>

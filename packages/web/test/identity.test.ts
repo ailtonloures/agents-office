@@ -1,8 +1,19 @@
 import type { Agent, OfficeModel, Step } from '@agents-office/shared';
 import { createEmptyModel } from '@agents-office/shared';
-import { describe, expect, it } from 'vitest';
-import { actionLine, agentDisplayNames, clip, NAME_MAX, prettyAgentType } from '../src/ui/identity';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { setLocale } from '../src/i18n/i18n';
+import {
+  actionLine,
+  agentDisplayNames,
+  clip,
+  NAME_MAX,
+  prettyAgentType,
+  statusShort,
+} from '../src/ui/identity';
 import { labelText, tagText } from '../src/ui/nameTag';
+
+beforeEach(() => setLocale('pt-BR'));
+afterEach(() => setLocale('en'));
 
 const usage = { inputTokens: 0, outputTokens: 0 };
 
@@ -88,6 +99,19 @@ describe('actionLine', () => {
   it('falls back to the task between tools and asks for the user while waiting', () => {
     expect(actionLine('thinking', undefined, [], 'Revisar o diff')).toBe('Revisar o diff');
     expect(actionLine('waiting', undefined, [], 'x')).toBe('Aguarda sua resposta');
+  });
+
+  it('follows the active language', () => {
+    setLocale('en');
+    const steps = [step('Edit', 'Edit src/payments/pix.ts')];
+    expect(actionLine('working', 'Edit', steps, 'task')).toBe('Editing pix.ts');
+    expect(actionLine('waiting', undefined, [], 'x')).toBe('Awaiting your reply');
+    expect(prettyAgentType('general-purpose')).toBe('Generalist');
+    expect(prettyAgentType('  ')).toBe('Agent');
+    expect(statusShort('waiting')).toBe('WAITS FOR YOU');
+    setLocale('es');
+    expect(actionLine('working', 'Edit', steps, 'task')).toBe('Editando pix.ts');
+    expect(statusShort('thinking')).toBe('PENSANDO');
   });
 
   it('clips with an ellipsis', () => {

@@ -1,5 +1,6 @@
 import type Phaser from 'phaser';
 import { animationKeyFor, type CharacterFactory } from '../characters/characterFactory';
+import { t } from '../i18n/i18n';
 import type { Direction } from '../skin';
 import { SKIN_KEYS } from '../skin';
 import { NameTag } from '../ui/nameTag';
@@ -27,7 +28,7 @@ export class PlayerAvatar {
     this.tag = new NameTag(scene, scene.cache.bitmapFont.exists(SKIN_KEYS.fontSmall));
     this.tag.set({
       profession: 'architect',
-      name: 'Você',
+      name: t('player.name'),
       nameOnly: true,
       detail: '',
       status: undefined,

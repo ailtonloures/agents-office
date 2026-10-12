@@ -10,6 +10,7 @@ import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import { Terminal } from '@xterm/xterm';
 import '@xterm/xterm/css/xterm.css';
+import { t } from '../i18n/i18n';
 import { BROWSER_CSS, type BrowserPane, createBrowserPane } from './browserPane';
 import { pickTargets } from './browserPickLogic';
 import {
@@ -255,13 +256,13 @@ export function mountTerminalPanel(
   const focusLabel = el('span', 'ao-term-focus', 'terminal-focus');
   const toggleBtn = el('button', 'ao-term-btn', 'terminal-toggle');
   toggleBtn.classList.add('ao-term-toggle');
-  toggleBtn.title = 'Recolher / expandir (Ctrl+`)';
+  toggleBtn.title = t('terminal.toggle.title');
   const docksEl = el('div', 'ao-term-docks', 'terminal-docks');
   const dockButtons = new Map<PanelDock, HTMLButtonElement>();
   const DOCK_OPTIONS: readonly { dock: PanelDock; glyph: string; title: string }[] = [
-    { dock: 'left', glyph: '◧', title: 'Encaixar à esquerda' },
-    { dock: 'bottom', glyph: '⬓', title: 'Encaixar embaixo' },
-    { dock: 'right', glyph: '◨', title: 'Encaixar à direita' },
+    { dock: 'left', glyph: '◧', title: t('terminal.dock.left') },
+    { dock: 'bottom', glyph: '⬓', title: t('terminal.dock.bottom') },
+    { dock: 'right', glyph: '◨', title: t('terminal.dock.right') },
   ];
   for (const option of DOCK_OPTIONS) {
     const button = el(
@@ -277,14 +278,14 @@ export function mountTerminalPanel(
     docksEl.append(button);
   }
   const vscodeBtn = el('button', 'ao-term-btn', 'terminal-vscode', 'VS Code');
-  vscodeBtn.title = 'Abrir a pasta da aba no VS Code';
+  vscodeBtn.title = t('terminal.vscode.title');
   vscodeBtn.hidden = !options.onOpenInVSCode;
   vscodeBtn.addEventListener('click', () => {
     const tab = activeTab(model);
     if (tab) options.onOpenInVSCode?.(tab.cwd);
   });
-  const browserBtn = el('button', 'ao-term-btn', 'terminal-browser', 'Navegador');
-  browserBtn.title = 'Abrir o navegador do projeto';
+  const browserBtn = el('button', 'ao-term-btn', 'terminal-browser', t('terminal.browser'));
+  browserBtn.title = t('terminal.browser.title');
   browserBtn.hidden = !options.browser;
   browserBtn.addEventListener('click', () => {
     openBrowser();
@@ -367,7 +368,8 @@ export function mountTerminalPanel(
     document.body.dataset.keyboard = owner;
     document.body.dataset.hasTerminal = String(model.tabs.length > 0);
     root.dataset.focus = owner;
-    focusLabel.textContent = owner === 'terminal' ? 'teclado: terminal' : 'teclado: escritório';
+    focusLabel.textContent =
+      owner === 'terminal' ? t('terminal.focus.terminal') : t('terminal.focus.office');
     if (owner !== lastOwner) {
       lastOwner = owner;
       options.onKeyboardOwner(owner);
@@ -434,7 +436,7 @@ export function mountTerminalPanel(
         if (hint) node.title = hint;
         const title = el('span', 'ao-term-tab-title', undefined, tabTitle(tab));
         const close = el('button', 'ao-term-x', `terminal-close-${tab.id}`, '×');
-        close.title = 'Fechar aba';
+        close.title = t('terminal.tab.close');
         close.addEventListener('click', (event) => {
           event.stopPropagation();
           requestClose(tab.id);
@@ -484,8 +486,8 @@ export function mountTerminalPanel(
       return;
     }
     confirmEl.hidden = false;
-    const yes = el('button', undefined, 'terminal-confirm-yes', 'Encerrar sessão');
-    const no = el('button', undefined, 'terminal-confirm-no', 'Cancelar');
+    const yes = el('button', undefined, 'terminal-confirm-yes', t('terminal.confirm.end'));
+    const no = el('button', undefined, 'terminal-confirm-no', t('common.cancel'));
     yes.addEventListener('click', () => closeTab(tab.id, true));
     no.addEventListener('click', () => {
       confirmingId = undefined;
@@ -494,12 +496,7 @@ export function mountTerminalPanel(
       emitLayout();
     });
     confirmEl.replaceChildren(
-      el(
-        'span',
-        undefined,
-        undefined,
-        `O claude de "${projectName(tab.cwd)}" está ativo. Encerrar?`,
-      ),
+      el('span', undefined, undefined, t('terminal.confirm.text', { name: projectName(tab.cwd) })),
       yes,
       no,
     );
@@ -643,7 +640,7 @@ export function mountTerminalPanel(
       rows: view.term.rows,
     });
     if (!result.ok) {
-      showBanner(id, `Não foi possível reiniciar: ${result.message}`, false);
+      showBanner(id, t('terminal.restartFailed', { message: result.message }), false);
       return;
     }
     closeTab(id, false);
@@ -655,8 +652,8 @@ export function mountTerminalPanel(
     if (!view) return;
     view.banner?.remove();
     const banner = el('div', 'ao-term-ended', 'terminal-ended');
-    const restartBtn = el('button', undefined, 'terminal-restart', 'Reiniciar');
-    const closeBtn = el('button', undefined, 'terminal-close-ended', 'Fechar');
+    const restartBtn = el('button', undefined, 'terminal-restart', t('terminal.restart'));
+    const closeBtn = el('button', undefined, 'terminal-close-ended', t('common.close'));
     restartBtn.addEventListener('click', () => void restart(id));
     closeBtn.addEventListener('click', () => closeTab(id, false));
     banner.append(el('span', undefined, undefined, message));

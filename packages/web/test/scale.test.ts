@@ -10,7 +10,8 @@ describe('computeViewport', () => {
     [480, 270, 1, 1, 480, 270],
     [100, 100, 1, 1, 100, 100],
   ])('%ix%i @%ix -> zoom %i, %ix%i', (w, h, dpr, zoom, width, height) => {
-    expect(computeViewport(w, h, dpr)).toEqual({ zoom, width, height });
+    // Without HiDPI the canvas is drawn 1:1 with the screen: render scale equals the zoom.
+    expect(computeViewport(w, h, dpr)).toEqual({ zoom, renderScale: zoom, width, height });
   });
 
   it('fills the window: zoom times size covers every CSS pixel', () => {
@@ -34,13 +35,19 @@ describe('computeViewport', () => {
 
   it('keeps whole device pixels on HiDPI screens', () => {
     // 2560x1440 device px -> 6x -> 3 CSS px per game pixel.
-    expect(computeViewport(1280, 720, 2)).toEqual({ zoom: 3, width: 427, height: 240 });
+    expect(computeViewport(1280, 720, 2)).toEqual({
+      zoom: 3,
+      renderScale: 6,
+      width: 427,
+      height: 240,
+    });
     expect(computeViewport(700, 400, 1.25).zoom).toBeCloseTo(1.6); // 2 device px per game pixel
+    expect(computeViewport(700, 400, 1.25).renderScale).toBe(2);
   });
 });
 
 describe('viewportChanged', () => {
-  const base = { zoom: 3, width: 427, height: 240 };
+  const base = { zoom: 3, renderScale: 3, width: 427, height: 240 };
 
   it('accepts the first viewport', () => {
     expect(viewportChanged(undefined, base)).toBe(true);
@@ -52,6 +59,7 @@ describe('viewportChanged', () => {
 
   it.each([
     ['zoom', { zoom: 4 }],
+    ['renderScale', { renderScale: 4 }],
     ['width', { width: 428 }],
     ['height', { height: 241 }],
   ])('accepts a change of %s', (_name, patch) => {

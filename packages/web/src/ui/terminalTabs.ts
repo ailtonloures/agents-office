@@ -1,4 +1,5 @@
 import type { AgentsOfficeDesktop, BrowserBridge, TerminalBridge } from '@agents-office/shared';
+import { t } from '../i18n/i18n';
 // Pure model of the terminal panel (tabs, titles, focus, size). No DOM and no xterm: the view in
 // `terminalPanel.ts` renders it. Tested with Vitest.
 
@@ -120,7 +121,7 @@ export function projectName(cwd: string): string {
 
 /** Tab title: `projeto`, plus the profile name (the tab's `activity`) of a managed session. */
 export function tabTitle(tab: TerminalTab): string {
-  if (isBrowserTab(tab)) return `Navegador · ${projectName(tab.cwd)}`;
+  if (isBrowserTab(tab)) return t('terminal.tab.browser', { name: projectName(tab.cwd) });
   const project = projectName(tab.cwd);
   return tab.state === 'running' && tab.activity ? `${project} · ${tab.activity}` : project;
 }
@@ -143,8 +144,9 @@ export function applyActivity(
 
 /** Message of the strip shown on an ended session. */
 export function exitMessage(tab: TerminalTab): string {
-  const code = tab.exitCode === undefined ? '' : ` (código ${tab.exitCode})`;
-  return `Processo terminou${code}`;
+  return tab.exitCode === undefined
+    ? t('terminal.exit')
+    : t('terminal.exit.code', { code: tab.exitCode });
 }
 
 /** Adds the tab (or keeps the existing one) and makes it the active one. */

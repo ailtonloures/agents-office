@@ -8,6 +8,7 @@ import type {
 } from '@agents-office/shared';
 import type Phaser from 'phaser';
 import type { DebugCharacter } from '../debug/debugState';
+import { t } from '../i18n/i18n';
 import type { Direction } from '../skin';
 import { SKIN_KEYS } from '../skin';
 import { actionLine, agentDisplayNames, prettyAgentType } from '../ui/identity';
@@ -566,7 +567,7 @@ export class CharacterController {
   displayName(id: string, model: OfficeModel): string {
     if (model.sessions[id]) return this.managed.get(id)?.name ?? 'Tech Lead';
     const agent = model.agents[id];
-    if (!agent) return 'alguém';
+    if (!agent) return t('character.someone');
     return this.namesOf(model).get(id) ?? prettyAgentType(agent.agentType);
   }
 

@@ -303,6 +303,17 @@ function main(): void {
     roster: rosterStore,
     maxSessions: () => config.get().maxSessions,
     liveCount: () => sessions.list().length,
+    sessionEnd: {
+      sessionIdOfTerminal: (terminalId) => idleSource.liveSessionIdOfTerminal(terminalId),
+      post: async (event) => {
+        await fetch(`${origin}/hook`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(event),
+          signal: AbortSignal.timeout(1000),
+        });
+      },
+    },
   });
   // Agent-to-agent messages (spec 068): in-memory queues, delivered to the pty of an idle agent.
   const idleSource = new OfficeIdleSource({ url: `${origin.replace(/^http/, 'ws')}/stream` });

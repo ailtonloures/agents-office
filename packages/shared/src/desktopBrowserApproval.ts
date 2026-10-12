@@ -17,6 +17,8 @@ export interface BrowserApprovalRequest {
   detail: string;
   /** Site that asks (downloads and permissions). */
   origin?: string;
+  /** File name of a download (lets the window build the question in its own language). */
+  filename?: string;
   /** Agent that asked (`browser_eval`). */
   agentName?: string;
   /** ISO timestamp of the request. */

@@ -79,7 +79,11 @@ describe('browser guard', () => {
 
     const file = guard.download('/p', { filename: 'a.zip', url: 'https://a.example/a.zip' });
     const card = f.pushed[1] as BrowserApprovalRequest;
-    expect(card).toMatchObject({ kind: 'download', detail: 'https://a.example/a.zip' });
+    expect(card).toMatchObject({
+      kind: 'download',
+      detail: 'https://a.example/a.zip',
+      filename: 'a.zip',
+    });
     f.approvals.respond({ id: card.id, allow: false });
     await expect(file).resolves.toBe(false);
   });

@@ -1,5 +1,6 @@
 import type { SpawnApprovalBridge, SpawnApprovalRequest } from '@agents-office/shared';
-import { PROFESSION_LABEL } from './dialogContent';
+import { t } from '../i18n/i18n';
+import { professionLabel } from './dialogContent';
 import { buildResponse, dequeue, enqueue, instructionsValid } from './spawnApprovalLogic';
 
 const CSS = `
@@ -62,21 +63,21 @@ export function mountSpawnApprovalCard(
     card.hidden = false;
 
     const title = field('spawn-title', 'h3');
-    title.textContent = `${request.orchestratorName} quer criar um agente${
-      queue.length > 1 ? ` (+${queue.length - 1} na fila)` : ''
+    title.textContent = `${t('spawn.title', { agent: request.orchestratorName })}${
+      queue.length > 1 ? ` ${t('approval.queued', { n: queue.length - 1 })}` : ''
     }`;
     const name = field('spawn-name');
-    name.textContent = `Nome: ${request.name}`;
+    name.textContent = t('spawn.name', { name: request.name });
     const look = field('spawn-profession');
-    look.textContent = `Aparência: ${PROFESSION_LABEL[request.profession]}`;
+    look.textContent = t('spawn.look', { profession: professionLabel(request.profession) });
     const instructions = field('spawn-instructions', 'textarea') as HTMLTextAreaElement;
     instructions.value = request.instructions;
-    instructions.setAttribute('aria-label', 'Instruções do novo agente');
+    instructions.setAttribute('aria-label', t('spawn.instructions.label'));
     const children: HTMLElement[] = [title, name, look, instructions];
     if (request.task) {
       const task = field('spawn-task');
       task.className = 'task';
-      task.textContent = `Tarefa inicial: ${request.task}`;
+      task.textContent = t('spawn.task', { task: request.task });
       children.push(task);
     }
     const always = field('spawn-always', 'input') as HTMLInputElement;
@@ -85,14 +86,12 @@ export function mountSpawnApprovalCard(
     label.className = 'row';
     label.append(
       always,
-      document.createTextNode(
-        `Permitir sem perguntar para ${request.orchestratorName} neste projeto`,
-      ),
+      document.createTextNode(t('spawn.always', { agent: request.orchestratorName })),
     );
     const approve = field('spawn-approve', 'button') as HTMLButtonElement;
-    approve.textContent = 'Aprovar';
+    approve.textContent = t('spawn.approve');
     const deny = field('spawn-deny', 'button') as HTMLButtonElement;
-    deny.textContent = 'Negar';
+    deny.textContent = t('approval.deny');
     deny.className = 'deny';
     const buttons = document.createElement('div');
     buttons.className = 'row';

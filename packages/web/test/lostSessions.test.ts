@@ -1,5 +1,9 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { setLocale } from '../src/i18n/i18n';
 import { lostLabel, resumeOptions } from '../src/ui/lostSessions';
+
+beforeEach(() => setLocale('pt-BR'));
+afterEach(() => setLocale('en'));
 
 const base = { id: 'term-1', cwd: '/w/alpha', startedAt: '2026-10-10T10:00:00Z' };
 
@@ -23,5 +27,14 @@ describe('lostLabel', () => {
     expect(lostLabel({ ...base, cwd: 'C:\\w\\beta', claudeSessionId: 'x' })).toBe(
       'beta - retoma a sessão anterior',
     );
+  });
+});
+
+describe('lostLabel in other languages', () => {
+  it('uses English and Spanish', () => {
+    setLocale('en');
+    expect(lostLabel(base)).toBe('alpha - resumes the last conversation in the folder');
+    setLocale('es');
+    expect(lostLabel({ ...base, claudeSessionId: 'x' })).toBe('alpha - reanuda la sesión anterior');
   });
 });

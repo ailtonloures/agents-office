@@ -2,7 +2,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   clampZoom,
   readStoredZoom,
+  snapZoom,
   stepZoom,
+  stepZoomCrisp,
+  textureFilterFor,
   wheelDirection,
   writeStoredZoom,
   ZOOM_DEFAULT,
@@ -38,7 +41,7 @@ describe('clampZoom / stepZoom', () => {
     expect(stepZoom(ZOOM_MAX, 1)).toBe(ZOOM_MAX);
     expect(stepZoom(ZOOM_MIN, -1)).toBe(ZOOM_MIN);
     expect(stepZoom(2.75, 1)).toBe(ZOOM_MAX);
-    expect(stepZoom(0.75, -1)).toBe(ZOOM_MIN);
+    expect(stepZoom(0.3, -1)).toBe(ZOOM_MIN);
   });
 
   it('rounds an off-step value to the step', () => {
@@ -91,5 +94,34 @@ describe('stored zoom', () => {
     });
     expect(readStoredZoom()).toBe(ZOOM_DEFAULT);
     expect(() => writeStoredZoom(2)).not.toThrow();
+  });
+});
+
+describe('crisp zoom', () => {
+  it('snaps to a whole number of canvas pixels per texel', () => {
+    expect(snapZoom(0.75, 3)).toBeCloseTo(2 / 3);
+    expect(snapZoom(1, 3)).toBe(1);
+    expect(snapZoom(1.25, 2)).toBe(1.5);
+  });
+
+  it('keeps the zoom when it is below one pixel per texel', () => {
+    expect(snapZoom(0.5, 1)).toBe(0.5);
+  });
+
+  it('always moves one level and stays whole', () => {
+    let zoom = 1;
+    const seen: number[] = [];
+    for (let i = 0; i < 4; i++) {
+      zoom = stepZoomCrisp(zoom, -1, 3);
+      seen.push(zoom);
+    }
+    expect(seen[0]).toBeCloseTo(2 / 3);
+    expect(seen[1]).toBeCloseTo(1 / 3); // one canvas pixel per texel
+    expect(seen[3]).toBe(ZOOM_MIN); // beyond that the linear filter takes over
+  });
+
+  it('uses a linear filter only when texels are minified', () => {
+    expect(textureFilterFor(0.5)).toBe('linear');
+    expect(textureFilterFor(1)).toBe('nearest');
   });
 });

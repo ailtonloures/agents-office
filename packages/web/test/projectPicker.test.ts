@@ -1,5 +1,6 @@
 import type { CatalogProject } from '@agents-office/shared';
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { setLocale } from '../src/i18n/i18n';
 import {
   buildStartOptions,
   canStart,
@@ -8,11 +9,14 @@ import {
   filterProjects,
   formatWhen,
   officeCwds,
-  PERMISSION_MODES,
   permissionModeInfo,
+  permissionModes,
   pickerBridgesOf,
   startErrorMessage,
 } from '../src/ui/projectPicker';
+
+beforeEach(() => setLocale('pt-BR'));
+afterEach(() => setLocale('en'));
 
 const project = (cwd: string): CatalogProject => ({
   cwd,
@@ -75,7 +79,7 @@ describe('launch options', () => {
 
 describe('permission modes', () => {
   it('lists the six documented modes, default first and the only default choice', () => {
-    expect(PERMISSION_MODES.map((m) => m.mode)).toEqual([
+    expect(permissionModes().map((m) => m.mode)).toEqual([
       'default',
       'acceptEdits',
       'plan',
@@ -134,5 +138,16 @@ describe('helpers', () => {
       projects: { list() {} },
     };
     expect(pickerBridgesOf({ agentsOfficeDesktop: bridges })).toBeDefined();
+  });
+});
+
+describe('picker text in other languages', () => {
+  it('translates notes and relative times', () => {
+    setLocale('en');
+    expect(permissionModeInfo('auto').note).toMatch(/Produces no cards/);
+    expect(formatWhen('2026-01-10T11:30:00Z', new Date('2026-01-10T12:00:00Z'))).toBe('30 min ago');
+    setLocale('es');
+    expect(permissionModeInfo('auto').note).toMatch(/No genera tarjetas/);
+    expect(formatWhen('2026-01-10T09:00:00Z', new Date('2026-01-10T12:00:00Z'))).toBe('hace 3 h');
   });
 });

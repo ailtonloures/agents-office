@@ -23,19 +23,21 @@ import {
   type TerminalPermissionMode,
 } from '@agents-office/shared';
 import { APPEARANCE_RANGES } from '../characters/appearance';
+import { formatDateTime, t } from '../i18n/i18n';
+import { professionLabel } from './dialogContent';
 
 // Pure logic of the cast ("Elenco") panel and the profile editor: form model and validation,
 // random look, roster rows, and the messages shown for failures. No DOM: `castPanel.ts` renders
 // it. Tested with Vitest.
 
 /** Professions a profile can use as its visual base. */
-export const BASE_OPTIONS: ReadonlyArray<{ base: Profession; label: string }> = [
-  { base: 'tech-lead', label: 'Tech Lead' },
-  { base: 'analyst', label: 'Analista' },
-  { base: 'architect', label: 'Arquiteto' },
-  { base: 'developer', label: 'Desenvolvedor' },
-  { base: 'qa', label: 'QA' },
-  { base: 'support', label: 'Suporte' },
+export const BASE_OPTIONS: readonly Profession[] = [
+  'tech-lead',
+  'analyst',
+  'architect',
+  'developer',
+  'qa',
+  'support',
 ];
 
 export const SKIN_COLORS = ['#f6d3b3', '#f1c9a5', '#e0ac82', '#c68642', '#8d5524', '#5a3a22'];
@@ -81,7 +83,7 @@ const pickFrom = <T>(list: readonly T[], random: () => number): T =>
 /** Random look ("sortear"): base, hair style and the three colors. */
 export function randomAppearance(random: () => number = Math.random): Appearance {
   return {
-    base: pickFrom(BASE_OPTIONS, random).base,
+    base: pickFrom(BASE_OPTIONS, random),
     hairStyle: Math.min(
       APPEARANCE_RANGES.hairStyle - 1,
       Math.floor(random() * APPEARANCE_RANGES.hairStyle),
@@ -117,24 +119,24 @@ export function formFromProfile(profile: AgentProfile): ProfileForm {
   };
 }
 
-/** Field errors (pt-BR) of the form; empty when it can be saved. */
+/** Field errors (active language) of the form; empty when it can be saved. */
 export function validateForm(form: ProfileForm, otherNames: readonly string[]): FormErrors {
   const errors: FormErrors = {};
   const name = form.name.trim();
-  if (name === '') errors.name = 'Informe um nome.';
+  if (name === '') errors.name = t('cast.error.nameRequired');
   else if (name.length > PROFILE_NAME_MAX) {
-    errors.name = `O nome deve ter no máximo ${PROFILE_NAME_MAX} caracteres.`;
+    errors.name = t('cast.error.nameMax', { max: PROFILE_NAME_MAX });
   } else if (isProfileNameTaken(name, otherNames)) {
-    errors.name = 'Já existe um perfil com esse nome.';
+    errors.name = t('cast.error.nameTaken');
   }
   if (form.description.trim().length > PROFILE_DESCRIPTION_MAX) {
-    errors.description = `A descrição deve ter no máximo ${PROFILE_DESCRIPTION_MAX} caracteres.`;
+    errors.description = t('cast.error.descriptionMax', { max: PROFILE_DESCRIPTION_MAX });
   }
   if (form.instructions.length > PROFILE_INSTRUCTIONS_MAX) {
-    errors.instructions = `As instruções devem ter no máximo ${PROFILE_INSTRUCTIONS_MAX} caracteres.`;
+    errors.instructions = t('cast.error.instructionsMax', { max: PROFILE_INSTRUCTIONS_MAX });
   }
   if (form.model.trim().length > PROFILE_MODEL_MAX) {
-    errors.model = `O modelo deve ter no máximo ${PROFILE_MODEL_MAX} caracteres.`;
+    errors.model = t('cast.error.modelMax', { max: PROFILE_MODEL_MAX });
   }
   return errors;
 }
@@ -225,7 +227,7 @@ export function buildCastRows(
       return {
         ...base,
         name: entry.name,
-        subtitle: entry.profession,
+        subtitle: professionLabel(entry.profession),
         state: session ? 'running' : failure ? 'failed' : 'stopped',
         message: !session && failure ? startFailureMessage(failure) : '',
         terminalId: session?.terminalId,
@@ -239,7 +241,7 @@ export function buildCastRows(
         name: session?.name ?? entry.profileId,
         subtitle: '',
         state: 'missing',
-        message: 'O perfil deste agente não existe mais. Remova-o do elenco.',
+        message: t('cast.profileMissing'),
         terminalId: session?.terminalId,
         profile: undefined,
       };
@@ -265,36 +267,37 @@ export function availableProfiles(
   return profiles.filter((profile) => !inRoster.has(profile.id));
 }
 
-export const STATE_LABELS: Record<CastState, string> = {
-  running: 'em execução',
-  stopped: 'parado',
-  failed: 'falhou ao iniciar',
-  missing: 'perfil ausente',
-};
+export function stateLabel(state: CastState): string {
+  return t(`cast.state.${state}`);
+}
 
-/** Clear message (pt-BR) for a session that could not start. */
+/** Clear message for a session that could not start. */
 export function startFailureMessage(
   failure: Pick<ManagedSessionFailure, 'code' | 'message'> & { cwd?: string },
 ): string {
+  const message = failure.message;
   switch (failure.code) {
     case 'claude-not-found':
-      return `Claude Code não encontrado. Instale o Claude Code ou defina o caminho (claudePath) no config.json do app. (${failure.message})`;
+      return t('cast.fail.claudeNotFound', { message });
     case 'invalid-cwd':
-      return `A pasta do projeto não existe ou não é válida${failure.cwd ? `: ${failure.cwd}` : ''}. Escolha outro projeto ou recrie a pasta. (${failure.message})`;
+      return failure.cwd
+        ? t('cast.fail.invalidCwd.path', { cwd: failure.cwd, message })
+        : t('cast.fail.invalidCwd', { message });
     case 'unknown-entry':
-      return 'O perfil deste agente não existe mais. Remova-o do elenco.';
+      return t('cast.profileMissing');
     case 'session-limit':
-      return `Limite de sessões atingido. Encerre alguma sessão e tente de novo. (${failure.message})`;
+      return t('cast.fail.sessionLimit', { message });
     default:
-      return failure.message;
+      return message;
   }
 }
 
 /** Confirmation text before deleting a profile; `usedBy` lists the projects whose roster has it. */
 export function deleteProfileWarning(name: string, usedBy: readonly string[]): string {
-  if (usedBy.length === 0) return `Apagar o perfil "${name}"?`;
+  if (usedBy.length === 0) return t('cast.delete.confirm', { name });
   const where = usedBy.map((cwd) => `- ${cwd}`).join('\n');
-  return `O perfil "${name}" está no elenco de ${usedBy.length} projeto(s):\n${where}\n\nApagar mesmo assim? Ele sai desses elencos e as sessões dele em execução são encerradas.`;
+  const key = usedBy.length === 1 ? 'cast.delete.inUse.one' : 'cast.delete.inUse.other';
+  return t(key, { name, n: usedBy.length, where });
 }
 
 /** The default Tech Lead cannot be deleted. */
@@ -325,7 +328,7 @@ export function castBridgesOf(win: object): CastBridges | undefined {
   return { profiles, managed };
 }
 
-/** One checkbox of the "pode falar com" checklist. */
+/** One checkbox of the "can talk to" checklist. */
 export interface LinkOption {
   entryId: string;
   name: string;
@@ -354,9 +357,9 @@ export function linkOptions(
     }));
 }
 
-/** Short summary shown on the toggle, e.g. "Pode falar com (2)". */
+/** Short summary shown on the toggle, e.g. "Can talk to (2)". */
 export function linksLabel(options: readonly LinkOption[]): string {
-  return `Pode falar com (${options.filter((o) => o.connected).length})`;
+  return t('cast.links', { n: options.filter((o) => o.connected).length });
 }
 
 // ---- Agents created by orchestrators (spec 074) ----
@@ -366,14 +369,15 @@ export function auditLine(event: SpawnAuditEvent): string {
   const when = new Date(event.at);
   const stamp = Number.isNaN(when.getTime())
     ? event.at
-    : when.toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
+    : formatDateTime(when, { dateStyle: 'short', timeStyle: 'short' });
   const who = event.orchestratorName ?? event.orchestratorId;
+  const agent = event.agentName;
   const what =
     event.type === 'criado'
-      ? `${who} criou ${event.agentName}`
+      ? t('cast.audit.created', { who, agent })
       : event.by === 'usuario'
-        ? `${event.agentName} (criado por ${who}) foi removido por você`
-        : `${who} encerrou ${event.agentName}`;
+        ? t('cast.audit.removedByYou', { who, agent })
+        : t('cast.audit.ended', { who, agent });
   return `${stamp} · ${what}`;
 }
 
@@ -385,6 +389,6 @@ export function auditNewestFirst(events: readonly SpawnAuditEvent[]): SpawnAudit
 /** Tab tooltips: the original task of each created agent, by terminal id. */
 export function taskHints(sessions: readonly ManagedSessionInfo[]): Record<string, string> {
   const hints: Record<string, string> = {};
-  for (const s of sessions) if (s.task) hints[s.terminalId] = `Tarefa original: ${s.task}`;
+  for (const s of sessions) if (s.task) hints[s.terminalId] = t('cast.task', { task: s.task });
   return hints;
 }

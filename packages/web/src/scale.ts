@@ -9,6 +9,11 @@ export const MIN_WIDTH = 256;
 export interface Viewport {
   /** CSS pixels per game pixel (a whole number of device pixels). */
   zoom: number;
+  /**
+   * Device pixels per game pixel (a whole number). The canvas is rendered at `width * renderScale`
+   * so it maps 1:1 to the screen: the world stays sharp when the camera zooms out.
+   */
+  renderScale: number;
   /** Logical game size that fills the window at that zoom. */
   width: number;
   height: number;
@@ -29,6 +34,7 @@ export function computeViewport(viewportWidth: number, viewportHeight: number, d
   );
   return {
     zoom: device / ratio,
+    renderScale: device,
     width: Math.ceil(deviceW / device),
     height: Math.ceil(deviceH / device),
   };
@@ -40,6 +46,10 @@ export function computeViewport(viewportWidth: number, viewportHeight: number, d
  */
 export function viewportChanged(last: Viewport | undefined, next: Viewport): boolean {
   return (
-    !last || last.zoom !== next.zoom || last.width !== next.width || last.height !== next.height
+    !last ||
+    last.zoom !== next.zoom ||
+    last.renderScale !== next.renderScale ||
+    last.width !== next.width ||
+    last.height !== next.height
   );
 }

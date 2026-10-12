@@ -1,7 +1,9 @@
 import type { ActorStatus, Profession } from '@agents-office/shared';
 import type Phaser from 'phaser';
+import { type MessageKey, t } from '../i18n/i18n';
+import { logicalSizeOf } from '../renderScale';
 import { SKIN_KEYS } from '../skin';
-import { HELP_CONTROLS } from './hudLogic';
+import { helpControls } from './hudLogic';
 import { HintRow, hintFonts, KEY_COLORS } from './keyHints';
 import { DARK_PANEL, drawPanel } from './panel';
 import type { UiOverlay } from './uiOverlay';
@@ -12,21 +14,21 @@ const PAD = 10;
 const ROW_H = 12;
 const GOLD = 0xf2c94c;
 
-const ROLES: readonly [Profession, string][] = [
-  ['tech-lead', 'Tech Lead'],
-  ['developer', 'Dev'],
-  ['analyst', 'Analista'],
-  ['architect', 'Arquiteto'],
-  ['qa', 'QA'],
-  ['support', 'Suporte'],
+const ROLES: readonly [Profession, MessageKey][] = [
+  ['tech-lead', 'help.role.techLead'],
+  ['developer', 'help.role.developer'],
+  ['analyst', 'help.role.analyst'],
+  ['architect', 'help.role.architect'],
+  ['qa', 'help.role.qa'],
+  ['support', 'help.role.support'],
 ];
 
-const STATUSES: readonly [ActorStatus, string][] = [
-  ['working', 'Trabalhando'],
-  ['thinking', 'Pensando'],
-  ['waiting', 'Aguarda você'],
-  ['error', 'Erro'],
-  ['idle', 'Ocioso'],
+const STATUSES: readonly [ActorStatus, MessageKey][] = [
+  ['working', 'help.status.working'],
+  ['thinking', 'help.status.thinking'],
+  ['waiting', 'help.status.waiting'],
+  ['error', 'help.status.error'],
+  ['idle', 'help.status.idle'],
 ];
 
 /**
@@ -55,14 +57,14 @@ export class HelpPanel {
     };
 
     let y = PAD;
-    text(PAD, y - 2, 'Controles', KEY_COLORS.text, SKIN_KEYS.font);
+    text(PAD, y - 2, t('help.title'), KEY_COLORS.text, SKIN_KEYS.font);
     const close = new HintRow(scene);
-    close.set([{ keys: ['H'], label: 'fechar' }]);
+    close.set([{ keys: ['H'], label: t('help.close') }]);
     close.container.setPosition(WIDTH - PAD - close.width, y);
     items.push(close.container);
     y += 14;
     g.fillStyle(0x2a3250, 1).fillRect(PAD, y - 3, WIDTH - PAD * 2, 1);
-    for (const control of HELP_CONTROLS) {
+    for (const control of helpControls()) {
       const row = new HintRow(scene);
       // Keys on the left column, the action on the right one.
       const keysWidth = row.set([{ keys: control.keys, label: '' }]);
@@ -74,8 +76,8 @@ export class HelpPanel {
 
     y += 4;
     g.fillStyle(0x2a3250, 1).fillRect(PAD, y - 3, WIDTH - PAD * 2, 1);
-    text(PAD, y, 'STATUS', KEY_COLORS.muted, fonts.cap);
-    text(PAD + 112, y, 'PAPEIS', KEY_COLORS.muted, fonts.cap);
+    text(PAD, y, t('help.statusHeading'), KEY_COLORS.muted, fonts.cap);
+    text(PAD + 112, y, t('help.rolesHeading'), KEY_COLORS.muted, fonts.cap);
     y += 9;
     const rows = Math.max(STATUSES.length, Math.ceil(ROLES.length / 2));
     STATUSES.forEach(([status, label], i) => {
@@ -85,17 +87,17 @@ export class HelpPanel {
       g.fillStyle(color, 1)
         .fillRect(PAD, ry + 2, 4, 2)
         .fillRect(PAD + 1, ry + 1, 2, 4);
-      text(PAD + 8, ry, label, KEY_COLORS.label);
+      text(PAD + 8, ry, t(label), KEY_COLORS.label);
     });
     ROLES.forEach(([role, label], i) => {
       const col = i % 2;
       const ry = y + Math.floor(i / 2) * 10;
       const rx = PAD + 112 + col * 56;
       g.fillStyle(roleColor[role], 1).fillRect(rx, ry, 2, 7);
-      text(rx + 5, ry, label, KEY_COLORS.label);
+      text(rx + 5, ry, t(label), KEY_COLORS.label);
     });
     y += rows * 10 + 2;
-    text(PAD, y, 'Monitor = atividade do agente  ·  Ponto = status', KEY_COLORS.muted);
+    text(PAD, y, t('help.legend'), KEY_COLORS.muted);
     y += 10 + PAD - 2;
     this.height = y;
 
@@ -117,7 +119,8 @@ export class HelpPanel {
       .setDepth(HELP_DEPTH)
       .setVisible(false);
     ui.add(this.dim, this.container);
-    this.layout(scene.scale.width, scene.scale.height);
+    const size = logicalSizeOf(scene);
+    this.layout(size.width, size.height);
   }
 
   get isOpen(): boolean {

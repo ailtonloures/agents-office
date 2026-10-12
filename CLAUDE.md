@@ -110,4 +110,5 @@ pnpm monorepo (Node >= 20, pnpm 9). Agents Office mirrors Claude Code activity a
 ## Language
 
 - Code, comments, identifiers, commit messages and the root docs are in English.
-- App UI strings are pt-BR.
+- UI strings go through `t()` (`packages/web/src/i18n`); the default is English, and every key must exist in
+  `en`, `pt-BR` and `es` (the typecheck and a parity test enforce it). Never hardcode UI text.

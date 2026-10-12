@@ -9,6 +9,7 @@ import type {
   TerminalStartOptions,
   TerminalStartResult,
 } from '@agents-office/shared';
+import { t } from '../i18n/i18n';
 // Pure logic of the project picker (filter, launch options -> `claude` arguments, labels). No DOM:
 // `projectPickerPanel.ts` renders it. Tested with Vitest.
 
@@ -17,11 +18,17 @@ export type LaunchChoice =
   | { kind: 'continue' }
   | { kind: 'resume'; sessionId: string };
 
-export const LAUNCH_LABELS: Record<LaunchChoice['kind'], string> = {
-  new: 'Nova sessão',
-  continue: 'Continuar a última',
-  resume: 'Retomar uma sessão',
-};
+/** Label of a launch option in the active language. */
+export function launchLabel(kind: LaunchChoice['kind']): string {
+  switch (kind) {
+    case 'new':
+      return t('picker.launch.new');
+    case 'continue':
+      return t('picker.launch.continue');
+    case 'resume':
+      return t('picker.launch.resume');
+  }
+}
 
 export type CardSupport = 'yes' | 'partial' | 'no';
 
@@ -34,54 +41,47 @@ export interface PermissionModeInfo {
 }
 
 /** Documented `--permission-mode` values. Only `default` and `auto` were verified (spike 013). */
-export const PERMISSION_MODES: readonly PermissionModeInfo[] = [
-  {
-    mode: 'default',
-    label: 'default (manual)',
-    cards: 'yes',
-    note: 'Os pedidos de permissão aparecem como cartões no escritório.',
-  },
-  {
-    mode: 'acceptEdits',
-    label: 'acceptEdits',
-    cards: 'partial',
-    note: 'Edições de arquivos são aprovadas sozinhas, sem cartão; os demais pedidos geram cartão (não verificado).',
-  },
-  {
-    mode: 'plan',
-    label: 'plan',
-    cards: 'partial',
-    note: 'Modo de planejamento, só leitura; pedidos que exigirem aprovação geram cartão (não verificado).',
-  },
-  {
-    mode: 'dontAsk',
-    label: 'dontAsk',
-    cards: 'no',
-    note: 'Não pergunta: o que não estiver permitido é negado, então não há cartões (não verificado).',
-  },
-  {
-    mode: 'auto',
-    label: 'auto',
-    cards: 'no',
-    note: 'Não gera cartões: o modo auto não dispara o hook de permissão (spike 013).',
-  },
-  {
-    mode: 'bypassPermissions',
-    label: 'bypassPermissions',
-    cards: 'no',
-    note: 'Sem confirmações e sem cartões. Use só em pastas de confiança (não verificado).',
-  },
+const MODE_CARDS: readonly { mode: TerminalPermissionMode; cards: CardSupport }[] = [
+  { mode: 'default', cards: 'yes' },
+  { mode: 'acceptEdits', cards: 'partial' },
+  { mode: 'plan', cards: 'partial' },
+  { mode: 'dontAsk', cards: 'no' },
+  { mode: 'auto', cards: 'no' },
+  { mode: 'bypassPermissions', cards: 'no' },
 ];
+
+/** The permission modes with their notes in the active language (mode names are not translated). */
+export function permissionModes(): readonly PermissionModeInfo[] {
+  return MODE_CARDS.map(({ mode, cards }) => ({
+    mode,
+    label: mode === 'default' ? 'default (manual)' : mode,
+    cards,
+    note: t(`picker.mode.${mode}.note`),
+  }));
+}
+
+/** Short tag of the card support, shown next to the mode name in the select. */
+export function cardsTag(cards: CardSupport): string {
+  switch (cards) {
+    case 'yes':
+      return t('picker.cards.yes');
+    case 'partial':
+      return t('picker.cards.partial');
+    case 'no':
+      return t('picker.cards.no');
+  }
+}
 
 export const DEFAULT_PERMISSION_MODE: TerminalPermissionMode = 'default';
 
-export const TRUST_FOLDER_NOTE =
-  'Em uma pasta nova o Claude pergunta no terminal se você confia nela; responda lá (a opção marcada é "No, exit").';
+export function trustFolderNote(): string {
+  return t('picker.trustNote');
+}
 
 export function permissionModeInfo(mode: TerminalPermissionMode): PermissionModeInfo {
   return (
-    PERMISSION_MODES.find((info) => info.mode === mode) ??
-    (PERMISSION_MODES[0] as PermissionModeInfo)
+    permissionModes().find((info) => info.mode === mode) ??
+    (permissionModes()[0] as PermissionModeInfo)
   );
 }
 
@@ -126,26 +126,26 @@ export function claudeArgs(options: TerminalStartOptions): string[] {
 export function startErrorMessage(result: Extract<TerminalStartResult, { ok: false }>): string {
   switch (result.code) {
     case 'claude-not-found':
-      return `${result.message} Instale o Claude Code ou defina o caminho (claudePath) no config.json do app.`;
+      return t('picker.claudeNotFound', { message: result.message });
     case 'session-limit':
-      return `${result.message}`;
+      return result.message;
     default:
       return result.message;
   }
 }
 
-/** "agora", "há 5 min", "há 3 h", "há 2 d" or the date. */
+/** "now", "5 min ago", "3 h ago", "2 d ago" or the date, in the active language. */
 export function formatWhen(iso: string | null, now: Date): string {
   if (!iso) return '';
   const then = new Date(iso).getTime();
   if (Number.isNaN(then)) return '';
   const minutes = Math.floor((now.getTime() - then) / 60_000);
-  if (minutes < 1) return 'agora';
-  if (minutes < 60) return `há ${minutes} min`;
+  if (minutes < 1) return t('picker.when.now');
+  if (minutes < 60) return t('picker.when.minutes', { n: minutes });
   const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `há ${hours} h`;
+  if (hours < 24) return t('picker.when.hours', { n: hours });
   const days = Math.floor(hours / 24);
-  if (days < 30) return `há ${days} d`;
+  if (days < 30) return t('picker.when.days', { n: days });
   return new Date(then).toISOString().slice(0, 10);
 }
 

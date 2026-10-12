@@ -333,7 +333,8 @@ function buildRoom(
       const in_ = (ly: number): number => ly + WALL_EXTRA;
       for (let i = 0; i < WALL_ROWS; i += 1) setCell(b.walls, x0 + 8, top + i, null);
       put(b.furniture, 8, WALL_EXTRA, 'door');
-      prop('art-wide', 10, 1);
+      // The room's single interactive whiteboard (specs 076, 092), between the door and the window.
+      prop('whiteboard', 10, 1);
       put(b.walls, 12, 0, 'window-top');
       put(b.walls, 13, 0, 'window-top');
       put(b.walls, 12, 1, 'window');
@@ -342,6 +343,8 @@ function buildRoom(
       doors.push({ roomId: project.id, tile: door, outside: { x: door.x, y: top - 1 } });
       signs.push({ roomId: project.id, text: truncateSign(project.name), tile: at(4, 1) });
       b.pois.push({ type: 'window', tile: at(12, in_(1)), roomId: project.id });
+      // Where an agent stands to draw on the board (spec 078): the floor tile just below it.
+      b.pois.push({ type: 'whiteboard', tile: at(10, in_(1)), roomId: project.id });
       prop('plant-tall', 1, in_(1));
       prop('plant-fig', 14, in_(1));
       // Lounge nook on the left (sofa, armchair, coffee table), shelving on the right.
@@ -529,10 +532,6 @@ export function layoutBuilding(projects: readonly LayoutProjectInput[]): Buildin
       setCell(b.walls, x, 0, 'window-top');
       setCell(b.walls, x, 1, 'window');
     }
-    // Exactly one interactive whiteboard per workspace (spec 076).
-    b.prop('whiteboard', x0 + 10, 1);
-    // Where an agent stands to draw on it (spec 078): the corridor tile just below the board.
-    b.pois.push({ type: 'whiteboard', tile: { x: x0 + 10, y: WALL_ROWS }, roomId: project.id });
     setCell(b.walls, x0 + 13, 1, index % 2 === 0 ? 'clock' : 'poster');
     b.prop('plant-tall', x0 + 1, WALL_ROWS);
     b.prop(index % 2 === 0 ? 'plant' : 'plant-fig', x0 + 14, WALL_ROWS);

@@ -40,6 +40,25 @@ describe('RosterStore', () => {
     expect(new RosterStore(path).get('/p').entries[0]).toMatchObject({ reopen: false });
   });
 
+  it('loads a legacy file without the reopen field as not reopening', () => {
+    writeFileSync(
+      path,
+      JSON.stringify({
+        projects: {
+          '/p': {
+            entries: [
+              { kind: 'profile', profileId: 'tech-lead' },
+              { kind: 'inline', id: 'agent-1', name: 'Dev', profession: 'developer' },
+            ],
+          },
+        },
+      }),
+    );
+    const roster = new RosterStore(path).get('/p');
+    expect(roster.entries.map((e) => e.reopen)).toEqual([false, false]);
+    expect(readdirSync(root).some((f) => f.includes('corrupt'))).toBe(false);
+  });
+
   it('removes entries and dangling connections', () => {
     const store = new RosterStore(path);
     store.addProfile('/p', 'a');

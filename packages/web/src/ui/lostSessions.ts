@@ -3,6 +3,7 @@ import type {
   TerminalBridge,
   TerminalStartOptions,
 } from '@agents-office/shared';
+import { t } from '../i18n/i18n';
 import { showToast } from './externalOpen';
 
 // Sessions whose tab existed when the app died (crash, kill, shutdown): offered for resuming
@@ -19,7 +20,7 @@ export function resumeOptions(lost: LostTerminalSession): TerminalStartOptions {
 
 export function lostLabel(lost: LostTerminalSession): string {
   const name = lost.cwd.split(/[\\/]/).filter(Boolean).pop() ?? lost.cwd;
-  return `${name} - ${lost.claudeSessionId ? 'retoma a sessão anterior' : 'retoma a última conversa da pasta'}`;
+  return `${name} - ${lost.claudeSessionId ? t('lost.resumesSession') : t('lost.resumesLast')}`;
 }
 
 const CSS = `
@@ -55,9 +56,7 @@ export function mountLostSessions(bridge: TerminalBridge): LostSessionsView {
     const title = document.createElement('div');
     title.className = 'ao-lost-title';
     title.textContent =
-      list.length === 1
-        ? 'O app foi encerrado sem fechar 1 sessão. Retomar?'
-        : `O app foi encerrado sem fechar ${list.length} sessões. Retomar?`;
+      list.length === 1 ? t('lost.title.one') : t('lost.title.other', { n: list.length });
     root.append(title);
     for (const lost of list) {
       const row = document.createElement('div');
@@ -66,16 +65,16 @@ export function mountLostSessions(bridge: TerminalBridge): LostSessionsView {
       const label = document.createElement('span');
       label.textContent = lostLabel(lost);
       label.title = lost.cwd;
-      const resume = button('Retomar', 'lost-resume', async () => {
+      const resume = button(t('lost.resume'), 'lost-resume', async () => {
         const result = await bridge.start(resumeOptions(lost));
         if (!result.ok) {
-          showToast(`Não foi possível retomar: ${result.message}`);
+          showToast(t('lost.resumeFailed', { message: result.message }));
           return;
         }
         await bridge.dismissLost(lost.id);
         await refresh();
       });
-      const dismiss = button('Descartar', 'lost-dismiss', async () => {
+      const dismiss = button(t('lost.dismiss'), 'lost-dismiss', async () => {
         await bridge.dismissLost(lost.id);
         await refresh();
       });

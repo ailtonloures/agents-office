@@ -1,5 +1,6 @@
 import {
   createEmptyModel,
+  isLive,
   type OfficeModel,
   parseServerMessage,
   reduce,
@@ -51,6 +52,12 @@ export class OfficeIdleSource implements IdleProbe {
 
   isIdle(terminalId: string): boolean {
     return terminalIsIdle(this.model, terminalId);
+  }
+
+  /** Id of the live session bound to `terminalId` in the model, or null. */
+  liveSessionIdOfTerminal(terminalId: string): string | null {
+    const session = Object.values(this.model.sessions).find((s) => s.terminalId === terminalId);
+    return session && isLive(session) ? session.id : null;
   }
 
   onChange(listener: () => void): () => void {

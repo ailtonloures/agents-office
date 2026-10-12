@@ -1,15 +1,19 @@
 import type { BrowserPick } from '@agents-office/shared';
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { setLocale } from '../src/i18n/i18n';
 import {
   formatPickContext,
-  PICK_CONTEXT_FOOTER,
-  PICK_CONTEXT_HEADER,
+  pickContextFooter,
+  pickContextHeader,
   pickTargets,
   ptyPayload,
   sanitizeForTerminal,
   sendPickContext,
 } from '../src/ui/browserPickLogic';
 import type { TerminalTab } from '../src/ui/terminalTabs';
+
+beforeEach(() => setLocale('pt-BR'));
+afterEach(() => setLocale('en'));
 
 const pick: BrowserPick = {
   cwd: '/p',
@@ -27,14 +31,25 @@ const pick: BrowserPick = {
 describe('formatPickContext', () => {
   it('labels every field, marks truncation and flags page data as untrusted', () => {
     const text = formatPickContext(pick);
-    expect(text.startsWith(PICK_CONTEXT_HEADER)).toBe(true);
-    expect(text.endsWith(PICK_CONTEXT_FOOTER)).toBe(true);
+    expect(text.startsWith(pickContextHeader())).toBe(true);
+    expect(text.endsWith(pickContextFooter())).toBe(true);
     expect(text).toContain('dados de terceiros');
     expect(text).toContain('Seletor: #save');
     expect(text).toContain('Elemento: <button>');
     expect(text).toContain('Captura (imagem PNG): /tmp/pick.png');
     expect(text).toContain('HTML (truncado):');
     expect(text).toContain('Texto:\nSalvar');
+  });
+
+  it('follows the active language', () => {
+    setLocale('en');
+    const text = formatPickContext(pick);
+    expect(text.startsWith('[Browser context: element selected by the user]')).toBe(true);
+    expect(text).toContain('third-party data');
+    expect(text).toContain('Selector: #save');
+    expect(text).toContain('HTML (truncated):');
+    setLocale('es');
+    expect(formatPickContext(pick)).toContain('datos de terceros');
   });
 
   it('omits the capture line without screenshot and shows empty fields', () => {

@@ -1,4 +1,4 @@
-export const ZOOM_MIN = 0.5;
+export const ZOOM_MIN = 0.25;
 export const ZOOM_MAX = 3;
 export const ZOOM_STEP = 0.25;
 export const ZOOM_DEFAULT = 1;
@@ -34,6 +34,33 @@ export function clampZoom(zoom: number): number {
 export function stepZoom(zoom: number, direction: ZoomDirection): number {
   const next = Math.round(zoom / ZOOM_STEP + direction) * ZOOM_STEP;
   return clampZoom(next);
+}
+
+/**
+ * Rounds a user zoom so the effective zoom (`zoom * renderScale`, canvas pixels per texel) is a
+ * whole number: every texel then covers the same number of pixels and the pixel art stays crisp.
+ * Below one canvas pixel per texel there is nothing to round to; the zoom is kept as is.
+ */
+export function snapZoom(zoom: number, renderScale: number): number {
+  const effective = zoom * renderScale;
+  return effective >= 1 ? Math.round(effective) / renderScale : zoom;
+}
+
+/** Like {@link stepZoom}, but lands on a crisp (whole effective) zoom and always moves one level. */
+export function stepZoomCrisp(zoom: number, direction: ZoomDirection, renderScale: number): number {
+  const target = stepZoom(zoom, direction);
+  const snapped = snapZoom(target, renderScale);
+  const current = snapZoom(zoom, renderScale);
+  if (snapped !== current || target === zoom) return clampZoom(snapped);
+  // The step was smaller than one whole effective pixel: move a full level instead.
+  const level = Math.round(current * renderScale) + direction;
+  return clampZoom(level >= 1 ? level / renderScale : target);
+}
+
+/** Texture filter for an effective zoom: nearest keeps pixel art hard, linear averages minified texels. */
+export type TextureFilter = 'nearest' | 'linear';
+export function textureFilterFor(effectiveZoom: number): TextureFilter {
+  return effectiveZoom < 1 ? 'linear' : 'nearest';
 }
 
 /** A wheel that scrolls up (negative deltaY) zooms in. */

@@ -1,7 +1,11 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { setLocale } from '../src/i18n/i18n';
 import { libraryItemsOf, libraryLabel } from '../src/ui/boardLogic';
 import { installMermaidRelay } from '../src/ui/mermaidRelay';
 import { MERMAID_MAX_ELEMENTS, toBoardSkeletons } from '../src/ui/mermaidSkeletons';
+
+beforeEach(() => setLocale('pt-BR'));
+afterEach(() => setLocale('en'));
 
 describe('toBoardSkeletons', () => {
   it('keeps supported fields, maps start/end to from/to and drops images', () => {
@@ -125,5 +129,8 @@ describe('library helpers', () => {
   it('labels a library', () => {
     expect(libraryLabel(lib)).toBe('Infra (2 formas)');
     expect(libraryLabel({ ...lib, items: lib.items.slice(0, 1) })).toBe('Infra (1 forma)');
+    setLocale('en');
+    expect(libraryLabel(lib)).toBe('Infra (2 shapes)');
+    expect(libraryLabel({ ...lib, items: lib.items.slice(0, 1) })).toBe('Infra (1 shape)');
   });
 });

@@ -4,6 +4,7 @@ import type {
   BoardLibrary,
   BoardSceneData,
 } from '@agents-office/shared';
+import { t } from '../i18n/i18n';
 
 // Pure helpers of the whiteboard overlay (spec 077): no DOM, no React, no Excalidraw, so the main
 // bundle can import them without pulling the editor in.
@@ -242,7 +243,7 @@ export function boardAuthors(
 
 /** Text of the authorship indicator ("" when no agent drew anything). */
 export const authorsLabel = (names: readonly string[]): string =>
-  names.length === 0 ? '' : `Desenhado por: ${names.join(', ')}`;
+  names.length === 0 ? '' : t('board.authors', { names: names.join(', ') });
 
 /** Excalidraw `LibraryItem`s of the installed libraries (ids prefixed with the library id). */
 export function libraryItemsOf(libraries: readonly BoardLibrary[]): unknown[] {
@@ -257,6 +258,9 @@ export function libraryItemsOf(libraries: readonly BoardLibrary[]): unknown[] {
   );
 }
 
-/** One line for the libraries panel: "Name (3 formas)". */
+/** One line for the libraries panel: "Name (3 shapes)". */
 export const libraryLabel = (library: BoardLibrary): string =>
-  `${library.name} (${library.items.length} ${library.items.length === 1 ? 'forma' : 'formas'})`;
+  t(library.items.length === 1 ? 'board.library.one' : 'board.library.other', {
+    name: library.name,
+    n: library.items.length,
+  });

@@ -3,22 +3,24 @@ import type {
   ProjectSessionInfo,
   TerminalPermissionMode,
 } from '@agents-office/shared';
+import { t } from '../i18n/i18n';
 import { BUTTON_CSS } from './buttonStyles';
 import { getCornerBar } from './cornerBar';
 import { openInVSCodeWithToast } from './externalOpen';
 import {
   buildStartOptions,
   canStart,
+  cardsTag,
   DEFAULT_PERMISSION_MODE,
   filterProjects,
   formatWhen,
-  LAUNCH_LABELS,
   type LaunchChoice,
-  PERMISSION_MODES,
+  launchLabel,
   type PickerBridges,
   permissionModeInfo,
+  permissionModes,
   startErrorMessage,
-  TRUST_FOLDER_NOTE,
+  trustFolderNote,
 } from './projectPicker';
 
 const CSS = `
@@ -140,16 +142,16 @@ export function mountProjectPicker(
 
     const search = el(
       'input',
-      { type: 'search', placeholder: 'Buscar projeto...' },
+      { type: 'search', placeholder: t('picker.search.placeholder') },
       'picker-search',
     );
-    search.setAttribute('aria-label', 'Buscar projeto');
+    search.setAttribute('aria-label', t('picker.search.label'));
     const list = el('ul', {}, 'picker-list');
     list.className = 'ao-picker-list';
     list.setAttribute('role', 'listbox');
     const details = el('div');
     details.className = 'ao-picker-details';
-    box.append(el('h2', { textContent: 'Iniciar sessão do Claude Code' }), search, list, details);
+    box.append(el('h2', { textContent: t('picker.title') }), search, list, details);
 
     const visible = (): CatalogProject[] => filterProjects(projects, query);
     const current = (): CatalogProject | undefined => projects.find((p) => p.cwd === selected);
@@ -187,7 +189,7 @@ export function mountProjectPicker(
           row.setAttribute('aria-selected', String(project.cwd === selected));
           const star = el('button', { textContent: project.favorite ? '★' : '☆' }, 'picker-star');
           star.className = 'star';
-          star.title = project.favorite ? 'Remover dos favoritos' : 'Favoritar';
+          star.title = project.favorite ? t('picker.favorite.remove') : t('picker.favorite.add');
           star.setAttribute('aria-pressed', String(project.favorite));
           star.onclick = (event) => {
             event.stopPropagation();
@@ -209,7 +211,10 @@ export function mountProjectPicker(
         list.append(
           el(
             'li',
-            { textContent: projects.length === 0 ? 'Nenhum projeto ainda.' : 'Nada encontrado.' },
+            {
+              textContent:
+                projects.length === 0 ? t('picker.empty.none') : t('picker.empty.noMatch'),
+            },
             'picker-empty',
           ),
         );
@@ -218,7 +223,7 @@ export function mountProjectPicker(
 
     const renderDetails = (): void => {
       const project = current();
-      const pickNew = el('button', { textContent: 'Novo projeto…' }, 'picker-new');
+      const pickNew = el('button', { textContent: t('picker.new') }, 'picker-new');
       pickNew.onclick = () => {
         void bridges.projects.pickFolder().then(async (added) => {
           if (!added) return;
@@ -229,9 +234,9 @@ export function mountProjectPicker(
           await loadSessions();
         });
       };
-      const close_ = el('button', { textContent: 'Cancelar' }, 'picker-cancel');
+      const close_ = el('button', { textContent: t('common.cancel') }, 'picker-cancel');
       close_.onclick = close;
-      const startButton = el('button', { textContent: 'Iniciar sessão' }, 'picker-start');
+      const startButton = el('button', { textContent: t('picker.start') }, 'picker-start');
       startButton.disabled = !project || busy || !canStart(launchChoice());
       startButton.onclick = () => void start();
       const actions = el('div');
@@ -239,7 +244,7 @@ export function mountProjectPicker(
       actions.append(startButton, pickNew);
       const external = bridges.external;
       if (external) {
-        const vscode = el('button', { textContent: 'Abrir no VS Code' }, 'picker-vscode');
+        const vscode = el('button', { textContent: t('picker.vscode') }, 'picker-vscode');
         vscode.disabled = !project;
         vscode.onclick = () => {
           if (project) void openInVSCodeWithToast(external, project.cwd);
@@ -262,7 +267,7 @@ export function mountProjectPicker(
           choice = kind;
           renderDetails();
         };
-        label.append(input, el('span', { textContent: LAUNCH_LABELS[kind] }));
+        label.append(input, el('span', { textContent: launchLabel(kind) }));
         return label;
       };
       const none = sessions.length === 0;
@@ -281,22 +286,21 @@ export function mountProjectPicker(
       if (project && none) {
         opts.append(
           el('span', {
-            textContent: 'Sem sessões anteriores neste projeto.',
+            textContent: t('picker.noSessions'),
             className: 'ao-picker-note',
           }),
         );
       }
 
       const modeSelect = el('select', {}, 'picker-mode');
-      for (const info of PERMISSION_MODES) {
-        const tag =
-          info.cards === 'yes'
-            ? 'com cartões'
-            : info.cards === 'partial'
-              ? 'cartões parciais'
-              : 'sem cartões';
+      for (const info of permissionModes()) {
         modeSelect.append(
-          new Option(`${info.label} (${tag})`, info.mode, false, info.mode === mode),
+          new Option(
+            `${info.label} (${cardsTag(info.cards)})`,
+            info.mode,
+            false,
+            info.mode === mode,
+          ),
         );
       }
       modeSelect.onchange = () => {
@@ -306,13 +310,13 @@ export function mountProjectPicker(
       const info = permissionModeInfo(mode);
       const modeLabel = el('label');
       modeLabel.className = 'ao-picker-mode';
-      modeLabel.append(el('span', { textContent: 'Modo de permissão: ' }), modeSelect);
+      modeLabel.append(el('span', { textContent: t('picker.modeLabel') }), modeSelect);
 
       details.replaceChildren(
         el(
           'div',
           {
-            textContent: project ? project.cwd : 'Escolha um projeto.',
+            textContent: project ? project.cwd : t('picker.chooseProject'),
             className: 'ao-picker-cwd',
           },
           'picker-selected',
@@ -329,7 +333,7 @@ export function mountProjectPicker(
         ),
         el(
           'div',
-          { textContent: TRUST_FOLDER_NOTE, className: 'ao-picker-note' },
+          { textContent: trustFolderNote(), className: 'ao-picker-note' },
           'picker-trust-note',
         ),
         el('div', { textContent: error, className: 'ao-picker-err' }, 'picker-error'),
@@ -357,7 +361,7 @@ export function mountProjectPicker(
         void bridges.projects.markUsed(project.cwd);
         close();
       } catch (e) {
-        error = `Não foi possível iniciar: ${(e as Error).message}`;
+        error = t('picker.startFailed', { error: (e as Error).message });
       } finally {
         busy = false;
         if (overlay === root) renderDetails();
@@ -398,7 +402,7 @@ export function mountProjectPicker(
       await refresh();
     } catch (e) {
       list.replaceChildren(
-        el('li', { textContent: `Falha ao ler os projetos: ${(e as Error).message}` }),
+        el('li', { textContent: t('picker.loadFailed', { error: (e as Error).message }) }),
       );
       return;
     }
@@ -409,9 +413,9 @@ export function mountProjectPicker(
   }
 
   if (options.button !== false) {
-    const button = el('button', { textContent: 'Sessões' }, 'picker-open');
+    const button = el('button', { textContent: t('picker.button') }, 'picker-open');
     button.className = 'ao-picker-btn';
-    button.title = 'Iniciar uma sessão do Claude Code em um projeto';
+    button.title = t('picker.button.title');
     button.onclick = () => void open();
     getCornerBar(gameParent).append(button);
   }

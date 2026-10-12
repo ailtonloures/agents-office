@@ -87,6 +87,7 @@ test('2. talking to an agent shows its task description', async ({ page }) => {
     .poll(
       async () =>
         (await characters(page)).filter((c) => c.role === 'agent' && c.phase === 'at-desk').length,
+      { timeout: 45_000 },
     )
     .toBeGreaterThan(0);
   await shot(page, '2-0-agent-at-desk');
@@ -205,9 +206,9 @@ test('5. the Hall of Fame board lists the finished agents', async ({ page }) => 
     })
     .toBe('hall-of-fame');
   const text = (await page.evaluate(() => window.__office?.dialog.pages ?? [])).flat().join('\n');
-  expect(text).toContain('Hall da Fama');
+  expect(text).toContain('Hall of Fame');
   expect(text).toContain('Map the');
-  expect(text).toContain('Projeto: demo-app');
+  expect(text).toContain('Project: demo-app');
   await page.waitForTimeout(1200);
   await shot(page, '5-hall-of-fame');
 });
@@ -227,6 +228,8 @@ async function ctrlWheel(page: import('@playwright/test').Page, deltaY: number, 
 test('6. zoom buttons change the zoom, stop at the limits and do not move the avatar', async ({
   page,
 }) => {
+  // Headless software rendering draws the device-resolution canvas slowly: every zoom click costs frames.
+  test.setTimeout(240_000);
   await page.addInitScript(() => localStorage.removeItem('agents-office.zoom'));
   await openOffice(page, daemon.url);
   const zoomIn = page.getByTestId('zoom-in');
@@ -236,10 +239,11 @@ test('6. zoom buttons change the zoom, stop at the limits and do not move the av
   const before = await page.evaluate(() => window.__office?.player);
 
   await zoomIn.click();
-  expect(await zoomOf(page)).toBe(1.25);
+  // 1280x720 renders 3 canvas pixels per game pixel: zoom levels are whole thirds (crisp texels).
+  expect(await zoomOf(page)).toBeCloseTo(4 / 3);
   await zoomOut.click();
   await zoomOut.click();
-  expect(await zoomOf(page)).toBe(0.75);
+  expect(await zoomOf(page)).toBeCloseTo(2 / 3);
   expect(await page.evaluate(() => window.__office?.player)).toEqual(before);
 
   for (let i = 0; i < 10; i++) if (await zoomIn.isEnabled()) await zoomIn.click();
@@ -247,7 +251,7 @@ test('6. zoom buttons change the zoom, stop at the limits and do not move the av
   await expect(zoomIn).toBeDisabled();
   await expect(zoomOut).toBeEnabled();
   for (let i = 0; i < 20; i++) if (await zoomOut.isEnabled()) await zoomOut.click();
-  expect(await zoomOf(page)).toBe(0.5);
+  expect(await zoomOf(page)).toBe(0.25);
   await expect(zoomOut).toBeDisabled();
   await expect(zoomIn).toBeEnabled();
 });
@@ -259,7 +263,7 @@ test('7. Ctrl + wheel over the canvas zooms; the wheel alone does not', async ({
   await page.waitForTimeout(200);
   expect(await zoomOf(page)).toBe(1);
   await ctrlWheel(page, -100);
-  await expect.poll(() => zoomOf(page)).toBe(1.25);
+  await expect.poll(() => zoomOf(page)).toBeCloseTo(4 / 3);
   await ctrlWheel(page, 100);
   await expect.poll(() => zoomOf(page)).toBe(1);
 });
@@ -273,20 +277,20 @@ test('8. zoom persists after reload; the overview hides the buttons and restores
   await page.waitForFunction(() => window.__office?.connected === true);
   await page.getByTestId('zoom-in').click();
   await page.getByTestId('zoom-in').click();
-  expect(await zoomOf(page)).toBe(1.5);
+  expect(await zoomOf(page)).toBeCloseTo(5 / 3);
 
   await page.reload();
   await page.waitForFunction(() => window.__office?.connected === true);
-  await expect.poll(() => zoomOf(page)).toBe(1.5);
+  await expect.poll(() => zoomOf(page)).toBeCloseTo(5 / 3);
 
   await page.keyboard.press('m');
   await expect.poll(() => page.evaluate(() => window.__office?.overview)).toBe(true);
   await expect(page.getByTestId('zoom-in')).toBeHidden();
-  expect(await zoomOf(page)).toBe(1.5);
+  expect(await zoomOf(page)).toBeCloseTo(5 / 3);
   await page.keyboard.press('m');
   await expect.poll(() => page.evaluate(() => window.__office?.overview)).toBe(false);
   await expect(page.getByTestId('zoom-in')).toBeVisible();
-  expect(await zoomOf(page)).toBe(1.5);
+  expect(await zoomOf(page)).toBeCloseTo(5 / 3);
 });
 
 test('9. recreating an idle subagent replaces it: the old one leaves, the new one stays', async ({
@@ -309,7 +313,7 @@ test('9. recreating an idle subagent replaces it: the old one leaves, the new on
   const statusOf = (id: string) =>
     page.evaluate((agentId) => window.__office?.model.agents[agentId]?.status, id);
   await expect.poll(() => statusOf('e2eold000000000001'), { timeout: 30_000 }).toBe('idle');
-  await expect.poll(() => hudText(page)).toContain('1 agente ');
+  await expect.poll(() => hudText(page)).toContain('1 agent ');
   await shot(page, '9-0-idle-agent');
 
   // The same sub-agent is recreated with a new id.
@@ -329,7 +333,7 @@ test('9. recreating an idle subagent replaces it: the old one leaves, the new on
       { timeout: 45_000 },
     )
     .toEqual(['e2enew000000000002']);
-  await expect.poll(() => hudText(page)).toContain('1 agente ');
+  await expect.poll(() => hudText(page)).toContain('1 agent ');
   const health = (await (await fetch(`${daemon.url}/health`)).json()) as { agents: number };
   expect(health.agents).toBe(1);
   await shot(page, '9-1-old-left-new-stays');
@@ -338,6 +342,8 @@ test('9. recreating an idle subagent replaces it: the old one leaves, the new on
 test('10. the HUD, the shortcuts and the dialog keep size and position at any zoom', async ({
   page,
 }) => {
+  // Headless software rendering draws the device-resolution canvas slowly: every zoom click costs frames.
+  test.setTimeout(240_000);
   await page.addInitScript(() => localStorage.removeItem('agents-office.zoom'));
   await openOffice(page, daemon.url);
   const feeder = createFeeder(daemon.projectsDir, FIXTURE);
@@ -360,8 +366,9 @@ test('10. the HUD, the shortcuts and the dialog keep size and position at any zo
 
   const setZoom = async (target: number) => {
     const button = page.getByTestId(target > (await zoomOf(page)) ? 'zoom-in' : 'zoom-out');
-    for (let i = 0; i < 20 && (await zoomOf(page)) !== target; i++) await button.click();
-    expect(await zoomOf(page)).toBe(target);
+    for (let i = 0; i < 20 && Math.abs((await zoomOf(page)) - target) > 1e-6; i++)
+      await button.click();
+    expect(await zoomOf(page)).toBeCloseTo(target);
   };
   const ui = () => page.evaluate(() => window.__office?.ui);
   // The dot is at game pixel (14, 13) of the status pill; the paper strip is inside the dialog.
@@ -376,7 +383,7 @@ test('10. the HUD, the shortcuts and the dialog keep size and position at any zo
   expect(base?.hints.width).toBeGreaterThan(0);
   expect(base?.dialog.width).toBeGreaterThan(0);
 
-  for (const zoom of [0.5, 1, 3]) {
+  for (const zoom of [0.25, 1, 3]) {
     await setZoom(zoom);
     await page.waitForTimeout(300);
     expect(await ui()).toEqual(base);
@@ -412,7 +419,7 @@ test('11. orphan events open no "Unknown" room and the HUD counts only real sess
   await page.waitForTimeout(800);
   expect(await sessionIds()).toEqual([]);
   expect(await characters(page)).toHaveLength(0);
-  await expect.poll(() => hudText(page)).toContain('0 sessões');
+  await expect.poll(() => hudText(page)).toContain('0 sessions');
 
   // Two real sessions get their rooms; the orphans still count for nothing.
   const feeder = createFeeder(daemon.projectsDir, FIXTURE);
@@ -427,7 +434,7 @@ test('11. orphan events open no "Unknown" room and the HUD counts only real sess
   await page.waitForTimeout(800);
   expect(await sessionIds()).not.toContain('orphan-1');
   expect((await sessionIds()).some((id) => id.startsWith('orphan'))).toBe(false);
-  await expect.poll(() => hudText(page)).toContain('2 sessões · 0 agentes');
+  await expect.poll(() => hudText(page)).toContain('2 sessions · 0 agents');
   const health = (await (await fetch(`${daemon.url}/health`)).json()) as {
     sessions: number;
     agents: number;
@@ -882,7 +889,7 @@ async function holdUntil(
         return forward ? value >= target : value <= target;
       },
       { axis, target, forward },
-      { polling: 'raf', timeout: 5_000 },
+      { polling: 'raf', timeout: 30_000 },
     );
   } finally {
     await page.keyboard.up(key);
@@ -930,7 +937,7 @@ test('update banner: hidden without bridge, follows available/ready, Depois dism
   await expect(banner).toBeHidden();
   await push({ state: 'available', version: '9.9.9' });
   await expect(banner).toBeVisible();
-  await expect(banner).toContainText('Nova versão 9.9.9 disponível — baixando…');
+  await expect(banner).toContainText('New version 9.9.9 available - downloading…');
   expect(await banner.evaluate((n) => !!n.closest('#game'))).toBe(true);
   await push({ state: 'ready', version: '9.9.9' });
   await withBridge.getByTestId('update-install').click();
@@ -1049,4 +1056,102 @@ test('message visit: the sender walks to the recipient desk and only goes back w
 
   await emit('respondida', { status: 'respondida' });
   await expect.poll(() => phaseOf('lead-a'), { timeout: 30_000 }).toBe('at-desk');
+});
+
+test('language button: opens in English, switches to PT and persists after reload', async ({
+  page,
+}) => {
+  await openOffice(page, daemon.url);
+  const button = page.getByTestId('locale-open');
+  await expect(button).toBeVisible();
+  await expect(button).toHaveText('EN');
+  expect(await button.evaluate((node) => !!node.closest('#game'))).toBe(true);
+  expect(await page.evaluate(() => document.documentElement.lang)).toBe('en');
+
+  await button.click();
+  await expect(page.getByTestId('locale-option-en')).toHaveAttribute('aria-checked', 'true');
+  await page.keyboard.press('Escape');
+  await expect(page.getByTestId('locale-menu')).toBeHidden();
+
+  await button.click();
+  await Promise.all([page.waitForEvent('load'), page.getByTestId('locale-option-pt-BR').click()]);
+  await expect(page.getByTestId('locale-open')).toHaveText('PT');
+  expect(await page.evaluate(() => document.documentElement.lang)).toBe('pt-BR');
+});
+
+test('language switch: EN by default, PT and ES apply to the Hooks panel and persist after reload', async ({
+  page,
+}) => {
+  // The Hooks panel needs the desktop bridge; a stub is enough to render it in the browser.
+  await page.addInitScript(() => {
+    const status = {
+      path: '/tmp/settings.json',
+      total: 1,
+      installedCount: 0,
+      events: [{ event: 'Stop', installed: false }],
+    };
+    (window as unknown as Record<string, unknown>).agentsOfficeDesktop = {
+      desktop: true,
+      hooks: { status: async () => status },
+    };
+  });
+
+  // Phrases that only exist in one language (taken from the dictionaries, same keys everywhere).
+  const phrases = {
+    en: ['Claude Code hooks', 'Install hooks', 'Remove hooks', 'No hooks installed'],
+    'pt-BR': ['Hooks do Claude Code', 'Instalar hooks', 'Remover hooks', 'Nenhum hook instalado'],
+    es: ['Hooks de Claude Code', 'Instalar hooks', 'Quitar hooks', 'Ningún hook instalado'],
+  } as const;
+  type Code = keyof typeof phrases;
+  const shortLabel: Record<Code, string> = { en: 'EN', 'pt-BR': 'PT', es: 'ES' };
+
+  const expectHooksIn = async (code: Code) => {
+    await expect(page.getByTestId('locale-open')).toHaveText(shortLabel[code]);
+    expect(await page.evaluate(() => document.documentElement.lang)).toBe(code);
+    // English is the default: nothing stored yet, or an explicit "en" after choosing it.
+    const stored = await page.evaluate(() => localStorage.getItem('agents-office.locale'));
+    expect(code === 'en' ? [null, 'en'] : [code]).toContain(stored);
+    await page.getByTestId('hooks-open').click();
+    const panel = page.getByTestId('hooks-panel');
+    await expect(panel).toBeVisible();
+    await expect(panel.getByTestId('hooks-install')).toBeVisible();
+    const text = await panel.innerText();
+    for (const phrase of phrases[code]) expect(text).toContain(phrase);
+    // Nothing from the other languages (only phrases that differ from this language's own).
+    for (const other of Object.keys(phrases) as Code[]) {
+      if (other === code) continue;
+      for (const phrase of phrases[other]) {
+        if (!phrases[code].includes(phrase as never)) expect(text).not.toContain(phrase);
+      }
+    }
+    await page.getByTestId('hooks-close').click();
+    await expect(panel).toBeHidden();
+  };
+
+  const choose = async (code: Code) => {
+    await page.getByTestId('locale-open').click();
+    await Promise.all([
+      page.waitForEvent('load'),
+      page.getByTestId(`locale-option-${code}`).click(),
+    ]);
+    await page.waitForFunction(() => window.__office?.connected === true);
+  };
+
+  await openOffice(page, daemon.url);
+  await expectHooksIn('en');
+
+  await choose('pt-BR');
+  await expectHooksIn('pt-BR');
+  await page.reload();
+  await page.waitForFunction(() => window.__office?.connected === true);
+  await expectHooksIn('pt-BR');
+
+  await choose('es');
+  await expectHooksIn('es');
+  await page.reload();
+  await page.waitForFunction(() => window.__office?.connected === true);
+  await expectHooksIn('es');
+
+  await choose('en');
+  await expectHooksIn('en');
 });

@@ -163,4 +163,24 @@ describe('liveness', () => {
       expect(tick(model, T0 + 6 * MIN, { agentExpireAfterMs: 10 * MIN })).toEqual([]);
     });
   });
+
+  describe('corrupted timestamps', () => {
+    it('expires a session whose lastActivityTs is invalid', () => {
+      const model = office();
+      const session = model.sessions.s1;
+      if (session === undefined) throw new Error('missing session');
+      session.lastActivityTs = 'not a date';
+      for (const agent of Object.values(model.agents)) agent.lastActivityTs = 'garbage';
+      expect(tick(model, T0 + MIN).map((e) => e.type)).toEqual(['session.ended']);
+    });
+
+    it('an invalid agent timestamp does not keep a stale session alive', () => {
+      const model = office();
+      const agent = model.agents.a1;
+      if (agent === undefined) throw new Error('missing agent');
+      agent.lastActivityTs = 'not a date';
+      // The session itself is silent for 15 minutes; the corrupted agent must not block expiry.
+      expect(tick(model, T0 + 15 * MIN).map((e) => e.type)).toEqual(['session.ended']);
+    });
+  });
 });

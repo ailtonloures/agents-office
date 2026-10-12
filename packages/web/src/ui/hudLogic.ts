@@ -1,4 +1,5 @@
 import { liveActors, type OfficeModel, type PermissionRequest } from '@agents-office/shared';
+import { type MessageKey, t } from '../i18n/i18n';
 import { DIRECTION_DELTA, directionBetween } from '../player/playerMotion';
 import type { Direction } from '../skin';
 import type { BuildingLayout, Tile } from '../world/roomLayout';
@@ -27,11 +28,15 @@ export function hudCounts(
   return { sessions: sessions.length, agents: agents.length, waiting: waiting + pending.length };
 }
 
-const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
-
-/** The status pill: `2 sessões · 5 agentes · ! 1` (the part from `!` on blinks while someone waits). */
+/** The status pill: `2 sessions · 5 agents · ! 1` (the part from `!` on blinks while someone waits). */
 export function hudText(counts: HudCounts): string {
-  return `${plural(counts.sessions, 'sessão', 'sessões')} · ${plural(counts.agents, 'agente', 'agentes')} · ! ${counts.waiting}`;
+  const sessions = t(counts.sessions === 1 ? 'hud.sessions.one' : 'hud.sessions.other', {
+    n: counts.sessions,
+  });
+  const agents = t(counts.agents === 1 ? 'hud.agents.one' : 'hud.agents.other', {
+    n: counts.agents,
+  });
+  return `${sessions} · ${agents} · ! ${counts.waiting}`;
 }
 
 /** One key cap and what it does, for the hint bar, the prompt bar and the help panel. */
@@ -40,50 +45,60 @@ export interface KeyHint {
   label: string;
 }
 
-/** The always-visible shortcuts (top right). */
-export const HUD_HINTS: readonly KeyHint[] = [
-  { keys: ['TAB'], label: 'Sala ativa' },
-  { keys: ['SHIFT+TAB'], label: 'Quem espera' },
-  { keys: ['M'], label: 'Mapa' },
-  { keys: ['H'], label: 'Ajuda' },
-];
+/** The always-visible shortcuts (top right), in the active language. */
+export function hudHints(): KeyHint[] {
+  return [
+    { keys: ['TAB'], label: t('hud.hint.activeRoom') },
+    { keys: ['SHIFT+TAB'], label: t('hud.hint.waiting') },
+    { keys: ['M'], label: t('hud.hint.map') },
+    { keys: ['H'], label: t('hud.hint.help') },
+  ];
+}
 
-/** Every control, grouped, for the help panel. */
-export const HELP_CONTROLS: readonly KeyHint[] = [
-  { keys: ['SETAS', 'WASD'], label: 'Andar pelo escritório' },
-  { keys: ['Z', 'ENTER', 'ESPACO'], label: 'Conversar / avançar o diálogo' },
-  { keys: ['X', 'ESC'], label: 'Fechar o diálogo' },
-  { keys: ['TAB'], label: 'Ir para a sala com atividade mais recente' },
-  { keys: ['SHIFT+TAB'], label: 'Próximo agente esperando por você' },
-  { keys: ['M'], label: 'Mapa: o escritório inteiro' },
-  { keys: ['H', '?'], label: 'Mostrar / ocultar esta ajuda' },
-  { keys: ['MOUSE'], label: 'Clique em alguém para ver os detalhes' },
-];
+/** Every control, grouped, for the help panel, in the active language. */
+export function helpControls(): KeyHint[] {
+  return [
+    { keys: [t('help.key.arrows'), 'WASD'], label: t('help.control.walk') },
+    { keys: ['Z', 'ENTER', t('help.key.space')], label: t('help.control.talk') },
+    { keys: ['X', 'ESC'], label: t('help.control.closeDialog') },
+    { keys: ['TAB'], label: t('help.control.activeRoom') },
+    { keys: ['SHIFT+TAB'], label: t('help.control.waiting') },
+    { keys: ['M'], label: t('help.control.map') },
+    { keys: ['H', '?'], label: t('help.control.toggleHelp') },
+    { keys: [t('help.key.mouse')], label: t('help.control.click') },
+  ];
+}
 
-/** Rotating tips of the prompt bar while nothing is in front of the player. */
-export const TIPS: readonly string[] = [
-  'Chegue perto de um agente para ver papel, status e o que ele faz agora.',
-  'Os monitores mostram a atividade: código, terminal, web, leitura...',
-  'Monitor âmbar com "!" = o agente precisa da sua resposta.',
-  'O asterisco laranja no monitor indica que o agente está pensando.',
-  'O Tech Lead coordena a equipe da sala na mesa de três monitores.',
-  'Clique em qualquer pessoa para abrir a ficha completa.',
-];
+/** Keys of the rotating tips of the prompt bar (resolved at call time, in the active language). */
+export const TIP_KEYS = [
+  'tip.approach',
+  'tip.monitors',
+  'tip.amber',
+  'tip.thinking',
+  'tip.techLead',
+  'tip.click',
+] as const satisfies readonly MessageKey[];
+
+/** The tips in the active language. */
+export function tips(): string[] {
+  return TIP_KEYS.map((key) => t(key));
+}
 /** How long each tip stays on screen. */
 export const TIP_MS = 7000;
 
 /** The tip shown `elapsedMs` after the scene started. */
 export function tipAt(elapsedMs: number): string {
-  const index = Math.floor(Math.max(0, elapsedMs) / TIP_MS) % TIPS.length;
-  return TIPS[index] as string;
+  const index = Math.floor(Math.max(0, elapsedMs) / TIP_MS) % TIP_KEYS.length;
+  return t(TIP_KEYS[index] as MessageKey);
 }
 
-/** What the prompt bar offers right now. */
+/** What the prompt bar offers right now (`board` = Hall of Fame mural, `whiteboard` = Excalidraw). */
 export type PromptContext =
   | { kind: 'dialog'; actions?: readonly KeyHint[] }
   | { kind: 'door'; name: string }
   | { kind: 'character'; name: string }
   | { kind: 'board' }
+  | { kind: 'whiteboard' }
   | { kind: 'idle'; elapsedMs: number };
 
 export interface Prompt {
@@ -98,20 +113,22 @@ export function promptFor(context: PromptContext): Prompt {
     case 'dialog':
       return {
         hints: [
-          { keys: ['Z'], label: 'Próximo' },
-          { keys: ['X'], label: 'Fechar' },
+          { keys: ['Z'], label: t('prompt.next') },
+          { keys: ['X'], label: t('prompt.close') },
           ...(context.actions ?? []),
         ],
       };
     case 'door':
-      return { hints: [{ keys: ['Z'], label: `Iniciar sessão em ${context.name}` }] };
+      return { hints: [{ keys: ['Z'], label: t('prompt.door', { name: context.name }) }] };
     case 'character':
-      return { hints: [{ keys: ['Z'], label: `Conversar com ${context.name}` }] };
+      return { hints: [{ keys: ['Z'], label: t('prompt.character', { name: context.name }) }] };
     case 'board':
-      return { hints: [{ keys: ['Z'], label: 'Ver o Hall da Fama' }] };
+      return { hints: [{ keys: ['Z'], label: t('prompt.board') }] };
+    case 'whiteboard':
+      return { hints: [{ keys: ['Z'], label: t('prompt.whiteboard') }] };
     case 'idle':
       if (context.elapsedMs < TIP_MS) {
-        return { hints: [{ keys: ['H'], label: 'Ver todos os controles' }] };
+        return { hints: [{ keys: ['H'], label: t('prompt.allControls') }] };
       }
       return { hints: [], text: tipAt(context.elapsedMs - TIP_MS) };
   }

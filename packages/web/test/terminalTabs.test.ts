@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { setLocale } from '../src/i18n/i18n';
 import {
   activeTab,
   addTab,
@@ -38,6 +39,9 @@ import {
 
 const tab = (id: string, cwd = `/work/${id}`): TerminalTab => ({ id, cwd, state: 'running' });
 
+beforeEach(() => setLocale('pt-BR'));
+afterEach(() => setLocale('en'));
+
 describe('titles', () => {
   it('uses the last folder', () => {
     expect(projectName('/home/a/proj/')).toBe('proj');
@@ -67,6 +71,12 @@ describe('titles', () => {
       'Processo terminou (código 2)',
     );
     expect(exitMessage(tab('1'))).toBe('Processo terminou');
+    setLocale('en');
+    expect(exitMessage({ ...tab('1'), state: 'exited', exitCode: 2 })).toBe(
+      'Process ended (code 2)',
+    );
+    setLocale('es');
+    expect(exitMessage(tab('1'))).toBe('El proceso terminó');
   });
 });
 
@@ -309,6 +319,8 @@ describe('browser tab', () => {
     expect(model.tabs.map((x) => x.id)).toEqual(['t1', t.browserTabId('/w/proj')]);
     expect(model.activeId).toBe(t.browserTabId('/w/proj'));
     expect(t.tabTitle(model.tabs[1] as never)).toBe('Navegador · proj');
+    setLocale('en');
+    expect(t.tabTitle(model.tabs[1] as never)).toBe('Browser · proj');
   });
 
   it('targets the active (else last) tab workspace', async () => {

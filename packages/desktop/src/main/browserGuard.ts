@@ -70,6 +70,7 @@ export function createBrowserGuard(approvals: Pick<BrowserApprovals, 'ask'>): Br
           cwd,
           kind: 'download',
           title: `Baixar "${info.filename}"?`,
+          filename: info.filename,
           detail: info.url.slice(0, 500),
           ...(origin ? { origin } : {}),
         })

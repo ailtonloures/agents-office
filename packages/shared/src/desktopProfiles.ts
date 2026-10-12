@@ -62,8 +62,11 @@ export type AgentProfileInput = z.input<typeof AgentProfileSchema>;
 export type AgentProfileDraft = Omit<AgentProfileInput, 'id'>;
 
 const NotesSchema = z.string().max(AGENT_NOTES_MAX).default('');
-/** False once the user (or the agent itself) ended the session: it is not reopened on app start. */
-const ReopenSchema = z.boolean().default(true);
+/**
+ * True only while the session is open (set when it starts, cleared when it ends on purpose).
+ * Entries written before this field existed default to false so they never reopen as ghosts.
+ */
+const ReopenSchema = z.boolean().default(false);
 const ConnectionsSchema = z.array(ProfileIdSchema).max(ROSTER_MAX_CONNECTIONS).default([]);
 
 /** Roster entry that references a profile of the global library. */

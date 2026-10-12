@@ -464,10 +464,16 @@ export function createNormalizer(): Normalizer {
   // Hooks
   // -------------------------------------------------------------------------
 
+  const STARTING_HOOKS: ReadonlySet<string> = new Set(['SessionStart', 'UserPromptSubmit']);
+
   function startSessionFromHook(payload: HookPayload, ts: string) {
     const sessionId = payload.session_id;
     if (emittedKeys.has(`session.started:${sessionId}`)) return;
-    // Any hook of an unknown session starts it, as long as it tells where the session runs.
+    // Only a session start or a user prompt creates an unknown session. A late Notification/Stop
+    // (or tool hook) of a session the office does not know must not conjure an anonymous Tech
+    // Lead; known sessions keep updating normally. A session that began without SessionStart is
+    // still picked up from its transcript or from its next prompt.
+    if (!STARTING_HOOKS.has(payload.hook_event_name)) return;
     // Without a cwd there is no project to name, so nothing starts.
     if (!payload.cwd) return;
     const ended = endedSessions.get(sessionId);

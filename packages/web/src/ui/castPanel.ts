@@ -19,6 +19,7 @@ import {
   explicitAppearance,
   type Appearance as LookState,
 } from '../characters/appearance';
+import { t } from '../i18n/i18n';
 import { BUTTON_CSS } from './buttonStyles';
 import {
   auditLine,
@@ -44,13 +45,14 @@ import {
   type ProfileForm,
   randomAppearance,
   SKIN_COLORS,
-  STATE_LABELS,
   startFailureMessage,
+  stateLabel,
   validateForm,
 } from './castLogic';
 import { commsBridgeOf } from './commsBinding';
 import { getCornerBar } from './cornerBar';
-import { PERMISSION_MODES, permissionModeInfo } from './projectPicker';
+import { professionLabel } from './dialogContent';
+import { permissionModeInfo, permissionModes } from './projectPicker';
 
 const CSS = `
 .ao-cast-btn{padding:4px 8px}
@@ -205,7 +207,7 @@ export function mountCastPanel(
     /** Entry whose notes editor is open. */
     let notesOpen: string | undefined;
     let notesDraft = '';
-    /** Entry whose "pode falar com" checklist is open. */
+    /** Entry whose "can talk to" checklist is open. */
     let linksOpen: string | undefined;
     /** Profile editor state; undefined while the cast view shows. */
     let editor: { id: string | undefined; form: ProfileForm; errors: FormErrors } | undefined;
@@ -285,12 +287,12 @@ export function mountCastPanel(
 
     function renderCast(): void {
       box.replaceChildren();
-      box.append(el('h2', { textContent: 'Elenco do projeto' }));
+      box.append(el('h2', { textContent: t('cast.title') }));
 
       const toolbar = el('div');
       toolbar.className = 'ao-cast-toolbar';
       const select = el('select', {}, 'cast-project');
-      select.setAttribute('aria-label', 'Projeto');
+      select.setAttribute('aria-label', t('cast.project.label'));
       for (const project of projectList) {
         select.append(
           el('option', {
@@ -302,7 +304,9 @@ export function mountCastPanel(
       }
       if (projectList.length === 0) {
         select.append(
-          el('option', { textContent: 'Nenhum projeto (inicie uma sessão em "Sessões")' }),
+          el('option', {
+            textContent: t('cast.project.none', { sessions: t('picker.button') }),
+          }),
         );
         select.disabled = true;
       }
@@ -318,7 +322,7 @@ export function mountCastPanel(
         box.append(
           el('div', {
             className: 'ao-cast-note',
-            textContent: 'Escolha um projeto para montar o elenco.',
+            textContent: t('cast.project.choose'),
           }),
         );
       } else {
@@ -334,7 +338,7 @@ export function mountCastPanel(
         box.append(el('div', { className: 'ao-cast-note', textContent: message }, 'cast-message'));
       const actions = el('div');
       actions.className = 'ao-cast-actions';
-      const closeBtn = el('button', { textContent: 'Fechar' }, 'cast-close');
+      const closeBtn = el('button', { textContent: t('common.close') }, 'cast-close');
       closeBtn.onclick = close;
       actions.append(closeBtn);
       box.append(actions);
@@ -347,14 +351,18 @@ export function mountCastPanel(
         banner.className = 'ao-cast-actions';
         const resume = el(
           'button',
-          { textContent: 'Continuar', disabled: busy },
+          { textContent: t('cast.comms.resume'), disabled: busy },
           'cast-comms-resume',
         );
         resume.onclick = () =>
           void act(async () => {
             comms = await bridges.profiles.comms.resume(projectCwd);
           });
-        const stop = el('button', { textContent: 'Encerrar', disabled: busy }, 'cast-comms-stop');
+        const stop = el(
+          'button',
+          { textContent: t('cast.comms.stop'), disabled: busy },
+          'cast-comms-stop',
+        );
         stop.onclick = () =>
           void act(async () => {
             comms = await bridges.profiles.comms.stop(projectCwd);
@@ -362,7 +370,7 @@ export function mountCastPanel(
         banner.append(
           el('span', {
             className: 'ao-cast-warn',
-            textContent: `Conversa entre agentes pausada após ${comms.hops} mensagens seguidas.`,
+            textContent: t('cast.comms.paused', { hops: comms.hops }),
           }),
           resume,
           stop,
@@ -377,7 +385,7 @@ export function mountCastPanel(
             'div',
             {
               className: 'ao-cast-muted',
-              textContent: 'Nenhum agente no elenco deste projeto. Adicione um perfil abaixo.',
+              textContent: t('cast.empty'),
             },
             'cast-empty',
           ),
@@ -390,12 +398,12 @@ export function mountCastPanel(
       const add = el('div');
       add.className = 'ao-cast-toolbar';
       const pick = el('select', {}, 'cast-add-select');
-      pick.setAttribute('aria-label', 'Perfil a adicionar');
+      pick.setAttribute('aria-label', t('cast.add.label'));
       for (const profile of addable)
         pick.append(el('option', { value: profile.id, textContent: profile.name }));
       const addBtn = el(
         'button',
-        { textContent: 'Adicionar ao elenco', disabled: busy || addable.length === 0 },
+        { textContent: t('cast.add'), disabled: busy || addable.length === 0 },
         'cast-add',
       );
       pick.disabled = addable.length === 0;
@@ -414,27 +422,33 @@ export function mountCastPanel(
         void act(async () => {
           await bridges.profiles.roster.setAutoReopen(projectCwd, autoBox.checked);
         });
-      auto.append(autoBox, document.createTextNode(' Reabrir o elenco ao abrir o app'));
+      auto.append(autoBox, document.createTextNode(` ${t('cast.autoReopen')}`));
       add.append(pick, addBtn, auto);
       box.append(add);
     }
 
-    const STATUS_LABEL: Record<CommMessage['status'], string> = {
-      'na-fila': 'na fila',
-      entregue: 'entregue',
-      respondida: 'respondida',
-      expirada: 'expirada',
+    const statusLabel = (status: CommMessage['status']): string => {
+      switch (status) {
+        case 'na-fila':
+          return t('cast.history.status.queued');
+        case 'entregue':
+          return t('cast.history.status.delivered');
+        case 'respondida':
+          return t('cast.history.status.answered');
+        case 'expirada':
+          return t('cast.history.status.expired');
+      }
     };
 
     /** Messages between agents: one line each, click to read the full text. */
     function renderHistory(): void {
       if (!commsBridge || !cwd) return;
-      box.append(el('h2', { textContent: 'Conversas entre agentes' }));
+      box.append(el('h2', { textContent: t('cast.history.title') }));
       if (history.length === 0) {
         box.append(
           el(
             'div',
-            { className: 'ao-cast-muted', textContent: 'Nenhuma mensagem neste projeto ainda.' },
+            { className: 'ao-cast-muted', textContent: t('cast.history.empty') },
             'cast-history-empty',
           ),
         );
@@ -447,8 +461,8 @@ export function mountCastPanel(
         const row = el(
           'button',
           {
-            textContent: `${m.fromName} → ${m.toName} · ${commPreview(m.text, 60)} · ${STATUS_LABEL[m.status]}`,
-            title: 'Abrir o texto completo',
+            textContent: `${m.fromName} → ${m.toName} · ${commPreview(m.text, 60)} · ${statusLabel(m.status)}`,
+            title: t('cast.history.open'),
           },
           `cast-history-${m.id}`,
         );
@@ -460,7 +474,9 @@ export function mountCastPanel(
         if (historyOpen === m.id) {
           const full = el('div', {}, `cast-history-text-${m.id}`);
           full.className = 'full';
-          full.textContent = m.context ? `${m.text}\n\nContexto: ${m.context}` : m.text;
+          full.textContent = m.context
+            ? `${m.text}\n\n${t('cast.history.context', { context: m.context })}`
+            : m.text;
           item.append(full);
         }
         list.append(item);
@@ -471,7 +487,7 @@ export function mountCastPanel(
     /** Who created and ended which agents (orchestrators and the user), newest first. */
     function renderAudit(): void {
       if (!cwd || audit.length === 0) return;
-      box.append(el('h2', { textContent: 'Agentes criados' }));
+      box.append(el('h2', { textContent: t('cast.audit.title') }));
       const list = el('ul', {}, 'cast-audit');
       list.className = 'ao-cast-history';
       for (const event of auditNewestFirst(audit)) {
@@ -495,14 +511,17 @@ export function mountCastPanel(
       head.append(
         el('span', { className: 'name', textContent: row.name }),
         el('span', { className: 'sub', textContent: row.subtitle }),
-        el('span', { className: 'state', textContent: STATE_LABELS[row.state] }, 'cast-state'),
+        el('span', { className: 'state', textContent: stateLabel(row.state) }, 'cast-state'),
       );
       item.append(head);
       if (row.createdBy) {
         item.append(
           el(
             'div',
-            { className: 'ao-cast-muted', textContent: `Criado por ${row.createdBy}` },
+            {
+              className: 'ao-cast-muted',
+              textContent: t('cast.createdBy', { name: row.createdBy }),
+            },
             'cast-created-by',
           ),
         );
@@ -511,7 +530,7 @@ export function mountCastPanel(
         item.append(
           el(
             'div',
-            { className: 'ao-cast-muted', textContent: `Tarefa original: ${row.task}` },
+            { className: 'ao-cast-muted', textContent: t('cast.task', { task: row.task }) },
             'cast-task',
           ),
         );
@@ -524,18 +543,18 @@ export function mountCastPanel(
       const actions = el('div');
       actions.className = 'ao-cast-actions';
       if (row.state === 'running') {
-        const stop = el('button', { textContent: 'Encerrar', disabled: busy }, 'cast-stop');
+        const stop = el('button', { textContent: t('cast.stop'), disabled: busy }, 'cast-stop');
         stop.onclick = () =>
           void act(async () => {
             await bridges.managed.stop(projectCwd, row.entryId);
           });
         actions.append(stop);
       } else if (row.state !== 'missing') {
-        const start = el('button', { textContent: 'Iniciar', disabled: busy }, 'cast-start');
+        const start = el('button', { textContent: t('cast.start'), disabled: busy }, 'cast-start');
         start.onclick = () =>
           void act(async () => {
             const result = await bridges.managed.start(projectCwd, row.entryId);
-            message = result.ok ? `${row.name} iniciado.` : '';
+            message = result.ok ? t('cast.started', { name: row.name }) : '';
             if (!result.ok) {
               error = `${row.name}: ${startFailureMessage({ ...result.failure, cwd: projectCwd })}`;
             }
@@ -544,7 +563,10 @@ export function mountCastPanel(
       }
       const notes = el(
         'button',
-        { textContent: notesOpen === row.entryId ? 'Fechar notas' : 'Notas', disabled: busy },
+        {
+          textContent: notesOpen === row.entryId ? t('cast.notes.close') : t('cast.notes'),
+          disabled: busy,
+        },
         'cast-notes-toggle',
       );
       notes.onclick = () => {
@@ -557,7 +579,7 @@ export function mountCastPanel(
       item.dataset.muted = String(muted);
       const mute = el(
         'button',
-        { textContent: muted ? 'Reativar mensagens' : 'Silenciar', disabled: busy },
+        { textContent: muted ? t('cast.unmute') : t('cast.mute'), disabled: busy },
         'cast-mute',
       );
       mute.onclick = () =>
@@ -579,7 +601,11 @@ export function mountCastPanel(
         actions.append(toggle);
       }
       if (row.profile) {
-        const edit = el('button', { textContent: 'Editar perfil', disabled: busy }, 'cast-edit');
+        const edit = el(
+          'button',
+          { textContent: t('cast.editProfile'), disabled: busy },
+          'cast-edit',
+        );
         const profile = row.profile;
         edit.onclick = () => openEditor(profile);
         actions.append(edit);
@@ -587,21 +613,17 @@ export function mountCastPanel(
       if (row.kind === 'inline') {
         const promote = el(
           'button',
-          { textContent: 'Salvar como perfil', disabled: busy },
+          { textContent: t('cast.saveAsProfile'), disabled: busy },
           'cast-save-profile',
         );
         promote.onclick = () =>
           void act(async () => {
             const saved = await bridges.profiles.agents.saveAsProfile(projectCwd, row.entryId);
-            message = `Perfil "${saved.name}" salvo na biblioteca.`;
+            message = t('cast.savedToLibrary', { name: saved.name });
           });
         actions.append(promote);
       }
-      const remove = el(
-        'button',
-        { textContent: 'Remover do elenco', disabled: busy },
-        'cast-remove',
-      );
+      const remove = el('button', { textContent: t('cast.remove'), disabled: busy }, 'cast-remove');
       remove.onclick = () =>
         void act(async () => {
           // Removing the entry would leave its terminal running with nobody tracking it.
@@ -629,8 +651,7 @@ export function mountCastPanel(
         item.append(
           el('div', {
             className: 'ao-cast-muted',
-            textContent:
-              'A conexão vale nos dois sentidos. Sem conexão, não há entrega de mensagens.',
+            textContent: t('cast.links.hint'),
           }),
           list,
         );
@@ -652,20 +673,19 @@ export function mountCastPanel(
         };
         const save = el(
           'button',
-          { textContent: 'Salvar notas', disabled: busy },
+          { textContent: t('cast.notes.save'), disabled: busy },
           'cast-notes-save',
         );
         save.onclick = () =>
           void act(async () => {
             await bridges.profiles.roster.setNotes(projectCwd, row.entryId, notesDraft);
             notesOpen = undefined;
-            message = 'Notas salvas.';
+            message = t('cast.notes.saved');
           });
         item.append(
           el('div', {
             className: 'ao-cast-muted',
-            textContent:
-              'O agente lê e grava estas notas com a ferramenta save_notes; elas voltam no próximo início.',
+            textContent: t('cast.notes.hint'),
           }),
           area,
           counter,
@@ -676,7 +696,7 @@ export function mountCastPanel(
     }
 
     function renderLibrary(): void {
-      box.append(el('h3', { textContent: 'Biblioteca de perfis' }));
+      box.append(el('h3', { textContent: t('cast.library.title') }));
       const list = el('ul', {}, 'cast-library');
       list.className = 'ao-cast-list';
       for (const profile of profiles) {
@@ -690,23 +710,27 @@ export function mountCastPanel(
         );
         const actions = el('div');
         actions.className = 'ao-cast-actions';
-        const edit = el('button', { textContent: 'Editar', disabled: busy }, 'cast-profile-edit');
+        const edit = el(
+          'button',
+          { textContent: t('cast.profile.edit'), disabled: busy },
+          'cast-profile-edit',
+        );
         edit.onclick = () => openEditor(profile);
         const dup = el(
           'button',
-          { textContent: 'Duplicar', disabled: busy },
+          { textContent: t('cast.profile.duplicate'), disabled: busy },
           'cast-profile-duplicate',
         );
         dup.onclick = () =>
           void act(async () => {
             const copy = await bridges.profiles.duplicate(profile.id);
-            message = `Perfil "${copy.name}" criado.`;
+            message = t('cast.profile.duplicated', { name: copy.name });
           });
         actions.append(edit, dup);
         if (canDeleteProfile(profile)) {
           const del = el(
             'button',
-            { textContent: 'Apagar', disabled: busy },
+            { textContent: t('cast.profile.delete'), disabled: busy },
             'cast-profile-delete',
           );
           del.onclick = () => void deleteProfile(profile);
@@ -718,7 +742,7 @@ export function mountCastPanel(
       box.append(list);
       const create = el(
         'button',
-        { textContent: 'Novo perfil', disabled: busy },
+        { textContent: t('cast.profile.new'), disabled: busy },
         'cast-new-profile',
       );
       create.onclick = () => openEditor(undefined);
@@ -732,12 +756,12 @@ export function mountCastPanel(
       await act(async () => {
         const first = await bridges.profiles.remove(profile.id);
         if (first.deleted) {
-          message = `Perfil "${profile.name}" apagado.`;
+          message = t('cast.profile.deleted', { name: profile.name });
           return;
         }
         // In use: ask before taking it out of the casts it belongs to.
         if (!window.confirm(deleteProfileWarning(profile.name, first.usedBy))) {
-          message = 'Nada foi apagado.';
+          message = t('cast.profile.nothingDeleted');
           return;
         }
         for (const session of (await bridges.managed.list()).sessions) {
@@ -746,8 +770,8 @@ export function mountCastPanel(
         }
         const forced = await bridges.profiles.remove(profile.id, true);
         message = forced.deleted
-          ? `Perfil "${profile.name}" apagado.`
-          : 'Não foi possível apagar o perfil.';
+          ? t('cast.profile.deleted', { name: profile.name })
+          : t('cast.profile.deleteFailed');
       });
     }
 
@@ -767,7 +791,11 @@ export function mountCastPanel(
     function renderEditor(state: NonNullable<typeof editor>): void {
       const { form } = state;
       box.replaceChildren();
-      box.append(el('h2', { textContent: state.id ? 'Editar perfil' : 'Novo perfil' }));
+      box.append(
+        el('h2', {
+          textContent: state.id ? t('cast.editor.title.edit') : t('cast.editor.title.new'),
+        }),
+      );
 
       const grid = el('div');
       grid.className = 'ao-cast-form';
@@ -810,7 +838,7 @@ export function mountCastPanel(
         { rows: 8, value: form.instructions },
         'profile-instructions',
       );
-      instructions.placeholder = 'Instruções em Markdown: papel, regras e tom do agente.';
+      instructions.placeholder = t('cast.placeholder.instructions');
       instructions.oninput = () => {
         form.instructions = instructions.value;
         counter.textContent = notesCounter(form.instructions, PROFILE_INSTRUCTIONS_MAX);
@@ -820,7 +848,7 @@ export function mountCastPanel(
         textContent: notesCounter(form.instructions, PROFILE_INSTRUCTIONS_MAX),
       });
       const mode = el('select', {}, 'profile-mode');
-      for (const info of PERMISSION_MODES) {
+      for (const info of permissionModes()) {
         mode.append(
           el('option', {
             value: info.mode,
@@ -839,19 +867,24 @@ export function mountCastPanel(
         modeNote.textContent = permissionModeInfo(form.permissionMode).note;
       };
       const model = el('input', { type: 'text', value: form.model }, 'profile-model');
-      model.placeholder = 'padrão do Claude Code (ex.: sonnet, opus)';
+      model.placeholder = t('cast.placeholder.model');
       model.oninput = () => {
         form.model = model.value;
       };
 
       fields.append(
-        field('Nome', name, state.errors.name, 'name'),
-        field('Descrição', description, state.errors.description, 'description'),
-        field('Instruções (Markdown)', instructions, state.errors.instructions, 'instructions'),
+        field(t('cast.field.name'), name, state.errors.name, 'name'),
+        field(t('cast.field.description'), description, state.errors.description, 'description'),
+        field(
+          t('cast.field.instructions'),
+          instructions,
+          state.errors.instructions,
+          'instructions',
+        ),
         counter,
-        field('Permissão', mode, undefined, 'mode'),
+        field(t('cast.field.permission'), mode, undefined, 'mode'),
         modeNote,
-        field('Modelo (opcional)', model, state.errors.model, 'model'),
+        field(t('cast.field.model'), model, state.errors.model, 'model'),
       );
 
       // Appearance with live preview.
@@ -868,9 +901,9 @@ export function mountCastPanel(
       for (const option of BASE_OPTIONS) {
         base.append(
           el('option', {
-            value: option.base,
-            textContent: option.label,
-            selected: option.base === form.appearance.base,
+            value: option,
+            textContent: professionLabel(option),
+            selected: option === form.appearance.base,
           }),
         );
       }
@@ -883,7 +916,7 @@ export function mountCastPanel(
         hair.append(
           el('option', {
             value: String(i),
-            textContent: `Cabelo ${i + 1}`,
+            textContent: t('cast.hairStyle', { n: i + 1 }),
             selected: i === form.appearance.hairStyle,
           }),
         );
@@ -920,12 +953,12 @@ export function mountCastPanel(
         }
         return wrap;
       };
-      const skin = swatches('skinColor', SKIN_COLORS, 'Pele');
-      const hairColor = swatches('hairColor', HAIR_COLORS, 'Cabelo');
-      const outfit = swatches('outfitColor', OUTFIT_COLORS, 'Roupa');
+      const skin = swatches('skinColor', SKIN_COLORS, t('cast.field.skin'));
+      const hairColor = swatches('hairColor', HAIR_COLORS, t('cast.field.hair'));
+      const outfit = swatches('outfitColor', OUTFIT_COLORS, t('cast.field.outfit'));
       const roll = el(
         'button',
-        { type: 'button', textContent: 'Sortear aparência' },
+        { type: 'button', textContent: t('cast.randomize') },
         'profile-randomize',
       );
       roll.onclick = () => {
@@ -935,13 +968,13 @@ export function mountCastPanel(
       side.append(
         canvas,
         roll,
-        field('Base', base, undefined, 'base'),
-        field('Cabelo', hair, undefined, 'hair'),
-        document.createTextNode('Pele'),
+        field(t('cast.field.base'), base, undefined, 'base'),
+        field(t('cast.field.hair'), hair, undefined, 'hair'),
+        document.createTextNode(t('cast.field.skin')),
         skin,
-        document.createTextNode('Cor do cabelo'),
+        document.createTextNode(t('cast.field.hairColor')),
         hairColor,
-        document.createTextNode('Roupa'),
+        document.createTextNode(t('cast.field.outfit')),
         outfit,
       );
       grid.append(fields, side);
@@ -951,7 +984,7 @@ export function mountCastPanel(
         box.append(
           el('div', {
             className: 'ao-cast-muted',
-            textContent: 'Mudanças valem na próxima vez que o agente iniciar.',
+            textContent: t('cast.editor.applyNext'),
           }),
         );
       }
@@ -960,7 +993,7 @@ export function mountCastPanel(
 
       const actions = el('div');
       actions.className = 'ao-cast-actions';
-      const save = el('button', { textContent: 'Salvar', disabled: busy }, 'profile-save');
+      const save = el('button', { textContent: t('common.save'), disabled: busy }, 'profile-save');
       save.onclick = () => {
         state.errors = validateForm(form, otherProfileNames(profiles, state.id));
         if (hasErrors(state.errors)) {
@@ -977,7 +1010,7 @@ export function mountCastPanel(
             else await bridges.profiles.create(draft);
             profiles = await bridges.profiles.list();
             editor = undefined;
-            message = id ? 'Perfil salvo.' : 'Perfil criado. Adicione-o ao elenco do projeto.';
+            message = id ? t('cast.saved') : t('cast.created');
           } catch (e) {
             fail(e);
           } finally {
@@ -986,7 +1019,7 @@ export function mountCastPanel(
           }
         })();
       };
-      const cancel = el('button', { textContent: 'Cancelar' }, 'profile-cancel');
+      const cancel = el('button', { textContent: t('common.cancel') }, 'profile-cancel');
       cancel.onclick = () => {
         editor = undefined;
         error = '';
@@ -1003,20 +1036,20 @@ export function mountCastPanel(
       else renderCast();
     }
 
-    box.append(el('div', { className: 'ao-cast-muted', textContent: 'Carregando…' }));
+    box.append(el('div', { className: 'ao-cast-muted', textContent: t('cast.loading') }));
     try {
       await loadAll();
     } catch (e) {
       fail(e);
-      error = `Falha ao ler o elenco: ${error}`;
+      error = t('cast.loadFailed', { error });
     }
     render();
   }
 
   if (options.button !== false) {
-    const button = el('button', { textContent: 'Elenco' }, 'cast-open');
+    const button = el('button', { textContent: t('cast.open') }, 'cast-open');
     button.className = 'ao-cast-btn';
-    button.title = 'Perfis de agente e elenco do projeto';
+    button.title = t('cast.open.title');
     button.onclick = () => void open();
     getCornerBar(gameParent).append(button);
   }

@@ -30,8 +30,13 @@ device pixels and the logical game size that covers the window at that zoom:
 
 Consequences for UI code:
 
-- Screen-fixed objects read `scene.scale.width` and `scene.scale.height` and expose a `layout()`
-  that is re-run on the Phaser `RESIZE` event.
+- The canvas is rendered at **device resolution**: `width * renderScale` by `height * renderScale`
+  (`renderScale` = device pixels per game pixel, published in the registry, `renderScale.ts`), so
+  it maps 1:1 to the screen and zooming the camera out does not throw detail away. Phaser's own
+  zoom is `zoom / renderScale`.
+- Screen-fixed objects read `logicalSizeOf(scene)` (not `scene.scale.width`, which is now the canvas
+  size) and expose a `layout()` that is re-run on the Phaser `RESIZE` event. The `ui` camera
+  zooms by `renderScale` around the top-left corner.
 - Setting the canvas size clears it. `viewportChanged()` skips a resize when zoom and size are
   unchanged, resizes are coalesced to one per animation frame, and the game is stepped once right
   after a resize so the cleared canvas is redrawn before the browser paints (no visible flash).
@@ -43,10 +48,15 @@ On top of the integer zoom, the player can zoom the world with `camera.setZoom` 
 
 | Constant | Value |
 | --- | --- |
-| `ZOOM_MIN` / `ZOOM_MAX` | 0.5 / 3 |
+| `ZOOM_MIN` / `ZOOM_MAX` | 0.25 / 3 |
 | `ZOOM_STEP` | 0.25 |
 | `ZOOM_DEFAULT` | 1 |
 | `ZOOM_STORAGE_KEY` | `agents-office.zoom` (localStorage, always inside try/catch) |
+
+The camera zoom is `userZoom * renderScale`. Steps and the stored zoom snap to a whole number of
+canvas pixels per texel (`snapZoom`, `stepZoomCrisp`) so the pixel art keeps uniform pixels; only
+below one pixel per texel (`textureFilterFor`) the world textures switch to a linear filter, which
+averages minified texels instead of dropping them.
 
 Ctrl + wheel zooms (a wheel up zooms in); the on-screen buttons from `ui/zoomControls.ts` ask the
 scene for a step through game events on `game.events`:
@@ -133,8 +143,9 @@ Each room has a `Sign`: the project name truncated to `SIGN_MAX_CHARS` = 14 char
 
 `Poi` types are `server-rack`, `phone`, `window`, `hall-of-fame` and `whiteboard`. Each is a
 walkable tile from which the object is used. Every room gets exactly **one** interactive
-whiteboard prop on the corridor wall in front of it (the `whiteboard` POI is the corridor tile
-below it). Desk ids are stable across regenerations: `<project>:lead:<session>` and
+whiteboard prop on its own top wall, in the entrance chunk between the door and the window (the
+`whiteboard` POI is the room floor tile just below it, inside `roomBounds`). The corridor has no
+board. Desk ids are stable across regenerations: `<project>:lead:<session>` and
 `<project>:cubicle:<n>`.
 
 ### 2.6 Doors, rugs and lights
@@ -444,18 +455,44 @@ collapsed) changes, never for tab or activity changes, to avoid the resize flash
 
 ### 6.6 Cast panel and whiteboard
 
-- **Cast panel** (`ui/castPanel.ts`, logic in `ui/castLogic.ts`): the "Elenco" button opens a modal for
+- **Cast panel** (`ui/castPanel.ts`, logic in `ui/castLogic.ts`): the "Cast" button (shown as "Elenco" in `pt-BR`) opens a modal for
   a project's agent profiles: list, create or edit (name, instructions, base profession, hair style,
   skin, hair and outfit colors with a live preview of the character), delete, and the managed-session
   and message audit. Appearance choices use `APPEARANCE_RANGES` and `explicitAppearance`.
-- **Whiteboard**: one per workspace on the corridor wall (`world/boardProp.ts`: `BOARD_PROP_ID`,
-  `BOARD_OPEN_EVENT` = `board-open`). Hover highlights it with a hand cursor and a label; click opens
-  the full-screen overlay (`ui/boardOverlay.ts`), where Excalidraw is loaded lazily (`ui/boardIsland.ts`)
-  so neither the main bundle nor the splash pay for it. Only the desktop app opens it.
+- **Whiteboard**: one per workspace on the room's top wall (`world/boardProp.ts`: `BOARD_PROP_ID`,
+  `BOARD_OPEN_EVENT` = `board-open`). Click opens the full-screen overlay (`ui/boardOverlay.ts`),
+  where Excalidraw is loaded lazily (`ui/boardIsland.ts`) so neither the main bundle nor the splash
+  pay for it. Only the desktop app opens it, so only the desktop app shows its signals.
+- **Whiteboard affordance** (spec 093, pure logic in `world/boardAffordanceLogic.ts`, drawn by
+  `OfficeScene.updateBoardAffordance`): a small floating pencil badge above the board (gentle
+  whole-pixel bob) and a faint pulsing glow over it (alpha `GLOW_MIN_ALPHA` to `GLOW_MAX_ALPHA`,
+  the same `|sin|` pulse family as the active Tech Lead outline). They are world objects (Graphics,
+  above `DEPTH.wallProps`, outside `UiOverlay`) placed from the prop image bounds, so they follow
+  the zoom. Hover swaps the glow for a solid outline, tints the board, shows the hand cursor and the
+  label `boardLabel()` ("Board — click to draw"). The badge counts as part of the board for
+  clicks (`BADGE_REACH_PX`). Everything is hidden in a plain browser and while the board overlay,
+  help, a dialog or the overview is open. Standing on the whiteboard POI shows the prompt
+  "Open the board" (`PromptContext` `whiteboard`, distinct from `board` = Hall of Fame) and Z opens it.
 
-### 6.7 Stacking of DOM panels
+### 6.7 Language button and message keys
 
-Fixed bottom-left buttons (Hooks, Projects, Cast) use `z-index: 20`; full-screen modals and overlays
+- The language button (`ui/localeButton.ts`, pure logic in `ui/localeMenuLogic.ts`, test ids
+  `locale-open`, `locale-menu`, `locale-option-<code>`) is the last item of the corner bar, after Hooks,
+  Sessions and Cast. It shows `EN`, `PT` or `ES` and opens a small menu that lists each language by its own
+  name. Choosing one stores it in `localStorage` (`agents-office.locale`) and reloads the page: there is no
+  live re-render. It works in the desktop app and in a plain browser.
+- UI text goes through `t(key, params?)` from `i18n/i18n.ts`. `i18n/messages/en.ts` is the source of truth
+  for the keys; `pt-BR.ts` and `es.ts` are typed `Messages`, so a missing or extra key breaks the typecheck.
+- Keys are flat, in dot notation, grouped by area (`hud.*`, `help.*`, `hooks.*`, `picker.*`, `cast.*`,
+  `dialog.*`, `terminal.*`, `browser.*`, `board.*`...). Interpolation uses `{name}`. Resolve text at call
+  time, never in a module-level constant (the locale is read once at startup, before panels mount).
+- Not translated: profile names, project names, session content and anything written by Claude Code.
+- Dates use `formatDateTime`, never a fixed locale. The in-game bitmap font has a limited glyph set, so
+  the `dialog.*` strings in `pt-BR` and `es` are written without accents.
+
+### 6.8 Stacking of DOM panels
+
+Bottom-left corner controls (Hooks, Projects, Cast, language) use `z-index: 20`; full-screen modals and overlays
 use 30; toasts and the lost-sessions banner 55 to 60. New DOM UI should follow these tiers.
 
 ## 7. Planned: embedded browser

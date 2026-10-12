@@ -1,4 +1,5 @@
 import type { AgentsOfficeDesktop, UpdaterBridge, UpdateState } from '@agents-office/shared';
+import { t } from '../i18n/i18n';
 
 /** The updater bridge exposed by the desktop shell; undefined in a plain browser (no banner). */
 export function updaterBridgeOf(win: object): UpdaterBridge | undefined {
@@ -50,7 +51,7 @@ export function bannerModel(
     case 'available':
       return {
         visible: true,
-        text: `Nova versão ${version} disponível — baixando…`,
+        text: t('update.available', { version }),
         percent: null,
         showInstall: false,
         showLater: true,
@@ -59,7 +60,7 @@ export function bannerModel(
       const percent = Math.max(0, Math.min(100, Math.round(state.percent)));
       return {
         visible: true,
-        text: `Nova versão ${version} disponível — baixando… ${percent}%`,
+        text: t('update.downloading', { version, percent }),
         percent,
         showInstall: false,
         showLater: true,
@@ -68,7 +69,7 @@ export function bannerModel(
     case 'ready':
       return {
         visible: true,
-        text: `Nova versão ${version} pronta para instalar.`,
+        text: t('update.ready', { version }),
         percent: null,
         showInstall: true,
         showLater: true,

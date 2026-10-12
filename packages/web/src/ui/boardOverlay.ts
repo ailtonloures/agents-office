@@ -1,4 +1,5 @@
 import type { BoardBridge, BoardLibrary, BoardSceneData } from '@agents-office/shared';
+import { t } from '../i18n/i18n';
 import {
   authorsLabel,
   boardAuthors,
@@ -98,10 +99,10 @@ export function mountBoardOverlay(
     element.setAttribute('data-testid', testId);
     return element;
   };
-  const importButton = button('Importar', 'board-import');
-  const exportButton = button('Exportar', 'board-export');
-  const libsButton = button('Bibliotecas', 'board-libraries');
-  const closeButton = button('Fechar (Esc)', 'board-close');
+  const importButton = button(t('board.import'), 'board-import');
+  const exportButton = button(t('board.export'), 'board-export');
+  const libsButton = button(t('board.libraries'), 'board-libraries');
+  const closeButton = button(t('board.close'), 'board-close');
   const libInput = Object.assign(document.createElement('input'), {
     type: 'file',
     accept: '.excalidrawlib,application/json',
@@ -135,7 +136,7 @@ export function mountBoardOverlay(
   libsPanel.hidden = true;
   libsPanel.setAttribute('data-testid', 'board-libraries-panel');
   const libsList = document.createElement('ul');
-  const libsAdd = button('Adicionar biblioteca (.excalidrawlib)', 'board-library-add');
+  const libsAdd = button(t('board.libraries.add'), 'board-library-add');
   const libsError = document.createElement('div');
   libsError.className = 'err';
   libsError.setAttribute('data-testid', 'board-library-error');
@@ -173,13 +174,13 @@ export function mountBoardOverlay(
     const scene: BoardSceneData = { elements: [...pending.values()], files: pendingFiles };
     pending = new Map();
     pendingFiles = {};
-    setStatus('Salvando...');
+    setStatus(t('board.status.saving'));
     bridge.save(cwd, scene).then(
       (result) =>
         result.ok
-          ? setStatus('Salvo')
-          : setStatus(`Não foi possível salvar: ${result.message}`, true),
-      () => setStatus('Não foi possível salvar o quadro.', true),
+          ? setStatus(t('board.status.saved'))
+          : setStatus(t('board.status.saveFailed', { message: result.message }), true),
+      () => setStatus(t('board.status.saveFailedBoard'), true),
     );
   };
   const save = debounce(persist, SAVE_DEBOUNCE_MS);
@@ -187,7 +188,7 @@ export function mountBoardOverlay(
   const onUserChange = (elements: SceneElement[], files: Record<string, unknown>): void => {
     for (const element of elements) pending.set(element.id, element);
     Object.assign(pendingFiles, files);
-    setStatus('Alterações pendentes...');
+    setStatus(t('board.status.pending'));
     save();
   };
 
@@ -202,7 +203,7 @@ export function mountBoardOverlay(
     if (libraries.length === 0) {
       const empty = document.createElement('li');
       empty.className = 'empty';
-      empty.textContent = 'Nenhuma biblioteca instalada.';
+      empty.textContent = t('board.libraries.empty');
       libsList.append(empty);
     }
     for (const library of libraries) {
@@ -210,7 +211,7 @@ export function mountBoardOverlay(
       row.setAttribute('data-testid', 'board-library-row');
       const label = document.createElement('span');
       label.textContent = libraryLabel(library);
-      const remove = button('Remover', 'board-library-remove');
+      const remove = button(t('board.libraries.remove'), 'board-library-remove');
       remove.onclick = () => {
         void bridge.removeLibrary(library.id).then(async () => {
           await loadLibraries();
@@ -276,9 +277,9 @@ export function mountBoardOverlay(
     if (openCwd === cwd && opening) return opening;
     if (openCwd) close();
     openCwd = cwd;
-    title.textContent = `Quadro — ${name ?? cwd}`;
+    title.textContent = t('board.title', { name: name ?? cwd });
     setStatus('');
-    message.textContent = 'Carregando quadro...';
+    message.textContent = t('board.loading');
     root.hidden = false;
     options.onKeyboardCapture?.(true);
     const run = (async () => {
@@ -295,9 +296,9 @@ export function mountBoardOverlay(
         showAuthors(loaded.scene.elements.filter(isSceneElement));
         message.textContent = '';
         if (loaded.status === 'recovered') {
-          setStatus('O quadro estava corrompido: restaurada a última versão válida.', true);
+          setStatus(t('board.recovered'), true);
         } else if (loaded.status === 'lost') {
-          setStatus('O quadro estava corrompido e não havia cópia válida: começando vazio.', true);
+          setStatus(t('board.lost'), true);
         }
         unsubscribe = bridge.onChange((changedCwd, scene) => {
           if (changedCwd !== openCwd) return;
@@ -305,7 +306,7 @@ export function mountBoardOverlay(
           showAuthors(scene.elements.filter(isSceneElement));
         });
       } catch {
-        if (openCwd === cwd) message.textContent = 'Não foi possível abrir o quadro.';
+        if (openCwd === cwd) message.textContent = t('board.openFailed');
       }
     })();
     opening = run;
@@ -333,7 +334,7 @@ export function mountBoardOverlay(
     void file.text().then((text) => {
       const scene = parseExcalidrawFile(text);
       if (!scene) {
-        setStatus('Arquivo .excalidraw inválido.', true);
+        setStatus(t('board.invalidFile'), true);
         return;
       }
       island?.importScene(scene);
@@ -355,7 +356,7 @@ export function mountBoardOverlay(
       .then((text) => bridge.importLibrary(file.name, text))
       .then(async (result) => {
         if (!result.ok) {
-          libsError.textContent = `Biblioteca inválida: ${result.message}`;
+          libsError.textContent = t('board.libraries.invalid', { message: result.message });
           return;
         }
         await loadLibraries();
@@ -363,7 +364,7 @@ export function mountBoardOverlay(
         island?.setLibraryItems(libraryItemsOf(libraries));
       })
       .catch(() => {
-        libsError.textContent = 'Não foi possível instalar a biblioteca.';
+        libsError.textContent = t('board.libraries.installFailed');
       });
   };
 

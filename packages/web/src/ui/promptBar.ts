@@ -1,4 +1,5 @@
 import type Phaser from 'phaser';
+import { logicalSizeOf } from '../renderScale';
 import type { Prompt } from './hudLogic';
 import { HintRow } from './keyHints';
 import { DARK_PANEL, drawPanel } from './panel';
@@ -37,7 +38,8 @@ export class PromptBar {
       .setDepth(PROMPT_DEPTH)
       .setAlpha(0);
     ui.add(this.container);
-    this.layout(scene.scale.width, scene.scale.height);
+    const size = logicalSizeOf(scene);
+    this.layout(size.width, size.height);
   }
 
   layout(width: number, height: number): void {

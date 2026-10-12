@@ -3,7 +3,8 @@ import type {
   ExternalBridge,
   OpenInVSCodeResult,
 } from '@agents-office/shared';
-// "Abrir no VS Code": the bridge lookup, the user-facing message of each failure and the toast
+import { t } from '../i18n/i18n';
+// "Open in VS Code": the bridge lookup, the user-facing message of each failure and the toast
 // shown in the DOM (the game, the project picker and the terminal bar share them). Spec 024.
 
 /** The external-apps bridge of the desktop shell; undefined in a plain browser (no buttons). */
@@ -22,9 +23,9 @@ export function openFailureMessage(result: Extract<OpenInVSCodeResult, { ok: fal
     case 'vscode-not-found':
       return result.message;
     case 'invalid-dir':
-      return `Não foi possível abrir no VS Code: ${result.message}`;
+      return t('external.failedWith', { message: result.message });
     default:
-      return result.message || 'Não foi possível abrir no VS Code.';
+      return result.message || t('external.failed');
   }
 }
 
@@ -44,7 +45,7 @@ export async function openInVSCode(
   } catch (error) {
     return {
       ok: false,
-      message: `Não foi possível abrir no VS Code: ${(error as Error).message}`,
+      message: t('external.failedWith', { message: (error as Error).message }),
     };
   }
 }

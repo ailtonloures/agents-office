@@ -1,4 +1,5 @@
 import type { ActorStatus, Agent, OfficeModel, Step } from '@agents-office/shared';
+import { t } from '../i18n/i18n';
 
 /**
  * Who is who on screen (pure, no Phaser): the display name of every character, the short status
@@ -12,41 +13,57 @@ export const ACTION_MAX = 22;
 const ELLIPSIS = '…';
 
 /** Friendly names of the common subagent types (anything else is title-cased). */
-const TYPE_ALIASES: Readonly<Record<string, string>> = {
-  'general-purpose': 'Generalista',
-  explore: 'Explorer',
-  plan: 'Planner',
-  'claude-code-guide': 'Guia',
-  'statusline-setup': 'Statusline',
-};
+function typeAlias(key: string): string | undefined {
+  switch (key) {
+    case 'general-purpose':
+      return t('identity.type.generalPurpose');
+    case 'explore':
+      return 'Explorer';
+    case 'plan':
+      return 'Planner';
+    case 'claude-code-guide':
+      return t('identity.type.guide');
+    case 'statusline-setup':
+      return 'Statusline';
+    default:
+      return undefined;
+  }
+}
 
-export const STATUS_SHORT: Record<ActorStatus, string> = {
-  spawning: 'CHEGANDO',
-  thinking: 'PENSANDO',
-  working: 'TRABALHANDO',
-  waiting: 'AGUARDA VOCE',
-  error: 'ERRO',
-  idle: 'OCIOSO',
-  finished: 'CONCLUIDO',
-  ended: 'SAIU',
-};
+/** Short status shown on a name tag (upper-case ASCII, what the tiny font draws). */
+export function statusShort(status: ActorStatus): string {
+  return t(`identity.status.${status}`);
+}
 
 /** What a tool is, in a word. */
-const TOOL_VERB: Readonly<Record<string, string>> = {
-  Edit: 'Editando',
-  MultiEdit: 'Editando',
-  Write: 'Escrevendo',
-  NotebookEdit: 'Editando',
-  Read: 'Lendo',
-  Grep: 'Buscando',
-  Glob: 'Buscando',
-  Bash: 'Terminal',
-  WebFetch: 'Web',
-  WebSearch: 'Pesquisando',
-  Agent: 'Convocando',
-  Task: 'Convocando',
-  TodoWrite: 'Planejando',
-};
+function toolVerb(tool: string): string | undefined {
+  switch (tool) {
+    case 'Edit':
+    case 'MultiEdit':
+    case 'NotebookEdit':
+      return t('identity.tool.edit');
+    case 'Write':
+      return t('identity.tool.write');
+    case 'Read':
+      return t('identity.tool.read');
+    case 'Grep':
+    case 'Glob':
+      return t('identity.tool.search');
+    case 'Bash':
+      return t('identity.tool.terminal');
+    case 'WebFetch':
+      return t('identity.tool.web');
+    case 'WebSearch':
+      return t('identity.tool.webSearch');
+    case 'Agent':
+    case 'Task':
+      return t('identity.tool.summon');
+    case 'TodoWrite':
+      return t('identity.tool.plan');
+    default:
+      return undefined;
+  }
+}
 
 export function clip(text: string, max: number): string {
   const clean = text.replace(/\s+/g, ' ').trim();
@@ -61,8 +78,8 @@ export function clip(text: string, max: number): string {
 /** `code-reviewer` -> `Code Reviewer`; known types get a friendlier alias. */
 export function prettyAgentType(agentType: string): string {
   const raw = agentType.trim();
-  if (!raw) return 'Agente';
-  const alias = TYPE_ALIASES[raw.toLowerCase()];
+  if (!raw) return t('identity.agent');
+  const alias = typeAlias(raw.toLowerCase());
   if (alias) return alias;
   const base = raw.includes(':') ? (raw.split(':').pop() ?? raw) : raw;
   return base
@@ -124,9 +141,9 @@ export function actionLine(
   steps: readonly Step[],
   fallback: string,
 ): string {
-  if (status === 'waiting') return clip('Aguarda sua resposta', ACTION_MAX);
+  if (status === 'waiting') return clip(t('identity.waiting'), ACTION_MAX);
   if (currentTool) {
-    const verb = TOOL_VERB[currentTool] ?? currentTool.replace(/^mcp__/, '').replace(/__/g, ' ');
+    const verb = toolVerb(currentTool) ?? currentTool.replace(/^mcp__/, '').replace(/__/g, ' ');
     const step = runningStep(currentTool, steps);
     const target = step ? shortTarget(step.summary, currentTool) : '';
     return clip(target ? `${verb} ${target}` : verb, ACTION_MAX);

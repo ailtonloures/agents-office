@@ -73,5 +73,9 @@ export function tick(
 }
 
 function lastActivity(ts: string | undefined): number {
-  return ts === undefined ? Number.NEGATIVE_INFINITY : Date.parse(ts);
+  if (ts === undefined) return Number.NEGATIVE_INFINITY;
+  const parsed = Date.parse(ts);
+  // A corrupted timestamp counts as "long ago": NaN would make every comparison false and the
+  // session would never expire.
+  return Number.isNaN(parsed) ? Number.NEGATIVE_INFINITY : parsed;
 }

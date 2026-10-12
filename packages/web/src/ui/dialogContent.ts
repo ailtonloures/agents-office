@@ -6,6 +6,7 @@ import type {
   Session,
   Step,
 } from '@agents-office/shared';
+import { t } from '../i18n/i18n';
 
 /** Characters per dialog line (the bitmap font is 6 px wide; see DialogBox for the box size). */
 export const DIALOG_COLS = 46;
@@ -21,25 +22,45 @@ const ELLIPSIS = '…';
 /** One dialog screen: at most {@link DIALOG_LINES} lines of at most {@link DIALOG_COLS} chars. */
 export type DialogPage = string[];
 
-export const PROFESSION_LABEL: Record<Profession, string> = {
-  'tech-lead': 'Tech Lead',
-  analyst: 'Analista',
-  architect: 'Arquiteto',
-  developer: 'Desenvolvedor',
-  qa: 'QA',
-  support: 'Suporte',
-};
+/** Display name of a profession in the active language (`Tech Lead` and `QA` stay as they are). */
+export function professionLabel(profession: Profession): string {
+  switch (profession) {
+    case 'tech-lead':
+      return t('dialog.profession.tech-lead');
+    case 'analyst':
+      return t('dialog.profession.analyst');
+    case 'architect':
+      return t('dialog.profession.architect');
+    case 'developer':
+      return t('dialog.profession.developer');
+    case 'qa':
+      return t('dialog.profession.qa');
+    case 'support':
+      return t('dialog.profession.support');
+  }
+}
 
-export const STATUS_LABEL: Record<ActorStatus, string> = {
-  spawning: 'chegando',
-  thinking: 'pensando',
-  working: 'trabalhando',
-  waiting: 'esperando voce',
-  error: 'com erro',
-  idle: 'ocioso',
-  finished: 'concluido',
-  ended: 'encerrado',
-};
+/** Short status phrase of an actor in the active language. */
+export function statusLabel(status: ActorStatus): string {
+  switch (status) {
+    case 'spawning':
+      return t('dialog.status.spawning');
+    case 'thinking':
+      return t('dialog.status.thinking');
+    case 'working':
+      return t('dialog.status.working');
+    case 'waiting':
+      return t('dialog.status.waiting');
+    case 'error':
+      return t('dialog.status.error');
+    case 'idle':
+      return t('dialog.status.idle');
+    case 'finished':
+      return t('dialog.status.finished');
+    case 'ended':
+      return t('dialog.status.ended');
+  }
+}
 
 /** Glyphs the default bitmap font can draw (besides letters of both cases and digits). */
 const UNSUPPORTED = /[^0-9A-Za-zÁÀÂÃÉÊÍÓÔÕÚÇáàâãéêíóôõúç .,:;!?\-+/()'"_=%#*<>[\]&…▼·]/g;
@@ -117,22 +138,29 @@ export function paginate(lines: readonly string[]): DialogPage[] {
 
 const stepLine = (step: Step): string => {
   const text = truncate(`${step.tool} ${step.summary}`, DIALOG_COLS - 2);
-  return `- ${step.ok === false ? truncate(`${text} (ERRO)`, DIALOG_COLS - 2) : text}`;
+  return `- ${step.ok === false ? truncate(`${text} ${t('dialog.step.error')}`, DIALOG_COLS - 2) : text}`;
 };
 
 const nowLine = (tool: string | undefined, steps: readonly Step[]): string => {
-  if (!tool) return 'Agora: nada em execucao';
+  if (!tool) return t('dialog.now.none');
   const step = [...steps].reverse().find((s) => s.tool === tool && s.ok === undefined);
-  return `Agora: ${tool}${step?.summary ? ` ${truncate(step.summary, MAX_TEXT)}` : ''}`;
+  return t('dialog.now', {
+    text: `${tool}${step?.summary ? ` ${truncate(step.summary, MAX_TEXT)}` : ''}`,
+  });
 };
 
 const usageLine = (usage: { inputTokens: number; outputTokens: number }): string =>
-  `Tokens: ${formatTokens(usage.inputTokens)} entrada / ${formatTokens(usage.outputTokens)} saida`;
+  t('dialog.usage', {
+    input: formatTokens(usage.inputTokens),
+    output: formatTokens(usage.outputTokens),
+  });
 
 /** Dialog pages of a subagent. `now` is epoch milliseconds. */
 export function agentPages(agent: Agent, now: number): DialogPage[] {
-  const title = `${PROFESSION_LABEL[agent.profession]}${agent.agentType ? ` (${agent.agentType})` : ''}`;
-  const description = agent.description ? truncate(agent.description, MAX_TEXT) : 'Sem descricao';
+  const title = `${professionLabel(agent.profession)}${agent.agentType ? ` (${agent.agentType})` : ''}`;
+  const description = agent.description
+    ? truncate(agent.description, MAX_TEXT)
+    : t('dialog.noDescription');
   const end = agent.finishedTs ? Date.parse(agent.finishedTs) : now;
   const active = formatDuration(end - Date.parse(agent.startedTs));
   const steps = agent.recentSteps.slice(-MAX_STEPS).reverse();
@@ -144,10 +172,10 @@ export function agentPages(agent: Agent, now: number): DialogPage[] {
     ),
     ...paginate(
       steps.length > 0
-        ? ['Ultimos passos:', ...steps.map(stepLine)]
-        : ['Ultimos passos:', '- nenhum ainda'],
+        ? [t('dialog.steps.title'), ...steps.map(stepLine)]
+        : [t('dialog.steps.title'), t('dialog.steps.none')],
     ),
-    [`Tempo ativo: ${active}`, usageLine(agent.usage)],
+    [t('dialog.activeTime', { time: active }), usageLine(agent.usage)],
   ];
 }
 
@@ -172,6 +200,10 @@ export type DialogAction =
 /** Where the game runs: the actions only exist inside the desktop app. */
 export interface DialogContext {
   desktop: boolean;
+  /** Profile name of a cast (managed) session; absent for sessions started outside the app. */
+  managedName?: string;
+  /** Base profession of the cast profile; falls back to the session's profession. */
+  managedProfession?: Profession;
 }
 
 /**
@@ -189,18 +221,18 @@ export function sessionActions(
     actions.push({
       id: 'open-terminal',
       key: 'T',
-      label: 'Abrir terminal',
+      label: t('dialog.action.openTerminal'),
       terminalId: session.terminalId,
     });
   }
   // VS Code opens the folder of any session, also the ones started outside the app.
   if (cwd) {
-    actions.push({ id: 'open-vscode', key: 'V', label: 'Abrir no VS Code', cwd });
+    actions.push({ id: 'open-vscode', key: 'V', label: t('dialog.action.openVscode'), cwd });
   }
   return actions;
 }
 
-/** The footer line of an action, as shown in the dialog (`[T] Abrir terminal`). */
+/** The footer line of an action, as shown in the dialog (`[T] Open terminal`). */
 export function actionLine(action: DialogAction): string {
   return `[${action.key}] ${action.label}`;
 }
@@ -217,25 +249,30 @@ export function sessionPages(
     .filter((a): a is Agent => a !== undefined && a.status !== 'finished' && a.status !== 'ended');
   const prompt = session.lastPromptSummary
     ? truncate(session.lastPromptSummary, MAX_TEXT)
-    : 'nenhum ainda';
+    : t('dialog.lastPrompt.none');
 
   const listed = subordinates
     .slice(0, MAX_SUBORDINATES)
     .map((a) =>
-      truncate(`- ${PROFESSION_LABEL[a.profession]}: ${STATUS_LABEL[a.status]}`, DIALOG_COLS),
+      truncate(`- ${professionLabel(a.profession)}: ${statusLabel(a.status)}`, DIALOG_COLS),
     );
   const hidden = subordinates.length - listed.length;
   return [
     ...paginate([
-      truncate(`Tech Lead - ${PROFESSION_LABEL[session.profession]}`, DIALOG_COLS),
-      truncate(`Projeto: ${project}`, DIALOG_COLS),
-      `Sessao: ${session.id.slice(0, 8)}`,
+      truncate(
+        `${context.managedName ?? 'Tech Lead'} - ${professionLabel(context.managedProfession ?? session.profession)}`,
+        DIALOG_COLS,
+      ),
+      truncate(t('dialog.project', { name: project }), DIALOG_COLS),
+      t('dialog.session', { id: session.id.slice(0, 8) }),
     ]),
-    ...paginate(wrapLines(`Ultimo pedido: ${prompt}`, DIALOG_COLS, DIALOG_LINES)),
+    ...paginate(wrapLines(t('dialog.lastPrompt', { text: prompt }), DIALOG_COLS, DIALOG_LINES)),
     ...paginate([
-      subordinates.length > 0 ? `Equipe ativa (${subordinates.length}):` : 'Equipe ativa: ninguem',
+      subordinates.length > 0
+        ? t('dialog.team', { n: subordinates.length })
+        : t('dialog.team.none'),
       ...listed,
-      ...(hidden > 0 ? [`+${hidden} outros`] : []),
+      ...(hidden > 0 ? [t('dialog.team.more', { n: hidden })] : []),
     ]),
     ...paginate(
       sessionActions(session, context, model.projects[session.projectId]?.cwd).map(actionLine),

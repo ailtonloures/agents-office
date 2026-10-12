@@ -1,5 +1,6 @@
 import type { BrowserApprovalBridge, BrowserApprovalRequest } from '@agents-office/shared';
-import { dequeue } from './browserApprovalLogic';
+import { t } from '../i18n/i18n';
+import { approvalHeading, approvalHintKey, dequeue } from './browserApprovalLogic';
 
 const CSS = `
 .ao-bro-card{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);z-index:40;
@@ -18,15 +19,9 @@ const CSS = `
 .ao-bro-card button.deny{border-color:#e07070}
 `;
 
-const HINT: Record<BrowserApprovalRequest['kind'], string> = {
-  download: 'O arquivo só é baixado se você permitir.',
-  permission: 'O site só recebe a permissão se você permitir.',
-  eval: 'O código vem de um agente e roda dentro da página (com os logins do navegador deste projeto).',
-};
-
 /**
  * Mounts the confirmation card of the embedded browser (download, site permission, browser_eval)
- * inside `gameParent`: one card at a time, with "Permitir" and "Negar". Returns the cleanup.
+ * inside `gameParent`: one card at a time, with "Allow" and "Deny". Returns the cleanup.
  */
 export function mountBrowserApprovalCard(
   bridge: BrowserApprovalBridge,
@@ -70,16 +65,12 @@ export function mountBrowserApprovalCard(
     shownId = request.id;
     card.hidden = false;
     card.dataset.kind = request.kind;
-    const title = field(
-      'h3',
-      'browser-approval-title',
-      `${request.title}${queue.length > 1 ? ` (+${queue.length - 1} na fila)` : ''}`,
-    );
+    const title = field('h3', 'browser-approval-title', approvalHeading(request, queue.length));
     const detail = field('pre', 'browser-approval-detail', request.detail);
-    const hint = field('div', 'browser-approval-hint', HINT[request.kind]);
+    const hint = field('div', 'browser-approval-hint', t(approvalHintKey(request.kind)));
     hint.className = 'hint';
-    const allow = field('button', 'browser-allow', 'Permitir');
-    const deny = field('button', 'browser-deny', 'Negar');
+    const allow = field('button', 'browser-allow', t('approval.allow'));
+    const deny = field('button', 'browser-deny', t('approval.deny'));
     deny.className = 'deny';
     const buttons = document.createElement('div');
     buttons.className = 'row';

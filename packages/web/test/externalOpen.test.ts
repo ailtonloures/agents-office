@@ -1,6 +1,10 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { setLocale } from '../src/i18n/i18n';
 import { externalBridgeOf, openFailureMessage, openInVSCode } from '../src/ui/externalOpen';
 import { pickerBridgesOf } from '../src/ui/projectPicker';
+
+beforeEach(() => setLocale('pt-BR'));
+afterEach(() => setLocale('en'));
 
 describe('externalBridgeOf', () => {
   it('exists only inside the desktop shell with the bridge', () => {
@@ -53,6 +57,19 @@ describe('openInVSCode', () => {
   it('words invalid folders for the user', () => {
     expect(openFailureMessage({ ok: false, code: 'invalid-dir', message: 'Gone.' })).toBe(
       'Não foi possível abrir no VS Code: Gone.',
+    );
+  });
+});
+
+describe('openFailureMessage in other languages', () => {
+  it('uses English and Spanish', () => {
+    setLocale('en');
+    expect(openFailureMessage({ ok: false, code: 'invalid-dir', message: 'Gone.' })).toBe(
+      'Could not open in VS Code: Gone.',
+    );
+    setLocale('es');
+    expect(openFailureMessage({ ok: false, code: 'invalid-dir', message: 'Gone.' })).toBe(
+      'No se pudo abrir en VS Code: Gone.',
     );
   });
 });

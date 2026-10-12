@@ -1,5 +1,6 @@
 import type { HooksStatus } from '@agents-office/shared';
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { setLocale } from '../src/i18n/i18n';
 import {
   classifyDiffLine,
   hooksBridgeOf,
@@ -8,6 +9,9 @@ import {
   shouldPromptInstall,
   summaryLabel,
 } from '../src/ui/settingsLogic';
+
+beforeEach(() => setLocale('pt-BR'));
+afterEach(() => setLocale('en'));
 
 const status = (over: Partial<HooksStatus> = {}): HooksStatus => ({
   path: '/h/.claude/settings.json',
@@ -53,5 +57,23 @@ describe('settings logic', () => {
     expect(classifyDiffLine('+ a').kind).toBe('add');
     expect(classifyDiffLine('- a').kind).toBe('del');
     expect(classifyDiffLine('  a').kind).toBe('ctx');
+  });
+});
+
+describe('hooks labels in other languages', () => {
+  it('uses English and Spanish', () => {
+    setLocale('en');
+    expect(summaryLabel(status({ installedCount: 4 }))).toBe('4 of 10 hooks installed');
+    expect(hooksSeenLabel(status({ daemonReachable: false }), new Date())).toBe(
+      'Daemon unreachable',
+    );
+    setLocale('es');
+    expect(summaryLabel(status())).toBe('Ningún hook instalado');
+    expect(
+      hooksSeenLabel(
+        status({ hooksSeenAt: '2026-10-10T11:59:30Z' }),
+        new Date('2026-10-10T12:00:00Z'),
+      ),
+    ).toBe('Último hook recibido hace 30 s');
   });
 });

@@ -1,7 +1,7 @@
 import type { ActorStatus, Profession } from '@agents-office/shared';
 import type Phaser from 'phaser';
 import { SKIN_KEYS } from '../skin';
-import { STATUS_SHORT } from './identity';
+import { statusShort } from './identity';
 import { DARK_PANEL, drawPanel } from './panel';
 
 export const NAME_TAG_DEPTH = 7;
@@ -154,7 +154,7 @@ export class NameTag {
       : tagText(content.detail, TAG_DETAIL_MAX);
     const color = content.color ?? ROLE_COLOR[content.profession];
     const statusColor = content.status ? STATUS_COLOR[content.status] : color;
-    const statusText = content.status ? STATUS_SHORT[content.status] : '';
+    const statusText = content.status ? statusShort(content.status) : '';
     const nameOnly = content.nameOnly === true;
     const key = `${name}|${roleLabel}|${statusText}|${detail}|${color}|${statusColor}|${nameOnly}`;
     if (key === this.key) return;

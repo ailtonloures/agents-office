@@ -1,22 +1,28 @@
 import type { Agent, OfficeModel, PermissionRequest, Session } from '@agents-office/shared';
 import { createEmptyModel } from '@agents-office/shared';
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { setLocale } from '../src/i18n/i18n';
 import {
   approachTile,
   freeTileNear,
+  helpControls,
   hintPanelX,
   hudCounts,
+  hudHints,
   hudText,
   mostRecentRoom,
   nextWaiting,
   promptFor,
   roomFront,
   TIP_MS,
-  TIPS,
   tipAt,
+  tips,
   waitingActors,
 } from '../src/ui/hudLogic';
 import { layoutBuilding } from '../src/world/roomLayout';
+
+beforeEach(() => setLocale('pt-BR'));
+afterEach(() => setLocale('en'));
 
 const usage = { inputTokens: 0, outputTokens: 0 };
 
@@ -135,6 +141,9 @@ describe('promptFor', () => {
       { keys: ['Z'], label: 'Conversar com Explorer 2' },
     ]);
     expect(promptFor({ kind: 'board' }).hints[0]?.label).toBe('Ver o Hall da Fama');
+    expect(promptFor({ kind: 'whiteboard' }).hints).toEqual([
+      { keys: ['Z'], label: 'Abrir o quadro' },
+    ]);
     expect(promptFor({ kind: 'door', name: 'api' }).hints[0]?.label).toBe('Iniciar sessão em api');
     expect(
       promptFor({ kind: 'dialog', actions: [{ keys: ['T'], label: 'Abrir terminal' }] }).hints.map(
@@ -148,9 +157,38 @@ describe('promptFor', () => {
     expect(promptFor({ kind: 'idle', elapsedMs: 0 }).hints[0]?.keys).toEqual(['H']);
     const first = promptFor({ kind: 'idle', elapsedMs: TIP_MS });
     expect(first.hints).toEqual([]);
-    expect(first.text).toBe(TIPS[0]);
-    expect(promptFor({ kind: 'idle', elapsedMs: TIP_MS * 2 }).text).toBe(TIPS[1]);
-    expect(tipAt(TIP_MS * TIPS.length)).toBe(TIPS[0]);
+    expect(first.text).toBe(tips()[0]);
+    expect(promptFor({ kind: 'idle', elapsedMs: TIP_MS * 2 }).text).toBe(tips()[1]);
+    expect(tipAt(TIP_MS * tips().length)).toBe(tips()[0]);
+  });
+});
+
+describe('hud texts per language', () => {
+  it('formats the bar text in English and Spanish', () => {
+    setLocale('en');
+    expect(hudText({ sessions: 2, agents: 1, waiting: 1 })).toBe('2 sessions · 1 agent · ! 1');
+    setLocale('es');
+    expect(hudText({ sessions: 1, agents: 3, waiting: 0 })).toBe('1 sesión · 3 agentes · ! 0');
+  });
+
+  it('translates prompts, hints, controls and tips', () => {
+    setLocale('en');
+    expect(promptFor({ kind: 'door', name: 'api' }).hints[0]?.label).toBe('Start a session in api');
+    expect(hudHints()[0]?.label).toBe('Active room');
+    expect(helpControls()[0]?.keys).toEqual(['ARROWS', 'WASD']);
+    expect(tips()[0]).toContain('Get close');
+    setLocale('es');
+    expect(promptFor({ kind: 'character', name: 'Ana' }).hints[0]?.label).toBe('Hablar con Ana');
+    expect(helpControls()[1]?.keys).toContain('ESPACIO');
+    expect(tipAt(0)).toBe(tips()[0]);
+  });
+
+  it('resolves the tips at call time, not at import', () => {
+    setLocale('pt-BR');
+    const pt = tips();
+    setLocale('en');
+    expect(tips()).not.toEqual(pt);
+    expect(tips()).toHaveLength(pt.length);
   });
 });
 

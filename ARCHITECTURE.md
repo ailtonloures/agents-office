@@ -166,6 +166,8 @@ The preload exposes exactly one global, `window.agentsOfficeDesktop`, with `cont
 
 Channel names live in `desktop/src/main/*Channels.ts` and are imported by both the main process and the preload, so the two sides cannot drift. Every handler runs `trusted(event)` first (the sender must be the office window and its frame URL must be on the daemon origin) and parses its arguments with zod, rejecting extra properties.
 
+The interface language is purely a renderer concern: `packages/web/src/i18n` holds the dictionaries (`en`, `pt-BR`, `es`) and the `t()` helper, and the choice lives in the browser's `localStorage` (`agents-office.locale`). It does not cross the preload bridge or `shared`. Text produced only in the Electron main process (tray, system notifications, quit dialog) is not translated yet.
+
 The renderer is the web app: Phaser draws the office from the model, and DOM panels (terminals, cast panel, whiteboard, update banner) talk to the desktop through the bridge.
 
 ## Shared contracts
@@ -526,4 +528,5 @@ The app runs on a developer machine next to their Claude Code credentials and fi
 | Change terminal behavior | `desktop/src/main/sessionManager.ts` and `ipc.ts` (web side: `ui/terminalPanel.ts`, `ui/terminalTabs.ts`) |
 | Change packaging or release | `packages/desktop/electron-builder.yml`, `.github/workflows/release.yml`, `scripts/release.mjs` |
 | Change visuals or UI conventions | see [DESIGN.md](./DESIGN.md) |
+| Add or change UI text, or add a language | `web/src/i18n/messages/en.ts` (keys), then `pt-BR.ts` and `es.ts`; see DESIGN.md section 6.7 |
 | Run, build or test | see [DEVELOPMENT.md](./DEVELOPMENT.md) |

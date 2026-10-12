@@ -62,6 +62,12 @@ the CLI (`npx agents-office hooks install`; a backup of `~/.claude/settings.json
 `hooks uninstall` removes them). Without hooks the office still works by reading
 your transcripts.
 
+### Language
+
+The interface is in English by default. The language button in the bottom-left corner bar switches
+between English, Portuguese (Brazil) and Spanish; the choice is remembered and the page reloads to
+apply it. Text that comes from Claude Code (session content, profile names) is never translated.
+
 ### Privacy
 
 Everything stays on your machine. The daemon binds `127.0.0.1` only and there is no telemetry.
@@ -74,7 +80,7 @@ Everything stays on your machine. The daemon binds `127.0.0.1` only and there is
 
 ## Agent profiles and the cast
 
-In the desktop app, the **Elenco** button opens the cast panel. A *profile* (name, appearance,
+In the desktop app, the **Cast** button opens the cast panel. A *profile* (name, appearance,
 instructions, permission mode, model) lives in a global library; a project's *cast* lists the
 profiles that run there. Starting a cast member opens a managed Claude Code session whose system
 prompt carries the profile instructions and its saved notes, and the agent shows up in the office
@@ -89,7 +95,7 @@ notes are stored under the app's user data folder; nothing leaves your machine.
 ## Embedded browser
 
 In the desktop app, the **Navegador** button opens a browser tab in the terminal dock, one browser
-per workspace (its own cookies and storage, kept between sessions; "Limpar dados" wipes them). The
+per workspace (its own cookies and storage, kept between sessions; "Clear data" wipes them). The
 page is a native view, so dialogs drawn by the office are hidden behind it.
 
 Managed agents can drive that browser through the Agent Bus tools `browser_navigate`,

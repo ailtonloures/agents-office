@@ -1,6 +1,7 @@
 import type { Agent, OfficeModel, Session } from '@agents-office/shared';
 import { createEmptyModel } from '@agents-office/shared';
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { setLocale } from '../src/i18n/i18n';
 import {
   actionLine,
   agentPages,
@@ -16,6 +17,9 @@ import {
   truncate,
   wrapLines,
 } from '../src/ui/dialogContent';
+
+beforeEach(() => setLocale('pt-BR'));
+afterEach(() => setLocale('en'));
 
 const NOW = Date.parse('2026-01-01T00:10:00.000Z');
 
@@ -222,6 +226,34 @@ describe('sessionPages', () => {
   });
 });
 
+describe('sessionPages header', () => {
+  it('uses the cast profile name instead of Tech Lead', () => {
+    const s = session();
+    const header = sessionPages(s, modelWith(s, []), {
+      desktop: true,
+      managedName: 'Designer',
+      managedProfession: 'architect',
+    })[0]?.[0];
+    expect(header?.startsWith('Designer')).toBe(true);
+    expect(header).not.toContain('Tech Lead');
+    expect(header).toContain('Arquiteto');
+  });
+
+  it('truncates a long profile name to the dialog width', () => {
+    const s = session();
+    const header = sessionPages(s, modelWith(s, []), {
+      desktop: false,
+      managedName: 'N'.repeat(80),
+    })[0]?.[0];
+    expect(header?.length).toBe(DIALOG_COLS);
+  });
+
+  it('keeps Tech Lead for an unmanaged session', () => {
+    const s = session();
+    expect(sessionPages(s, modelWith(s, []))[0]?.[0]).toContain('Tech Lead');
+  });
+});
+
 describe('pagesFor', () => {
   it('finds sessions and agents by id', () => {
     const s = session();
@@ -288,5 +320,30 @@ describe('session actions (spec 023)', () => {
   it('pagesFor passes the context to the session dialog', () => {
     const pages = pagesFor(modelWith(bound, []), bound.id, NOW, desktop);
     expect(pages?.flat()).toContain('[T] Abrir terminal');
+  });
+});
+
+describe('dialog text in other languages', () => {
+  it('uses English and keeps lines within the dialog width', () => {
+    setLocale('en');
+    const bound = session({ terminalId: 'term-1' });
+    const pages = sessionPages(bound, modelWith(bound, [agent()]), { desktop: true });
+    expectWellFormed(pages);
+    const text = pages.flat().join('\n');
+    expect(text).toContain('Project: my-app');
+    expect(text).toContain('- Developer: working');
+    expect(text).toContain('[T] Open terminal');
+    expect(agentPages(agent(), NOW).flat().join('\n')).toContain('Active time: 3m 12s');
+  });
+
+  it('uses Spanish', () => {
+    setLocale('es');
+    const s = session();
+    const pages = sessionPages(s, modelWith(s, [agent()]));
+    expectWellFormed(pages);
+    const text = pages.flat().join('\n');
+    expect(text).toContain('Proyecto: my-app');
+    expect(text).toContain('- Desarrollador: trabajando');
+    expect(agentPages(agent(), NOW)[0]?.[0]).toBe('Desarrollador (general-purpose)');
   });
 });

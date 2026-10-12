@@ -46,6 +46,8 @@ describe('OfficeIdleSource', () => {
     const model = { projects: {}, sessions: { s1: session('idle') }, agents: {}, hallOfFame: [] };
     sockets[0]?.onmessage?.({ data: JSON.stringify({ kind: 'snapshot', model }) });
     expect(source.isIdle('t1')).toBe(true);
+    expect(source.liveSessionIdOfTerminal('t1')).toBe('s1');
+    expect(source.liveSessionIdOfTerminal('other')).toBeNull();
     expect(changed).toHaveBeenCalledTimes(1);
     sockets[0]?.onmessage?.({ data: 'not json' });
     expect(changed).toHaveBeenCalledTimes(1);

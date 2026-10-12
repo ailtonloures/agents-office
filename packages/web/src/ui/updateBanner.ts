@@ -1,4 +1,5 @@
 import type { UpdaterBridge, UpdateState } from '@agents-office/shared';
+import { t } from '../i18n/i18n';
 import { BUTTON_CSS } from './buttonStyles';
 import { bannerModel, versionOf } from './updateLogic';
 
@@ -26,10 +27,10 @@ export function mountUpdateBanner(bridge: UpdaterBridge, gameParent: HTMLElement
   const text = document.createElement('span');
   text.setAttribute('data-testid', 'update-text');
   const install = Object.assign(document.createElement('button'), {
-    textContent: 'Reiniciar e atualizar',
+    textContent: t('update.install'),
   });
   install.setAttribute('data-testid', 'update-install');
-  const later = Object.assign(document.createElement('button'), { textContent: 'Depois' });
+  const later = Object.assign(document.createElement('button'), { textContent: t('update.later') });
   later.setAttribute('data-testid', 'update-later');
   banner.append(text, install, later);
   // Keys typed while a banner button has focus must not reach Phaser (WASD, Z, Tab...), like the settings panel.

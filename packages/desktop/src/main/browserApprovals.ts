@@ -25,6 +25,7 @@ export interface BrowserApprovalAsk {
   title: string;
   detail: string;
   origin?: string;
+  filename?: string;
   agentName?: string;
 }
 
@@ -57,6 +58,7 @@ export class BrowserApprovals {
       title: input.title,
       detail: input.detail,
       ...(input.origin ? { origin: input.origin } : {}),
+      ...(input.filename ? { filename: input.filename } : {}),
       ...(input.agentName ? { agentName: input.agentName } : {}),
       createdAt: (this.deps.now?.() ?? new Date()).toISOString(),
     };

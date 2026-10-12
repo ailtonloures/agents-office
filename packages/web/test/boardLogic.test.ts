@@ -1,4 +1,5 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { setLocale } from '../src/i18n/i18n';
 import {
   authorsLabel,
   backgroundOf,
@@ -24,6 +25,9 @@ const el = (id: string, over: Partial<SceneElement> = {}): SceneElement => ({
   isDeleted: false,
   ...over,
 });
+
+beforeEach(() => setLocale('pt-BR'));
+afterEach(() => setLocale('en'));
 
 describe('boardBridgeOf', () => {
   it('needs the full bridge', () => {
@@ -142,5 +146,9 @@ describe('authorship', () => {
     expect(names).toEqual(['Ana', 'Bia']);
     expect(authorsLabel(names)).toBe('Desenhado por: Ana, Bia');
     expect(authorsLabel([])).toBe('');
+    setLocale('en');
+    expect(authorsLabel(names)).toBe('Drawn by: Ana, Bia');
+    setLocale('es');
+    expect(authorsLabel(names)).toBe('Dibujado por: Ana, Bia');
   });
 });

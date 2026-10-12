@@ -1,8 +1,10 @@
 import type { ManagedSessionInfo } from '@agents-office/shared';
 import Phaser from 'phaser';
 import { installDebugState } from './debug/debugState';
+import { initLocale } from './i18n/i18n';
 import { startDemo } from './net/demo';
 import { OfficeClient } from './net/officeClient';
+import { REGISTRY_RENDER_SCALE } from './renderScale';
 import { computeViewport, type Viewport, viewportChanged } from './scale';
 import { BootScene, EVENT_SCENE_READY, REGISTRY_START_SCENE } from './scenes/BootScene';
 import { CharactersDebugScene, DEBUG_CHARACTERS_SCENE } from './scenes/CharactersDebugScene';
@@ -13,6 +15,7 @@ import { mountBrowserApprovalCard } from './ui/browserApprovalCard';
 import { castBridgesOf, taskHints } from './ui/castLogic';
 import { mountCastPanel } from './ui/castPanel';
 import { externalBridgeOf, openInVSCodeWithToast } from './ui/externalOpen';
+import { mountLocaleButton } from './ui/localeButton';
 import { mountLostSessions } from './ui/lostSessions';
 import { managedBridgeOf, REGISTRY_MANAGED } from './ui/managedBinding';
 import { installMermaidRelay } from './ui/mermaidRelay';
@@ -29,9 +32,11 @@ import { browserBridgeOf, terminalBridgeOf } from './ui/terminalTabs';
 import { mountUpdateBanner } from './ui/updateBanner';
 import { updaterBridgeOf } from './ui/updateLogic';
 import { mountZoomControls } from './ui/zoomControls';
-import { BOARD_OPEN_EVENT, type BoardOpenRequest } from './world/boardProp';
+import { BOARD_OPEN_EVENT, BOARD_OVERLAY_EVENT, type BoardOpenRequest } from './world/boardProp';
 import { REGISTRY_ACTIVE_TERMINAL, TERMINAL_ACTIVE_EVENT } from './zoom';
 
+const locale = initLocale();
+document.documentElement.lang = locale;
 installScrollbars();
 const query = new URLSearchParams(window.location.search);
 const debugCharacters = query.get('debug') === 'characters';
@@ -49,8 +54,8 @@ const initial = computeViewport(areaSize().width, areaSize().height, window.devi
 const game = new Phaser.Game({
   type: Phaser.AUTO,
   parent: 'game',
-  width: initial.width,
-  height: initial.height,
+  width: initial.width * initial.renderScale,
+  height: initial.height * initial.renderScale,
   backgroundColor: '#000000',
   pixelArt: true,
   roundPixels: true,
@@ -59,10 +64,11 @@ const game = new Phaser.Game({
     // FIT scales by a fractional factor: the game is resized to fill the window at an integer zoom.
     mode: Phaser.Scale.NONE,
     autoCenter: Phaser.Scale.CENTER_BOTH,
-    zoom: initial.zoom,
+    zoom: initial.zoom / initial.renderScale,
   },
   scene: [BootScene, OfficeScene, CharactersDebugScene],
 });
+game.registry.set(REGISTRY_RENDER_SCALE, initial.renderScale);
 // The splash in index.html stays up until the first real scene has been created.
 const splash = document.getElementById('splash');
 const hideSplash = () => {
@@ -90,8 +96,9 @@ function applyResize(): void {
   const next = computeViewport(area.width, area.height, window.devicePixelRatio);
   if (!viewportChanged(applied, next)) return;
   applied = next;
-  game.scale.setZoom(next.zoom);
-  game.scale.resize(next.width, next.height);
+  game.registry.set(REGISTRY_RENDER_SCALE, next.renderScale);
+  game.scale.setZoom(next.zoom / next.renderScale);
+  game.scale.resize(next.width * next.renderScale, next.height * next.renderScale);
   debug.resizes += 1;
   game.step(performance.now(), game.loop.delta);
 }
@@ -137,6 +144,7 @@ if (boardBridge) {
   const board = mountBoardOverlay(boardBridge, {
     gameParent,
     onKeyboardCapture: (captured) => {
+      game.events.emit(BOARD_OVERLAY_EVENT, captured);
       const keyboard = game.input.keyboard;
       if (!keyboard) return;
       keyboard.enabled = !captured;
@@ -281,3 +289,13 @@ if (terminalBridge) {
   }
   new ResizeObserver(() => resize()).observe(gameParent);
 }
+
+// Last item of the corner bar; it works in the browser and in the desktop shell.
+mountLocaleButton(gameParent, {
+  onKeyboardCapture: (captured) => {
+    const keyboard = game.input.keyboard;
+    if (!keyboard) return;
+    keyboard.enabled = !captured && document.body.dataset.keyboard !== 'terminal';
+    if (captured) for (const scene of game.scene.getScenes(true)) scene.input.keyboard?.resetKeys();
+  },
+});

@@ -1,6 +1,7 @@
 import type Phaser from 'phaser';
+import { logicalSizeOf } from '../renderScale';
 import { SKIN_KEYS } from '../skin';
-import { HUD_HINTS, type HudCounts, hintPanelX, hudText, type Rect } from './hudLogic';
+import { type HudCounts, hintPanelX, hudHints, hudText, type Rect } from './hudLogic';
 import { HintRow } from './keyHints';
 import { DARK_PANEL, drawPanel } from './panel';
 import type { UiOverlay } from './uiOverlay';
@@ -15,7 +16,7 @@ const COLOR_CONNECTED = 0x58d36b;
 const COLOR_DISCONNECTED = 0xe0584f;
 
 /**
- * Floating HUD: a status pill at the top left (`n sessões · n agentes · ! n`, the `!` blinks while
+ * Floating HUD: a status pill at the top left (`n sessions · n agents · ! n`, the `!` blinks while
  * someone waits, and the connection dot) and the keyboard shortcuts at the top right.
  */
 export class Hud {
@@ -50,8 +51,9 @@ export class Hud {
     this.hintPanel = fixed(scene.add.graphics());
     this.hints = new HintRow(scene);
     fixed(this.hints.container, 1);
-    this.hints.set(HUD_HINTS);
-    this.layout(scene.scale.width);
+    this.hints.set(hudHints());
+    const size = logicalSizeOf(scene);
+    this.layout(size.width);
   }
 
   /** The full text currently shown, for the E2E debug state. */

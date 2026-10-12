@@ -700,7 +700,7 @@ test.describe(`desktop app (${mode})`, () => {
       await page.keyboard.type('quit');
       await page.keyboard.press('Enter');
       await expect(page.locator('[data-testid="terminal-ended"]')).toContainText(
-        'Processo terminou (código 3)',
+        'Process ended (code 3)',
       );
       expect(await panel((p) => p.tabs[0]?.title)).toBe('demo-app · encerrada');
       await page.locator('[data-testid="terminal-restart"]').click();
@@ -838,7 +838,7 @@ test.describe(`desktop app (${mode})`, () => {
       await expect(page.getByTestId('project-picker')).toBeVisible();
       // Only the history project exists so far; the office keyboard is released for typing.
       await expect.poll(names).toEqual(['beta-app']);
-      await expect(page.getByTestId('picker-mode-note')).toContainText('cartões no escritório');
+      await expect(page.getByTestId('picker-mode-note')).toContainText('cards in the office');
 
       // "Novo projeto…" opens the system picker (stubbed) and selects the folder.
       await page.getByTestId('picker-new').click();
@@ -862,7 +862,7 @@ test.describe(`desktop app (${mode})`, () => {
       await page.getByTestId('picker-row-beta-app').click();
       await page.getByTestId('picker-launch-continue').check();
       await page.getByTestId('picker-mode').selectOption('plan');
-      await expect(page.getByTestId('picker-mode-note')).toContainText('planejamento');
+      await expect(page.getByTestId('picker-mode-note')).toContainText('Planning');
       await page.getByTestId('picker-start').click();
       await expect(page.getByTestId('project-picker')).toHaveCount(0);
       await expect
@@ -875,7 +875,7 @@ test.describe(`desktop app (${mode})`, () => {
       await page.getByTestId('picker-launch-resume').check();
       await expect(page.getByTestId('picker-resume-select')).toContainText('fix the login bug');
       await page.getByTestId('picker-mode').selectOption('auto');
-      await expect(page.getByTestId('picker-mode-note')).toContainText('Não gera cartões');
+      await expect(page.getByTestId('picker-mode-note')).toContainText('Produces no cards');
       await page.getByTestId('picker-start').click();
       await expect.poll(() => page.evaluate(() => window.__terminalPanel?.tabs.length)).toBe(2);
       await expect
@@ -945,21 +945,96 @@ test.describe(`desktop app (${mode})`, () => {
       await page.getByTestId('cast-add').click();
       await expect(page.getByTestId('cast-row-designer')).toBeVisible();
       await page.getByTestId('cast-row-designer').getByTestId('cast-start').click();
-      await expect(page.getByTestId('cast-error')).toContainText('Claude Code não encontrado');
+      await expect(page.getByTestId('cast-error')).toContainText('Claude Code not found');
 
       // With claude available the session starts, carries the instructions, and stops.
       await setConfig(fake);
       await page.getByTestId('cast-row-designer').getByTestId('cast-start').click();
       await expect(page.getByTestId('cast-row-designer').getByTestId('cast-state')).toHaveText(
-        'em execução',
+        'running',
       );
       await expect
         .poll(() => page.evaluate(() => window.__terminalPanel?.text() ?? ''))
         .toContain('--append-system-prompt');
       await page.getByTestId('cast-row-designer').getByTestId('cast-stop').click();
       await expect(page.getByTestId('cast-row-designer').getByTestId('cast-state')).toHaveText(
-        'parado',
+        'stopped',
       );
+    } finally {
+      await app.close().catch(() => {});
+      dispose(box);
+    }
+  });
+
+  test('language: Hooks, Sessions and Cast follow the stored locale, with no text from other languages', async () => {
+    const box = await sandbox();
+    const project = join(box.home, 'lang-app');
+    mkdirSync(project);
+    const app = await launch(box);
+    try {
+      await until(async () => (await windowState(app))?.url === box.url, 'office URL');
+      const page = await app.firstWindow();
+      await page.waitForFunction(() => window.__office?.connected === true);
+
+      // Distinct phrases per language (same dictionary keys: hooks.title, picker.title, cast.title).
+      const expected = {
+        en: {
+          buttons: ['Hooks', 'Sessions', 'Cast'],
+          hooks: 'Claude Code hooks',
+          picker: 'Start a Claude Code session',
+          cast: 'Project cast',
+        },
+        'pt-BR': {
+          buttons: ['Hooks', 'Sessões', 'Elenco'],
+          hooks: 'Hooks do Claude Code',
+          picker: 'Iniciar sessão do Claude Code',
+          cast: 'Elenco do projeto',
+        },
+        es: {
+          buttons: ['Hooks', 'Sesiones', 'Reparto'],
+          hooks: 'Hooks de Claude Code',
+          picker: 'Iniciar sesión de Claude Code',
+          cast: 'Reparto del proyecto',
+        },
+      } as const;
+      type Code = keyof typeof expected;
+      const codes = Object.keys(expected) as Code[];
+
+      const check = async (code: Code) => {
+        const want = expected[code];
+        await expect(page.getByTestId('hooks-open')).toHaveText(want.buttons[0]);
+        await expect(page.getByTestId('picker-open')).toHaveText(want.buttons[1]);
+        await expect(page.getByTestId('cast-open')).toHaveText(want.buttons[2]);
+
+        const textOf = async (testId: string) => page.getByTestId(testId).innerText();
+        const notOther = (text: string, key: 'hooks' | 'picker' | 'cast') => {
+          for (const other of codes)
+            if (other !== code) expect(text).not.toContain(expected[other][key]);
+        };
+
+        await page.getByTestId('hooks-open').click();
+        await expect(page.getByTestId('hooks-panel')).toContainText(want.hooks);
+        notOther(await textOf('hooks-panel'), 'hooks');
+        await page.getByTestId('hooks-close').click();
+
+        await page.getByTestId('picker-open').click();
+        await expect(page.getByText(want.picker)).toBeVisible();
+        notOther(await page.locator('body').innerText(), 'picker');
+        await page.keyboard.press('Escape');
+        await expect(page.getByText(want.picker)).toBeHidden();
+
+        await page.evaluate((cwd) => window.__castPanel?.open(cwd), project);
+        await expect(page.getByTestId('cast-panel')).toContainText(want.cast);
+        notOther(await textOf('cast-panel'), 'cast');
+        await page.getByTestId('cast-close').click();
+      };
+
+      for (const code of ['pt-BR', 'es', 'en'] as const) {
+        await page.evaluate((value) => localStorage.setItem('agents-office.locale', value), code);
+        await page.reload();
+        await page.waitForFunction(() => window.__office?.connected === true);
+        await check(code);
+      }
     } finally {
       await app.close().catch(() => {});
       dispose(box);
@@ -1090,7 +1165,7 @@ test.describe(`desktop app (${mode})`, () => {
       await page.mouse.down();
       await page.mouse.move(box2.x + 320, box2.y + 280, { steps: 5 });
       await page.mouse.up();
-      await expect(page.getByTestId('board-status')).toHaveText('Salvo', { timeout: 10_000 });
+      await expect(page.getByTestId('board-status')).toHaveText('Saved', { timeout: 10_000 });
 
       await page.keyboard.press('Escape');
       await expect(overlay).toBeHidden();
@@ -1226,18 +1301,18 @@ test.describe(`desktop app (${mode})`, () => {
       const dialogText = () =>
         page.evaluate(() => (window.__office?.dialog.pages ?? []).flat().join('\n'));
 
-      // External session: the dialog never offers "Abrir terminal".
+      // External session: the dialog never offers "Open terminal".
       await handKeyboardToOffice();
       await talkTo(info.sessionId);
-      expect(await dialogText()).not.toContain('Abrir terminal');
+      expect(await dialogText()).not.toContain('Open terminal');
       await page.keyboard.press('t');
       expect(await page.evaluate(() => window.__terminalPanel?.activeId)).toBe(betaTab);
       await page.keyboard.press('Escape');
       await expect.poll(() => page.evaluate(() => window.__office?.dialog.open)).toBe(false);
 
-      // App session: "Abrir terminal" focuses its own tab (the other one is active now).
+      // App session: "Open terminal" focuses its own tab (the other one is active now).
       await talkTo(alphaSession);
-      expect(await dialogText()).toContain('[T] Abrir terminal');
+      expect(await dialogText()).toContain('[T] Open terminal');
       await page.keyboard.press('t');
       await expect.poll(() => page.evaluate(() => window.__terminalPanel?.activeId)).toBe(alphaTab);
       await expect
@@ -1358,7 +1433,7 @@ test.describe(`desktop app (${mode})`, () => {
         .toBe(`app-${sessionId}`);
       expect(
         await page.evaluate(() => (window.__office?.dialog.pages ?? []).flat().join('\n')),
-      ).toContain('[V] Abrir no VS Code');
+      ).toContain('[V] Open in VS Code');
       // A real key stays down a few ms; an instant down+up inside one frame makes Phaser emit it twice.
       await page.keyboard.press('v', { delay: 80 });
       await expect.poll(recorded).toEqual([dir, dir, dir]);
@@ -1725,8 +1800,12 @@ test.describe(`desktop app (${mode})`, () => {
       await expect(page.getByTestId('lost-sessions')).toBeVisible();
       await expect(page.getByTestId('lost-row')).toHaveCount(2);
       await expect(page.getByTestId('lost-row').nth(0)).toContainText('known-app');
-      await expect(page.getByTestId('lost-row').nth(0)).toContainText('retoma a sessão anterior');
-      await expect(page.getByTestId('lost-row').nth(1)).toContainText('retoma a última conversa');
+      await expect(page.getByTestId('lost-row').nth(0)).toContainText(
+        'resumes the previous session',
+      );
+      await expect(page.getByTestId('lost-row').nth(1)).toContainText(
+        'resumes the last conversation',
+      );
       // Nothing runs yet.
       expect(await page.evaluate(() => window.__terminalPanel?.tabs.length)).toBe(0);
 

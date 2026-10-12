@@ -138,10 +138,28 @@ describe('normalizer: hooks', () => {
     expect((event as { lastPromptSummary: string }).lastPromptSummary).toHaveLength(80);
   });
 
-  it('starts an unknown session from any hook that carries its cwd', () => {
+  it('starts an unknown session from a user prompt that carries its cwd', () => {
     const normalizer = createNormalizer();
-    const events = normalizer.ingest(hook('PreToolUse'));
-    expect(events.map((event) => event.type)).toEqual(['session.started', 'tool.started']);
+    const events = normalizer.ingest(hook('UserPromptSubmit'));
+    expect(events.map((event) => event.type)).toEqual(['session.started', 'actor.thinking']);
+  });
+
+  it('a late Notification/Stop of an unknown session starts nothing', () => {
+    for (const name of ['Notification', 'Stop', 'PreToolUse', 'PostToolUse', 'SubagentStop']) {
+      const normalizer = createNormalizer();
+      const events = normalizer.ingest(hook(name));
+      expect(
+        events.filter((event) => event.type === 'session.started'),
+        name,
+      ).toEqual([]);
+    }
+  });
+
+  it('a known session keeps being updated by Notification and Stop', () => {
+    const normalizer = createNormalizer();
+    normalizer.ingest(hook('SessionStart', {}, '2026-10-10T16:59:00.000Z'));
+    expect(normalizer.ingest(hook('Notification')).map((e) => e.type)).toEqual(['actor.waiting']);
+    expect(normalizer.ingest(hook('Stop')).map((e) => e.type)).toEqual(['actor.idle']);
   });
 
   it('a hook without cwd never starts a session nor names a project after its id', () => {

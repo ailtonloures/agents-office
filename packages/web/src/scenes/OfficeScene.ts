@@ -7,11 +7,17 @@ import { type DebugState, installDebugState, updateDebugState } from '../debug/d
 import type { OfficeClient } from '../net/officeClient';
 import { PlayerAvatar } from '../player/player';
 import { DirectionInput, directionBetween } from '../player/playerMotion';
+import { logicalSizeOf, renderScaleOf } from '../renderScale';
 import { type Direction, type LoadedSkin, SKIN_KEYS, tileFrame } from '../skin';
 import { decideClick } from '../ui/clickDecision';
 import { commsBridgeOf } from '../ui/commsBinding';
 import { DialogBox } from '../ui/dialogBox';
-import { type DialogAction, pagesFor, sessionActions } from '../ui/dialogContent';
+import {
+  type DialogAction,
+  type DialogContext,
+  pagesFor,
+  sessionActions,
+} from '../ui/dialogContent';
 import { hallOfFamePages } from '../ui/hallOfFame';
 import { HelpPanel } from '../ui/helpPanel';
 import { Hud } from '../ui/hud';
@@ -32,11 +38,14 @@ import { pendingActorIds } from '../ui/permissionLogic';
 import { PromptBar } from '../ui/promptBar';
 import { doorAt, roomCwd, sessionIdByTerminal } from '../ui/sessionBinding';
 import { UiOverlay } from '../ui/uiOverlay';
+import { boardAffordanceFrame } from '../world/boardAffordanceLogic';
 import {
-  BOARD_LABEL,
   BOARD_OPEN_EVENT,
+  BOARD_OVERLAY_EVENT,
   type BoardOpenRequest,
+  boardAtPoi,
   boardAtPoint,
+  boardLabel,
   boardSpots,
 } from '../world/boardProp';
 import { DeskScreens } from '../world/deskScreens';
@@ -50,8 +59,10 @@ import { applyVignette, ensureVignette } from '../world/rugs';
 import {
   REGISTRY_ACTIVE_TERMINAL,
   readStoredZoom,
-  stepZoom,
+  snapZoom,
+  stepZoomCrisp,
   TERMINAL_ACTIVE_EVENT,
+  textureFilterFor,
   wheelDirection,
   writeStoredZoom,
   ZOOM_CHANGED_EVENT,
@@ -139,6 +150,19 @@ export class OfficeScene extends Phaser.Scene {
   /** The whiteboard under the pointer (highlighted, hand cursor, label). */
   private hoveredBoard: BoardOpenRequest | undefined;
   private boardLabel: Phaser.GameObjects.Text | undefined;
+  /** Floating badge, glow and hover outline of each whiteboard, by `x,y` (spec 093). */
+  private boardSignals = new Map<
+    string,
+    {
+      badge: Phaser.GameObjects.Graphics;
+      glow: Phaser.GameObjects.Graphics;
+      outline: Phaser.GameObjects.Graphics;
+      /** Rectangle the signals were drawn for (`left,top,width,height`): redrawn when the art moves. */
+      rect: string;
+    }
+  >();
+  /** The whiteboard overlay (Excalidraw) is open: the signals would compete with it. */
+  private boardOverlayOpen = false;
   /** Whether the skin has a props atlas (else the furniture tiles are drawn). */
   private propsActive = false;
   /** Furniture cells hidden because a prop is drawn over them (`x,y`). */
@@ -150,6 +174,7 @@ export class OfficeScene extends Phaser.Scene {
   private overview = false;
   /** Camera zoom chosen by the user (Ctrl + wheel / buttons); the overview ignores it. */
   private userZoom = readStoredZoom();
+  private textureMode = Phaser.Textures.FilterMode.NEAREST;
   private vignette!: Phaser.GameObjects.Image;
   private warningText: Phaser.GameObjects.BitmapText | undefined;
   private keys!: {
@@ -177,7 +202,7 @@ export class OfficeScene extends Phaser.Scene {
     this.lighting = new Lighting(this, this.propsActive);
     this.screens = new DeskScreens(this);
     this.doors = new DoorAnimator(this, SKIN_KEYS.props, DEPTH.wallProps);
-    const { width, height } = this.scale;
+    const { width, height } = logicalSizeOf(this);
     this.vignette = this.add
       .image(0, 0, ensureVignette(this.textures, width, height))
       .setOrigin(0)
@@ -200,7 +225,10 @@ export class OfficeScene extends Phaser.Scene {
       this.ui.add(this.warningText);
       console.warn(`[skin] ${warning}`);
     }
-    const onResize = (size: Phaser.Structs.Size) => this.onResize(size.width, size.height);
+    const onResize = () => {
+      const logical = logicalSizeOf(this);
+      this.onResize(logical.width, logical.height);
+    };
     this.scale.on(Phaser.Scale.Events.RESIZE, onResize);
 
     this.connected = this.client.isConnected();
@@ -226,6 +254,8 @@ export class OfficeScene extends Phaser.Scene {
       offComms?.();
       this.game.events.off(ZOOM_STEP_EVENT, this.zoomBy, this);
       this.game.events.off(TERMINAL_ACTIVE_EVENT, this.onTerminalActive, this);
+      this.game.events.off(BOARD_OVERLAY_EVENT, this.onBoardOverlay, this);
+      this.clearBoardSignals();
       this.controller.destroy();
       this.player.destroy();
       this.hud.destroy();
@@ -304,7 +334,11 @@ export class OfficeScene extends Phaser.Scene {
     this.toast?.setX(Math.round(width / 2));
     this.warningText?.setPosition(4, height - 12).setMaxWidth(width - 8);
     if (this.overview) this.fitOverview();
-    else this.centerCameraOnPlayer();
+    else {
+      // The render scale may have changed with the window: the effective zoom depends on it.
+      this.setWorldZoom(this.userZoom * renderScaleOf(this));
+      this.centerCameraOnPlayer();
+    }
   }
 
   /** Current generated building (desk ids are stable across regenerations). */
@@ -386,6 +420,7 @@ export class OfficeScene extends Phaser.Scene {
     this.game.events.on(ZOOM_STEP_EVENT, this.zoomBy, this);
     this.activeTerminal = this.registry.get(REGISTRY_ACTIVE_TERMINAL) as string | undefined;
     this.game.events.on(TERMINAL_ACTIVE_EVENT, this.onTerminalActive, this);
+    this.game.events.on(BOARD_OVERLAY_EVENT, this.onBoardOverlay, this);
   }
 
   /** One zoom step closer (1) or farther (-1); ignored in the overview. */
@@ -403,18 +438,37 @@ export class OfficeScene extends Phaser.Scene {
     return looks;
   }
 
+  private onBoardOverlay(open: boolean): void {
+    this.boardOverlayOpen = open;
+  }
+
   private onTerminalActive(terminalId: string | undefined): void {
     this.activeTerminal = terminalId;
   }
 
   private zoomBy(direction: ZoomDirection): void {
     if (this.overview) return;
-    this.applyZoom(stepZoom(this.userZoom, direction));
+    this.applyZoom(stepZoomCrisp(this.userZoom, direction, renderScaleOf(this)));
+  }
+
+  /** Sets the main camera zoom (canvas pixels per texel) and the matching texture filter. */
+  private setWorldZoom(effective: number): void {
+    this.cameras.main.setZoom(effective);
+    const mode =
+      textureFilterFor(effective) === 'linear'
+        ? Phaser.Textures.FilterMode.LINEAR
+        : Phaser.Textures.FilterMode.NEAREST;
+    if (mode === this.textureMode) return;
+    this.textureMode = mode;
+    for (const key of this.textures.getTextureKeys()) {
+      if (key.startsWith('__')) continue;
+      this.textures.get(key).setFilter(mode);
+    }
   }
 
   private applyZoom(zoom: number): void {
-    this.userZoom = zoom;
-    this.cameras.main.setZoom(zoom);
+    this.userZoom = snapZoom(zoom, renderScaleOf(this));
+    this.setWorldZoom(this.userZoom * renderScaleOf(this));
     writeStoredZoom(zoom);
     this.publishZoom();
   }
@@ -468,6 +522,7 @@ export class OfficeScene extends Phaser.Scene {
     const target = this.controller.characterAtTile(front);
     if (target) this.openDialog(target);
     else if (this.isBoardTile(front)) this.openHallOfFame();
+    else if (this.boardToOpen()) this.game.events.emit(BOARD_OPEN_EVENT, this.boardToOpen());
     else this.startSessionAtDoor(front);
   }
 
@@ -479,6 +534,12 @@ export class OfficeScene extends Phaser.Scene {
 
   private desktopActions() {
     return window.__desktopActions;
+  }
+
+  /** The whiteboard whose drawing spot the player stands on (inside the app only). */
+  private boardToOpen(): BoardOpenRequest | undefined {
+    if (!this.desktopActions() || this.boardOverlayOpen) return undefined;
+    return boardAtPoi(this.layout, boardSpots(this.layout), this.player.tile);
   }
 
   /** The room door in front of the player (inside the app only): the entry point of a new session. */
@@ -557,7 +618,8 @@ export class OfficeScene extends Phaser.Scene {
 
   /** Highlights the whiteboard under the pointer, with a hand cursor and an explicit label. */
   private updateBoardHover(world: { x: number; y: number } | undefined): void {
-    const blocked = this.help.isOpen || this.dialog.isOpen || this.overview;
+    const blocked =
+      this.help.isOpen || this.dialog.isOpen || this.overview || this.boardOverlayOpen;
     const hit =
       world &&
       !blocked &&
@@ -576,7 +638,7 @@ export class OfficeScene extends Phaser.Scene {
     }
     if (!this.boardLabel) {
       this.boardLabel = this.add
-        .text(0, 0, BOARD_LABEL, {
+        .text(0, 0, boardLabel(), {
           fontFamily: 'monospace',
           fontSize: '8px',
           color: '#ffffff',
@@ -591,6 +653,103 @@ export class OfficeScene extends Phaser.Scene {
       .setVisible(true);
   }
 
+  /** Badge, glow and hover outline of every whiteboard, redrawn each frame from the pure logic. */
+  private updateBoardAffordance(): void {
+    const frame = boardAffordanceFrame(
+      {
+        desktop: this.desktopActions() !== undefined,
+        boardOpen: this.boardOverlayOpen,
+        helpOpen: this.help.isOpen,
+        dialogOpen: this.dialog.isOpen,
+        overview: this.overview,
+      },
+      this.hoveredBoard !== undefined,
+      this.clock,
+    );
+    const spots = boardSpots(this.layout);
+    const live = new Set(spots.map((spot) => `${spot.x},${spot.y}`));
+    for (const [key, signal] of this.boardSignals) {
+      if (live.has(key)) continue;
+      this.destroyBoardSignal(signal);
+      this.boardSignals.delete(key);
+    }
+    for (const spot of spots) {
+      const key = `${spot.x},${spot.y}`;
+      const rect = this.boardRect(spot);
+      const rectKey = `${rect.left},${rect.top},${rect.width},${rect.height}`;
+      let signal = this.boardSignals.get(key);
+      if (signal && signal.rect !== rectKey) {
+        this.destroyBoardSignal(signal);
+        signal = undefined;
+      }
+      if (!signal) {
+        signal = { ...this.createBoardSignal(rect), rect: rectKey };
+        this.boardSignals.set(key, signal);
+      }
+      const hovered = this.hoveredBoard?.x === spot.x && this.hoveredBoard.roomId === spot.roomId;
+      signal.badge.setVisible(frame.badge).setY(frame.badgeOffset);
+      signal.glow.setVisible(frame.glow).setAlpha(frame.glowAlpha);
+      signal.outline.setVisible(hovered && frame.badge);
+    }
+  }
+
+  /** The three world-space overlays of one whiteboard, above the wall props and below characters. */
+  private createBoardSignal(rect: { left: number; top: number; width: number; height: number }) {
+    const { left, top, width, height } = rect;
+    const depth = DEPTH.wallProps + 0.2;
+    const glow = this.add
+      .graphics()
+      .setDepth(depth)
+      .fillStyle(0xfff2b0, 1)
+      .fillRect(left, top, width, height);
+    const outline = this.add
+      .graphics()
+      .setDepth(depth)
+      .lineStyle(1, 0xfff2b0, 1)
+      .strokeRect(left + 0.5, top + 0.5, width - 1, height - 1)
+      .setVisible(false);
+    // Badge: a small speech bubble with a pencil, centred above the board (drawn at y = 0, bobbed by setY).
+    const cx = left + width / 2;
+    const by = top - 11;
+    const badge = this.add.graphics().setDepth(depth + 0.1);
+    badge.fillStyle(0x1d2433, 1).fillRect(cx - 6, by, 12, 10);
+    badge.fillRect(cx - 1, by + 10, 2, 2);
+    badge.lineStyle(1, 0xfff2b0, 1).strokeRect(cx - 5.5, by + 0.5, 11, 9);
+    badge.fillStyle(0xfff2b0, 1);
+    for (let i = 0; i < 5; i += 1) badge.fillRect(cx - 3 + i, by + 7 - i, 2, 1);
+    badge.fillStyle(0xe8c14a, 1).fillRect(cx + 1, by + 2, 2, 1);
+    return { badge, glow, outline };
+  }
+
+  /** Where the board art really is (its image bounds), else the footprint of the prop. */
+  private boardRect(spot: BoardOpenRequest) {
+    const bounds = this.props.get(`whiteboard@${spot.x},${spot.y}`)?.getBounds();
+    if (bounds) {
+      return {
+        left: Math.round(bounds.x),
+        top: Math.round(bounds.y),
+        width: Math.round(bounds.width),
+        height: Math.round(bounds.height),
+      };
+    }
+    return { left: spot.x * TILE, top: (spot.y - 1) * TILE, width: spot.w * TILE, height: TILE };
+  }
+
+  private destroyBoardSignal(signal: {
+    badge: Phaser.GameObjects.Graphics;
+    glow: Phaser.GameObjects.Graphics;
+    outline: Phaser.GameObjects.Graphics;
+  }): void {
+    signal.badge.destroy();
+    signal.glow.destroy();
+    signal.outline.destroy();
+  }
+
+  private clearBoardSignals(): void {
+    for (const signal of this.boardSignals.values()) this.destroyBoardSignal(signal);
+    this.boardSignals.clear();
+  }
+
   private setBoardHighlight(board: BoardOpenRequest, on: boolean): void {
     const image = this.props.get(`whiteboard@${board.x},${board.y}`);
     if (!image) return;
@@ -600,7 +759,12 @@ export class OfficeScene extends Phaser.Scene {
 
   private openDialog(id: string): void {
     const model = this.client.getModel();
-    const context = { desktop: this.desktopActions() !== undefined };
+    const look = this.managedLooksFor(model).get(id);
+    const context: DialogContext = {
+      desktop: this.desktopActions() !== undefined,
+      managedName: look?.name,
+      managedProfession: look?.profession,
+    };
     const pages = pagesFor(model, id, Date.now(), context);
     if (!pages) return;
     const session = model.sessions[id];
@@ -849,7 +1013,7 @@ export class OfficeScene extends Phaser.Scene {
     box.fillStyle(accent, 0.6).fillRect(left + 2, 16, w - 4, 1);
     text.setPosition(5, 2);
     const container = this.add
-      .container(Math.round(this.scale.width / 2), 26, [box, text])
+      .container(Math.round(logicalSizeOf(this).width / 2), 26, [box, text])
       .setScrollFactor(0)
       .setDepth(DEPTH.ui + 600)
       .setAlpha(0);
@@ -883,7 +1047,7 @@ export class OfficeScene extends Phaser.Scene {
       camera.stopFollow();
       this.fitOverview();
     } else {
-      camera.setZoom(this.userZoom);
+      this.setWorldZoom(this.userZoom * renderScaleOf(this));
       this.setCameraBounds();
       camera.startFollow(this.player.sprite, true, FOLLOW_LERP, FOLLOW_LERP, 0, FOLLOW_OFFSET_Y);
       this.centerCameraOnPlayer();
@@ -903,12 +1067,13 @@ export class OfficeScene extends Phaser.Scene {
   /** Zooms the camera out (in 1/8 steps) until the whole building fits on screen. */
   private fitOverview(): void {
     const camera = this.cameras.main;
+    const view = logicalSizeOf(this);
     const fit = Math.min(
-      this.scale.width / (this.layout.width * TILE),
-      this.scale.height / (this.layout.height * TILE),
+      view.width / (this.layout.width * TILE),
+      view.height / (this.layout.height * TILE),
       1,
     );
-    camera.setZoom(Math.max(0.125, Math.floor(fit * 8) / 8));
+    this.setWorldZoom(Math.max(0.125, Math.floor(fit * 8) / 8) * renderScaleOf(this));
     // The bounds would pin a view bigger than the building to its top-left corner.
     camera.removeBounds();
     camera.centerOn((this.layout.width * TILE) / 2, (this.layout.height * TILE) / 2);
@@ -927,6 +1092,7 @@ export class OfficeScene extends Phaser.Scene {
       return promptFor({ kind: 'character', name: this.controller.displayName(facingId, model) });
     }
     if (this.isBoardTile(this.player.frontTile())) return promptFor({ kind: 'board' });
+    if (this.boardToOpen()) return promptFor({ kind: 'whiteboard' });
     const door = this.doorToStart(this.player.frontTile());
     if (door) {
       return promptFor({ kind: 'door', name: model.projects[door.roomId]?.name ?? door.roomId });
@@ -958,6 +1124,7 @@ export class OfficeScene extends Phaser.Scene {
     const facingId = this.controller.characterAtTile(player.frontTile());
     const hoveredId = world ? this.controller.characterAtPoint(world.x, world.y) : undefined;
     this.updateBoardHover(world);
+    this.updateBoardAffordance();
     this.controller.setManaged(this.managedLooksFor(model));
     this.controller.setActiveLead(sessionIdByTerminal(model, this.activeTerminal));
     this.controller.setHighlight(this.overview ? undefined : (hoveredId ?? facingId));
@@ -1011,8 +1178,8 @@ export class OfficeScene extends Phaser.Scene {
     const main = this.cameras.main;
     const parts = this.ui.layer.list;
     return {
-      screen: { width: this.scale.width, height: this.scale.height },
-      cameraZoom: this.ui.camera.zoom,
+      screen: logicalSizeOf(this),
+      cameraZoom: this.ui.camera.zoom / renderScaleOf(this),
       mainCameraDrawsUi: parts.some((part) => this.ui.isDrawnBy(main, part)),
       hud: hud.status,
       hints: hud.hints,

@@ -95,6 +95,20 @@ PRD: [agents-office.prd.md](../prds/agents-office.prd.md)
 | 089 | DESIGN.md com design, layout e jogo | medium | done | docs, design, game, web | — |
 | 090 | ARCHITECTURE.md com arquitetura e fluxo de comunicação | medium | done | docs, architecture, daemon, desktop | — |
 | 091 | CLAUDE.md com regras de arquitetura do projeto | medium | done | docs, claude, conventions | 088, 089, 090 |
+| 092 | Quadro Excalidraw dentro da sala do projeto | medium | done | feature, web, world, layout, testing | — |
+| 093 | Affordance de interatividade do quadro | medium | done | feature, web, ui, phaser, testing | 092 |
+| 094 | Reabertura explícita do roster e migração do legado | high | done | bugfix, desktop, shared, roster, testing | — |
+| 095 | Encerrar a sessão quando o terminal gerenciado morre | high | done | bugfix, desktop, daemon, sessions, testing | — |
+| 096 | Hooks tardios não criam sessão e expiração robusta | medium | done | bugfix, daemon, normalizer, liveness, testing | — |
+| 097 | Personagem preso em "leaving" (condicional) | low | skipped | bugfix, web, phaser, characters, testing | 094, 095, 096 |
+| 098 | Nome do perfil do elenco no balão de diálogo | medium | done | bugfix, web, ui, dialog, cast, testing | — |
+| 099 | Infraestrutura de i18n (locale, dicionários e helper t) | high | done | feature, web, i18n, testing | — |
+| 100 | Botão de idioma na barra inferior | high | done | feature, web, ui, i18n, testing | 099 |
+| 101 | Migrar HUD, dicas, ajuda e zoom para i18n | high | done | refactor, web, ui, i18n, testing | 099 |
+| 102 | Migrar Hooks, Sessões e diálogos para i18n | medium | done | refactor, web, ui, i18n, testing | 099 |
+| 103 | Migrar painel Elenco para i18n | medium | done | refactor, web, ui, i18n, cast, testing | 099 |
+| 104 | Migrar terminal, navegador, quadro e demais textos para i18n | medium | done | refactor, web, ui, i18n, testing | 099 |
+| 105 | i18n - testes e2e, regra no CLAUDE.md e documentação | medium | done | docs, testing, e2e, i18n | 100, 101, 102, 103, 104 |
 
 Fases do PRD: 001–002 = Fase 0 (spike) · 003–011 = Fase 1 (MVP) · 006, 012 = parte da Fase 2. Replay, minimapa e Tauri (Fase 3) ficam fora deste lote.
 
@@ -135,3 +149,11 @@ PRD do quadro Excalidraw: [quadro-excalidraw.prd.md](../prds/quadro-excalidraw.p
 PRD do navegador embutido: [navegador-embutido.prd.md](../prds/navegador-embutido.prd.md) (080–085; 080 depende de 063, 081 de 080, 082 e 083 de 081, 084 de 082, 085 de 083 e 084).
 
 PRD da documentação do projeto: [documentacao-do-projeto.prd.md](../prds/documentacao-do-projeto.prd.md) (086–091; 087 depende de 086, 091 de 088, 089 e 090; 088, 089 e 090 são independentes).
+
+PRD do quadro na sala e affordance: [quadro-na-sala-e-affordance.prd.md](../prds/quadro-na-sala-e-affordance.prd.md) (092–093; 093 depende de 092).
+
+PRD do Tech Lead fantasma: [tech-lead-fantasma-sessoes-ociosas.prd.md](../prds/tech-lead-fantasma-sessoes-ociosas.prd.md) (094–097; 094, 095 e 096 são independentes; 097 é condicional e depende de 094, 095 e 096).
+
+PRD do nome do elenco no balão de diálogo: [balao-dialogo-nome-do-elenco.prd.md](../prds/balao-dialogo-nome-do-elenco.prd.md) (098; independente).
+
+PRD do seletor de idioma: [locale-seletor-de-idioma.prd.md](../prds/locale-seletor-de-idioma.prd.md) (099–105; 100 a 104 dependem de 099, 105 de 100 a 104; 101 a 104 são independentes entre si).

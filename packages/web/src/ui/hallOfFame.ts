@@ -1,9 +1,10 @@
 import type { HallOfFameEntry, OfficeModel } from '@agents-office/shared';
+import { t } from '../i18n/i18n';
 import {
   DIALOG_COLS,
   type DialogPage,
   formatDuration,
-  PROFESSION_LABEL,
+  professionLabel,
   truncate,
   wrapLines,
 } from './dialogContent';
@@ -25,7 +26,7 @@ export function projectNameOf(entry: HallOfFameEntry, model: OfficeModel): strin
   if (entry.projectName) return entry.projectName;
   const session = model.sessions[entry.sessionId];
   const project = session ? model.projects[session.projectId] : undefined;
-  return project?.name ?? 'desconhecido';
+  return project?.name ?? t('hall.unknownProject');
 }
 
 /**
@@ -35,14 +36,14 @@ export function projectNameOf(entry: HallOfFameEntry, model: OfficeModel): strin
 export function hallOfFamePages(model: OfficeModel): DialogPage[] {
   const entries = model.hallOfFame.slice(-HALL_OF_FAME_LIMIT).reverse();
   if (entries.length === 0) {
-    return [['Hall da Fama', 'Ninguem concluiu uma tarefa ainda.']];
+    return [[t('hall.title'), t('hall.empty')]];
   }
   const total = entries.length;
   const pages: DialogPage[] = [
     [
-      'Hall da Fama',
-      `Ultimos ${total} agente${total === 1 ? '' : 's'} concluido${total === 1 ? '' : 's'}.`,
-      'A para folhear, X para sair',
+      t('hall.title'),
+      total === 1 ? t('hall.summary.one') : t('hall.summary.other', { n: total }),
+      t('hall.hint'),
     ],
   ];
   entries.forEach((entry, index) => {
@@ -51,14 +52,14 @@ export function hallOfFamePages(model: OfficeModel): DialogPage[] {
       : '?';
     const when = entry.finishedTs ? formatClock(entry.finishedTs) : '--:--';
     const head = truncate(
-      `${index + 1}/${total} ${PROFESSION_LABEL[entry.profession]} - ${duration} - ${when}`,
+      `${index + 1}/${total} ${professionLabel(entry.profession)} - ${duration} - ${when}`,
       DIALOG_COLS,
     );
-    const description = entry.description ? entry.description : 'Sem descricao';
+    const description = entry.description ? entry.description : t('dialog.noDescription');
     pages.push([
       head,
       ...wrapLines(description, DIALOG_COLS, 1),
-      truncate(`Projeto: ${projectNameOf(entry, model)}`, DIALOG_COLS),
+      truncate(t('dialog.project', { name: projectNameOf(entry, model) }), DIALOG_COLS),
     ]);
   });
   return pages;

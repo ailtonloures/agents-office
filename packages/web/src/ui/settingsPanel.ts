@@ -1,4 +1,5 @@
 import type { HooksBridge, HooksStatus } from '@agents-office/shared';
+import { t } from '../i18n/i18n';
 import { BUTTON_CSS } from './buttonStyles';
 import { getCornerBar } from './cornerBar';
 import {
@@ -106,7 +107,7 @@ export function mountSettingsPanel(bridge: HooksBridge, gameParent: HTMLElement)
         status = await bridge.status();
       } catch (error) {
         box.replaceChildren(
-          el('p', { textContent: `Falha ao ler os hooks: ${(error as Error).message}` }),
+          el('p', { textContent: t('hooks.readFailed', { error: (error as Error).message }) }),
         );
         return;
       }
@@ -125,9 +126,9 @@ export function mountSettingsPanel(bridge: HooksBridge, gameParent: HTMLElement)
         );
       }
       const actions = el('div', { className: 'ao-hooks-actions' });
-      const install = el('button', { textContent: 'Instalar hooks' }, 'hooks-install');
-      const remove = el('button', { textContent: 'Remover hooks' }, 'hooks-uninstall');
-      const close = el('button', { textContent: 'Fechar' }, 'hooks-close');
+      const install = el('button', { textContent: t('hooks.install') }, 'hooks-install');
+      const remove = el('button', { textContent: t('hooks.remove') }, 'hooks-uninstall');
+      const close = el('button', { textContent: t('common.close') }, 'hooks-close');
       install.disabled = status.installedCount === status.total;
       remove.disabled = status.installedCount === 0;
       install.onclick = () => void confirmChange('install', status);
@@ -135,7 +136,7 @@ export function mountSettingsPanel(bridge: HooksBridge, gameParent: HTMLElement)
       close.onclick = closePanel;
       actions.append(install, remove, close);
       box.replaceChildren(
-        el('h2', { textContent: 'Hooks do Claude Code' }),
+        el('h2', { textContent: t('hooks.title') }),
         el(
           'div',
           { textContent: summaryLabel(status), className: 'ao-hooks-info' },
@@ -161,12 +162,12 @@ export function mountSettingsPanel(bridge: HooksBridge, gameParent: HTMLElement)
       try {
         preview = await bridge.preview(action);
       } catch (error) {
-        message = `Falha na prévia: ${(error as Error).message}`;
+        message = t('hooks.previewFailed', { error: (error as Error).message });
         showStatus(status);
         return;
       }
       if (!preview.changed) {
-        message = 'Nada a alterar.';
+        message = t('hooks.nothingToChange');
         showStatus(status);
         return;
       }
@@ -180,10 +181,12 @@ export function mountSettingsPanel(bridge: HooksBridge, gameParent: HTMLElement)
       }
       const confirm = el(
         'button',
-        { textContent: action === 'install' ? 'Confirmar instalação' : 'Confirmar remoção' },
+        {
+          textContent: action === 'install' ? t('hooks.confirmInstall') : t('hooks.confirmRemove'),
+        },
         'hooks-confirm',
       );
-      const cancel = el('button', { textContent: 'Cancelar' }, 'hooks-cancel');
+      const cancel = el('button', { textContent: t('common.cancel') }, 'hooks-cancel');
       const actions = el('div', { className: 'ao-hooks-actions' });
       actions.append(confirm, cancel);
       cancel.onclick = () => showStatus(status);
@@ -192,19 +195,19 @@ export function mountSettingsPanel(bridge: HooksBridge, gameParent: HTMLElement)
           const result = await (action === 'install' ? bridge.install() : bridge.uninstall());
           message =
             action === 'install'
-              ? 'Hooks instalados. Reinicie as sessões do Claude Code já abertas.'
+              ? t('hooks.installed')
               : result.deleted
-                ? 'Hooks removidos (o settings.json criado por nós foi apagado).'
-                : 'Hooks removidos.';
+                ? t('hooks.removedDeleted')
+                : t('hooks.removed');
           showStatus(result.status);
         } catch (error) {
-          message = `Falha: ${(error as Error).message}`;
+          message = t('hooks.failed', { error: (error as Error).message });
           await render();
         }
       };
       box.replaceChildren(
         el('h2', {
-          textContent: action === 'install' ? 'Prévia da instalação' : 'Prévia da remoção',
+          textContent: action === 'install' ? t('hooks.previewInstall') : t('hooks.previewRemove'),
         }),
         el('div', { textContent: preview.path, className: 'ao-hooks-path' }),
         diff,
@@ -215,7 +218,7 @@ export function mountSettingsPanel(bridge: HooksBridge, gameParent: HTMLElement)
     await render();
   }
 
-  const button = el('button', { textContent: 'Hooks' }, 'hooks-open');
+  const button = el('button', { textContent: t('hooks.button') }, 'hooks-open');
   button.className = 'ao-hooks-btn';
   button.onclick = () => void openPanel();
   getCornerBar(gameParent).append(button);
@@ -226,8 +229,12 @@ export function mountSettingsPanel(bridge: HooksBridge, gameParent: HTMLElement)
       if (!shouldPromptInstall(status, readDismissed())) return;
       const note = el('div', {}, 'hooks-banner');
       note.className = 'ao-hooks-banner';
-      const open = el('button', { textContent: 'Instalar hooks' }, 'hooks-banner-open');
-      const dismiss = el('button', { textContent: 'Agora não' }, 'hooks-banner-dismiss');
+      const open = el('button', { textContent: t('hooks.install') }, 'hooks-banner-open');
+      const dismiss = el(
+        'button',
+        { textContent: t('hooks.banner.dismiss') },
+        'hooks-banner-dismiss',
+      );
       open.onclick = () => {
         writeDismissed();
         void openPanel();
@@ -238,8 +245,7 @@ export function mountSettingsPanel(bridge: HooksBridge, gameParent: HTMLElement)
       };
       note.append(
         el('span', {
-          textContent:
-            'Os hooks do Claude Code não estão instalados: o escritório não verá suas sessões.',
+          textContent: t('hooks.banner.text'),
         }),
         open,
         dismiss,

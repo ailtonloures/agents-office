@@ -46,6 +46,11 @@ pnpm test
 
 `pnpm format` applies the Biome formatting.
 
+UI text lives in `packages/web/src/i18n/messages/`. Add a key to `en.ts` first, then to `pt-BR.ts` and
+`es.ts` (the typecheck fails if one is missing). Unit tests that assert text call `setLocale(...)` and
+restore it afterwards; Playwright specs run in English (the default) and pick another language by
+clicking the language button or by writing `agents-office.locale` into `localStorage`.
+
 ## Optional Claude Code hooks
 
 The hooks make updates instant and show when an agent is waiting for you. Installing them keeps a

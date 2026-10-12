@@ -5,6 +5,7 @@ import type {
   BrowserResult,
   BrowserState,
 } from '@agents-office/shared';
+import { t } from '../i18n/i18n';
 import { formatPickContext, type PickTarget, sendPickContext } from './browserPickLogic';
 
 // The body of the "Navegador" dock tab: a toolbar (back, forward, reload, address, clear data) and
@@ -90,27 +91,27 @@ export function createBrowserPane(
   const forward = node('button', 'browser-forward', '▸');
   const reload = node('button', 'browser-reload', '↻');
   const address = node('input', 'browser-address', undefined, 'ao-browser-address');
-  const pick = node('button', 'browser-pick', 'Selecionar elemento');
-  const pause = node('button', 'browser-pause', 'Pausar agentes');
-  const clear = node('button', 'browser-clear', 'Limpar dados');
+  const pick = node('button', 'browser-pick', t('browser.pick'));
+  const pause = node('button', 'browser-pause', t('browser.pause'));
+  const clear = node('button', 'browser-clear', t('browser.clear'));
   const status = node('span', 'browser-status', undefined, 'ao-browser-status');
   const agentBadge = node('span', 'browser-agent', undefined, 'ao-browser-agent');
   agentBadge.hidden = true;
   const stage = node('div', 'browser-stage', undefined, 'ao-browser-stage');
-  back.title = 'Voltar';
-  forward.title = 'Avançar';
-  reload.title = 'Recarregar';
-  pick.title = 'Aponte um elemento da página e envie o contexto dele a um agente';
+  back.title = t('browser.back');
+  forward.title = t('browser.forward');
+  reload.title = t('browser.reload');
+  pick.title = t('browser.pick.title');
   pick.setAttribute('aria-pressed', 'false');
-  pause.title = 'Impede que os agentes usem o navegador deste projeto até você retomar';
+  pause.title = t('browser.pause.title');
   pause.setAttribute('aria-pressed', 'false');
-  clear.title = 'Apagar cookies, logins e cache do navegador deste projeto';
+  clear.title = t('browser.clear.title');
   back.disabled = true;
   forward.disabled = true;
   address.type = 'text';
   address.spellcheck = false;
-  address.placeholder = 'Endereço ou busca';
-  address.setAttribute('aria-label', 'Endereço');
+  address.placeholder = t('browser.address.placeholder');
+  address.setAttribute('aria-label', t('browser.address.label'));
   bar.append(back, forward, reload, address, agentBadge, status, pick, pause, clear);
   const review = node('div', 'browser-pick-review', undefined, 'ao-browser-pick');
   review.hidden = true;
@@ -125,7 +126,7 @@ export function createBrowserPane(
   };
   const run = (call: Promise<BrowserResult>): void => {
     void call.then(apply, () => {
-      status.textContent = 'O navegador não respondeu.';
+      status.textContent = t('browser.noResponse');
     });
   };
 
@@ -134,15 +135,17 @@ export function createBrowserPane(
     back.disabled = !state.canGoBack;
     forward.disabled = !state.canGoForward;
     reload.textContent = state.loading ? '✕' : '↻';
-    reload.title = state.loading ? 'Parar' : 'Recarregar';
+    reload.title = state.loading ? t('browser.stop') : t('browser.reload');
     host.dataset.loading = String(state.loading);
     paused = state.paused === true;
-    pause.textContent = paused ? 'Retomar agentes' : 'Pausar agentes';
+    pause.textContent = paused ? t('browser.resume') : t('browser.pause');
     pause.setAttribute('aria-pressed', String(paused));
     host.dataset.paused = String(paused);
     agentBadge.hidden = !state.agent;
     agentBadge.textContent = state.agent
-      ? `${state.agent} está usando o navegador${state.queued ? ` (+${state.queued} na fila)` : ''}`
+      ? state.queued
+        ? t('browser.agentUsing.queued', { agent: state.agent, n: state.queued })
+        : t('browser.agentUsing', { agent: state.agent })
       : '';
     if (document.activeElement !== address) {
       address.value = state.url === 'about:blank' ? '' : state.url;
@@ -153,7 +156,7 @@ export function createBrowserPane(
   const setPicking = (on: boolean): void => {
     picking = on;
     pick.setAttribute('aria-pressed', String(on));
-    pick.textContent = on ? 'Cancelar seleção' : 'Selecionar elemento';
+    pick.textContent = on ? t('browser.pick.cancel') : t('browser.pick');
   };
   const closeReview = (): void => {
     review.hidden = true;
@@ -163,7 +166,7 @@ export function createBrowserPane(
   };
   const openReview = (event: Extract<BrowserPickEvent, { status: 'picked' }>): void => {
     const targets = options.pickTargets?.() ?? [];
-    const title = node('div', 'browser-pick-title', 'Revise o contexto antes de enviar ao agente');
+    const title = node('div', 'browser-pick-title', t('browser.pick.review'));
     const text = node('textarea', 'browser-pick-text');
     text.value = formatPickContext(event.pick);
     text.spellcheck = false;
@@ -177,13 +180,11 @@ export function createBrowserPane(
     const note = node(
       'span',
       'browser-pick-note',
-      targets.length === 0
-        ? 'Nenhum agente conectado: abra um terminal para receber o contexto.'
-        : 'O texto é colado no terminal sem Enter: você confirma lá.',
+      targets.length === 0 ? t('browser.pick.noAgents') : t('browser.pick.pasteNote'),
     );
-    const send = node('button', 'browser-pick-send', 'Enviar ao agente');
+    const send = node('button', 'browser-pick-send', t('browser.pick.send'));
     send.disabled = targets.length === 0;
-    const cancel = node('button', 'browser-pick-cancel', 'Descartar');
+    const cancel = node('button', 'browser-pick-cancel', t('browser.pick.discard'));
     const row = node('div', 'browser-pick-row', undefined, 'row');
     row.append(select, send, cancel, note);
     review.replaceChildren(title, text, row);
@@ -206,7 +207,7 @@ export function createBrowserPane(
         },
         () => {
           send.disabled = false;
-          note.textContent = 'Não foi possível enviar ao terminal.';
+          note.textContent = t('browser.pick.sendFailed');
         },
       );
     });
@@ -238,7 +239,7 @@ export function createBrowserPane(
         else status.textContent = result.message;
       },
       () => {
-        status.textContent = 'O navegador não respondeu.';
+        status.textContent = t('browser.noResponse');
       },
     );
   });
@@ -247,7 +248,7 @@ export function createBrowserPane(
   reload.addEventListener('click', () => run(bridge.reload(cwd)));
   pause.addEventListener('click', () => run(bridge.setPaused(cwd, !paused)));
   clear.addEventListener('click', () => {
-    if (!window.confirm('Apagar cookies, logins e cache do navegador deste projeto?')) return;
+    if (!window.confirm(t('browser.clear.confirm'))) return;
     run(bridge.clearData(cwd));
   });
   address.addEventListener('keydown', (event) => {

@@ -1,4 +1,5 @@
 import type Phaser from 'phaser';
+import { logicalSizeOf } from '../renderScale';
 import { SKIN_KEYS } from '../skin';
 import { DIALOG_LINES, type DialogPage, pageLength, revealLines } from './dialogContent';
 import { drawPanel, PAPER_PANEL } from './panel';
@@ -55,7 +56,8 @@ export class DialogBox {
       .setDepth(DIALOG_DEPTH)
       .setVisible(false);
     ui.add(this.container);
-    this.layout(scene.scale.width, scene.scale.height);
+    const size = logicalSizeOf(scene);
+    this.layout(size.width, size.height);
   }
 
   /** Centres the box at the bottom of a screen of `width` x `height` game pixels. */

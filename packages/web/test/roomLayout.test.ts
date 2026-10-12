@@ -76,6 +76,32 @@ describe('layoutBuilding', () => {
     for (const spot of spots) expect(layout.collision[spot.tile.y]?.[spot.tile.x]).toBe(false);
   });
 
+  it('hangs one whiteboard inside each room, with a reachable point below it', () => {
+    const layout = layoutBuilding([project('a', 1, [1]), project('b', 2, [2, 0])]);
+    const seen = reachable(layout, layout.spawn);
+    const inBounds = (r: Rect, t: Tile) =>
+      t.x >= r.x && t.x < r.x + r.w && t.y >= r.y && t.y < r.y + r.h;
+    const boards = layout.props.filter((p) => p.id === 'whiteboard');
+    expect(boards).toHaveLength(2);
+    for (const room of layout.rooms) {
+      const own = boards.filter((p) => inBounds(room.bounds, p));
+      expect(own).toHaveLength(1);
+      const poi = layout.pois.find((p) => p.type === 'whiteboard' && p.roomId === room.id);
+      expect(poi && inBounds(room.bounds, poi.tile)).toBe(true);
+      const board = own[0];
+      expect(poi?.tile.x).toBe(board?.x);
+      expect(poi?.tile.y).toBeGreaterThan(board?.y ?? 0);
+      expect(poi && seen.has(key(poi.tile))).toBe(true);
+      // Does not overlap the door, the plaque or the window.
+      for (const d of layout.doors.filter((d) => d.roomId === room.id))
+        expect(Math.abs(d.tile.x - (board?.x ?? 0))).toBeGreaterThan(1);
+      for (const p of layout.pois.filter((p) => p.roomId === room.id && p.type === 'window'))
+        expect(p.tile.x).toBeGreaterThan((board?.x ?? 0) + 1);
+      for (const s of layout.signs.filter((s) => s.roomId === room.id))
+        expect(s.tile.x).toBeLessThan(board?.x ?? 0);
+    }
+  });
+
   it.each([0, 1, 3, 4, 9])('seats exactly one cubicle per agent (%i)', (agents) => {
     const layout = layoutBuilding([project('p', 1, [agents])]);
     const cubicles = layout.desks.filter((d) => d.sessionId === undefined);

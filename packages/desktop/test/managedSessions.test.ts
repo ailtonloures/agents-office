@@ -6,7 +6,7 @@ import {
   type TerminalExitEvent,
 } from '@agents-office/shared';
 import { describe, expect, it } from 'vitest';
-import { ManagedSessions } from '../src/main/managedSessions';
+import { ManagedSessions, type SessionEndDeps } from '../src/main/managedSessions';
 import { SessionError, type StartOptions } from '../src/main/sessionManager';
 
 const profile = (id: string, patch: Partial<AgentProfile> = {}): AgentProfile => ({
@@ -37,7 +37,11 @@ const entry = (profileId: string, notes = ''): RosterEntry => ({
 
 function setup(
   rosters: Record<string, Partial<ProjectRoster> & { entries: RosterEntry[] }>,
-  options: { limit?: number; fail?: (o: StartOptions) => Error | undefined } = {},
+  options: {
+    limit?: number;
+    fail?: (o: StartOptions) => Error | undefined;
+    sessionEnd?: SessionEndDeps;
+  } = {},
 ) {
   const starts: StartOptions[] = [];
   const exitListeners: Array<(e: TerminalExitEvent) => void> = [];
@@ -78,6 +82,7 @@ function setup(
     },
     maxSessions: options.limit === undefined ? undefined : () => options.limit as number,
     liveCount: () => alive.size,
+    ...(options.sessionEnd ? { sessionEnd: options.sessionEnd } : {}),
     now: () => new Date('2026-01-01T00:00:00Z'),
   });
   return { managed, starts, host, alive };
@@ -96,6 +101,16 @@ describe('ManagedSessions', () => {
     const second = setup(rosters);
     const report = await second.managed.reopenAll();
     expect(report.started.map((s) => s.entryId)).toEqual(['b']);
+  });
+
+  it('does not reopen legacy entries (reopen false) and marks started ones to reopen', async () => {
+    const legacy = { ...entry('a'), reopen: false };
+    const rosters = { '/p': { entries: [legacy, { ...entry('b'), reopen: false }] } };
+    const first = setup(rosters);
+    const report = await first.managed.reopenAll();
+    expect(report.started).toEqual([]);
+    await first.managed.start('/p', 'a');
+    expect(rosters['/p'].entries.map((e) => e.reopen)).toEqual([true, false]);
   });
 
   it('starts an entry with the profile instructions, model and ids, never with --resume', async () => {
@@ -201,5 +216,69 @@ describe('ManagedSessions', () => {
     await managed.start('/p', 'a');
     await managed.stop('/p', 'a');
     expect(seen).toEqual([1, 0]);
+  });
+
+  describe('synthetic SessionEnd on unexpected exit', () => {
+    const rosters = () => ({ '/p': { entries: [entry('a'), entry('b')] } });
+    const deps = (post: SessionEndDeps['post'], known = true) => {
+      const posted: Array<Parameters<SessionEndDeps['post']>[0]> = [];
+      const sessionEnd: SessionEndDeps = {
+        sessionIdOfTerminal: (id) => (known ? `claude-${id}` : null),
+        post: (event) => {
+          posted.push(event);
+          return post(event);
+        },
+      };
+      return { posted, sessionEnd };
+    };
+
+    it('posts SessionEnd with the session bound to the dead terminal', async () => {
+      const { posted, sessionEnd } = deps(async () => {});
+      const s = setup(rosters(), { sessionEnd });
+      await s.managed.start('/p', 'a');
+      await s.host.kill('term-1'); // pty died on its own
+      expect(posted).toEqual([
+        {
+          hook_event_name: 'SessionEnd',
+          session_id: 'claude-term-1',
+          cwd: '/p',
+          reason: 'terminal-exited',
+          terminalId: 'term-1',
+        },
+      ]);
+    });
+
+    it('does not post for a requested stop, an app quit or an unbound terminal', async () => {
+      const a = deps(async () => {});
+      const s = setup(rosters(), { sessionEnd: a.sessionEnd });
+      await s.managed.start('/p', 'a');
+      await s.managed.start('/p', 'b');
+      await s.managed.stop('/p', 'a');
+      s.managed.beginShutdown();
+      await s.host.kill('term-2');
+      expect(a.posted).toEqual([]);
+      const b = deps(async () => {}, false);
+      const t = setup(rosters(), { sessionEnd: b.sessionEnd });
+      await t.managed.start('/p', 'a');
+      await t.host.kill('term-1');
+      expect(b.posted).toEqual([]);
+    });
+
+    it('survives a failing post (rejection or throw) and still updates its state', async () => {
+      for (const post of [
+        () => Promise.reject(new Error('network down')),
+        () => {
+          throw new Error('sync boom');
+        },
+      ]) {
+        const r = rosters();
+        const { sessionEnd } = deps(post);
+        const s = setup(r, { sessionEnd });
+        await s.managed.start('/p', 'a');
+        await expect(s.host.kill('term-1')).resolves.toBeUndefined();
+        expect(s.managed.list().sessions).toEqual([]);
+        expect(r['/p'].entries[0]?.reopen).toBe(false);
+      }
+    });
   });
 });

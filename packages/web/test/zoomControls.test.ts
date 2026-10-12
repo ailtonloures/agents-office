@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
+import { setLocale, t } from '../src/i18n/i18n';
 import { zoomControlsState } from '../src/ui/zoomControls';
 import { ZOOM_MAX, ZOOM_MIN } from '../src/zoom';
 
@@ -16,5 +17,17 @@ describe('zoomControlsState', () => {
   });
   it('hides the buttons in the overview', () => {
     expect(zoomControlsState(1, true).hidden).toBe(true);
+  });
+});
+
+describe('zoom control labels', () => {
+  afterEach(() => setLocale('en'));
+  it('has the label in every language', () => {
+    setLocale('pt-BR');
+    expect([t('zoom.in'), t('zoom.out')]).toEqual(['Aproximar', 'Afastar']);
+    setLocale('en');
+    expect([t('zoom.in'), t('zoom.out')]).toEqual(['Zoom in', 'Zoom out']);
+    setLocale('es');
+    expect([t('zoom.in'), t('zoom.out')]).toEqual(['Acercar', 'Alejar']);
   });
 });

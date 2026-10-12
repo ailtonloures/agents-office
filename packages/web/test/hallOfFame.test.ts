@@ -1,7 +1,11 @@
 import { type Agent, createEmptyModel, type OfficeModel } from '@agents-office/shared';
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { setLocale } from '../src/i18n/i18n';
 import { DIALOG_COLS, DIALOG_LINES } from '../src/ui/dialogContent';
 import { formatClock, hallOfFamePages, projectNameOf } from '../src/ui/hallOfFame';
+
+beforeEach(() => setLocale('pt-BR'));
+afterEach(() => setLocale('en'));
 
 const T0 = Date.parse('2026-10-10T12:00:00.000Z');
 const iso = (seconds: number) => new Date(T0 + seconds * 1000).toISOString();
@@ -34,6 +38,18 @@ describe('hallOfFamePages', () => {
     expect(hallOfFamePages(createEmptyModel())).toEqual([
       ['Hall da Fama', 'Ninguem concluiu uma tarefa ainda.'],
     ]);
+  });
+
+  it('follows the active language', () => {
+    setLocale('en');
+    expect(hallOfFamePages(createEmptyModel())).toEqual([
+      ['Hall of Fame', 'Nobody has finished a task yet.'],
+    ]);
+    const pages = hallOfFamePages(modelWith(3));
+    expect(pages[0]).toEqual(['Hall of Fame', 'Last 3 agents finished.', 'A to flip, X to exit']);
+    expect(pages[1]?.[2]).toBe('Project: my-app');
+    setLocale('es');
+    expect(hallOfFamePages(modelWith(1))[0]?.[1]).toBe('Ultimo agente terminado.');
   });
 
   it('lists profession, description, project, duration and time, newest first', () => {

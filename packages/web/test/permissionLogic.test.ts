@@ -80,7 +80,7 @@ describe('HUD', () => {
   it('counts pending requests without doubling actors that already wait', () => {
     const model = officeModel();
     expect(hudCounts(model).waiting).toBe(0);
-    expect(hudText(hudCounts(model, [req('a')]))).toBe('1 sessão · 1 agente · ! 1');
+    expect(hudText(hudCounts(model, [req('a')]))).toBe('1 session · 1 agent · ! 1');
     expect(hudCounts(model, [req('a'), req('b'), req('c', { actorId: 'a1' })]).waiting).toBe(3);
     const waiting: OfficeModel = {
       ...model,

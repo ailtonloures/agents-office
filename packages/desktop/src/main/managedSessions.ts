@@ -34,7 +34,26 @@ export interface ManagedSessionsOptions {
   maxSessions?: () => number;
   /** Number of sessions alive right now (managed or not); used to stop reopening at the limit. */
   liveCount?: () => number;
+  /** When set, an unexpected pty exit ends the session in the office right away (spec 095). */
+  sessionEnd?: SessionEndDeps;
   now?: () => Date;
+}
+
+/** The synthetic `SessionEnd` the desktop posts to the daemon when a terminal dies unasked. */
+export interface SyntheticSessionEnd {
+  hook_event_name: 'SessionEnd';
+  session_id: string;
+  cwd: string;
+  reason: string;
+  terminalId: string;
+}
+
+/** Lets the service end a session in the office without importing `fetch` or the daemon model. */
+export interface SessionEndDeps {
+  /** Live Claude Code session id bound to a terminal tab, or null when none is known. */
+  sessionIdOfTerminal(terminalId: string): string | null;
+  /** Posts the event to the daemon hook endpoint. May reject: the service swallows it. */
+  post(event: SyntheticSessionEnd): Promise<void>;
 }
 
 interface Running {
@@ -57,6 +76,7 @@ export class ManagedSessions {
   private readonly listeners = new Set<(change: ManagedChange) => void>();
   private readonly reopenListeners = new Set<(report: ReopenReport) => void>();
   private report: ReopenReport | null = null;
+  private readonly requestedStops = new Set<string>();
   private shuttingDown = false;
 
   constructor(private readonly options: ManagedSessionsOptions) {
@@ -198,6 +218,7 @@ export class ManagedSessions {
       this.emit();
       return;
     }
+    this.requestedStops.add(running.info.terminalId);
     await this.options.host.kill(running.info.terminalId);
   }
 
@@ -205,13 +226,41 @@ export class ManagedSessions {
     const key = this.byTerminal.get(terminalId);
     if (key === undefined) return; // not a managed session
     this.byTerminal.delete(terminalId);
+    const info = this.running.get(key)?.info;
     this.running.delete(key);
+    const requested = this.requestedStops.delete(terminalId);
+    if (!requested && !this.shuttingDown && info) this.endSessionInOffice(info);
     if (!this.shuttingDown) {
       // Ended on purpose (tab closed, stop, /exit): do not bring it back on the next launch.
       const [cwd = '', entryId = ''] = key.split('\u0000');
       this.options.roster.setReopen(cwd, entryId, false);
     }
     this.emit();
+  }
+
+  /**
+   * The pty died without a `SessionEnd` from Claude (killed, crashed, closed): tell the daemon so
+   * the character leaves now instead of after the 15 minute expiry. A session that already ended
+   * (clean `/exit`) is no longer bound in the model, so nothing is posted. Never throws.
+   */
+  private endSessionInOffice(info: ManagedSessionInfo): void {
+    const deps = this.options.sessionEnd;
+    if (!deps) return;
+    try {
+      const sessionId = deps.sessionIdOfTerminal(info.terminalId);
+      if (!sessionId) return;
+      deps
+        .post({
+          hook_event_name: 'SessionEnd',
+          session_id: sessionId,
+          cwd: info.cwd,
+          reason: 'terminal-exited',
+          terminalId: info.terminalId,
+        })
+        .catch(() => {});
+    } catch {
+      // Network or lookup failure: the 15 minute expiry still applies.
+    }
   }
 
   /** The app is quitting: the exits that follow keep their entries marked to reopen. */

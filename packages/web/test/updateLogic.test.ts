@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { setLocale } from '../src/i18n/i18n';
 import { bannerModel, updaterBridgeOf } from '../src/ui/updateLogic';
 
 describe('updaterBridgeOf', () => {
@@ -15,6 +16,9 @@ describe('updaterBridgeOf', () => {
     expect(updaterBridgeOf({ agentsOfficeDesktop: { desktop: true, updater } })).toBe(updater);
   });
 });
+
+beforeEach(() => setLocale('pt-BR'));
+afterEach(() => setLocale('en'));
 
 describe('bannerModel', () => {
   it('hides for idle, checking and error', () => {
@@ -52,5 +56,18 @@ describe('bannerModel', () => {
   it('Depois hides that version only', () => {
     expect(bannerModel({ state: 'ready', version: '1.2.0' }, '1.2.0').visible).toBe(false);
     expect(bannerModel({ state: 'ready', version: '1.3.0' }, '1.2.0').visible).toBe(true);
+  });
+});
+
+describe('bannerModel in other languages', () => {
+  it('uses English and Spanish', () => {
+    setLocale('en');
+    expect(bannerModel({ state: 'ready', version: '1.2.0' }, null).text).toBe(
+      'New version 1.2.0 ready to install.',
+    );
+    setLocale('es');
+    expect(bannerModel({ state: 'ready', version: '1.2.0' }, null).text).toBe(
+      'Nueva versión 1.2.0 lista para instalar.',
+    );
   });
 });

@@ -5,7 +5,8 @@ import {
   type ManagedSessionInfo,
   type ProjectRoster,
 } from '@agents-office/shared';
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { setLocale } from '../src/i18n/i18n';
 import {
   auditLine,
   auditNewestFirst,
@@ -23,9 +24,13 @@ import {
   otherProfileNames,
   randomAppearance,
   startFailureMessage,
+  stateLabel,
   taskHints,
   validateForm,
 } from '../src/ui/castLogic';
+
+beforeEach(() => setLocale('pt-BR'));
+afterEach(() => setLocale('en'));
 
 const designer: AgentProfile = {
   ...DEFAULT_TECH_LEAD_PROFILE,
@@ -165,7 +170,7 @@ describe('cast rows', () => {
       ],
     };
     const [row] = buildCastRows('/p', inline, profiles, none);
-    expect(row).toMatchObject({ name: 'Bot', subtitle: 'qa', state: 'stopped', kind: 'inline' });
+    expect(row).toMatchObject({ name: 'Bot', subtitle: 'QA', state: 'stopped', kind: 'inline' });
   });
 
   it('lists the profiles not yet in the roster', () => {
@@ -185,13 +190,54 @@ describe('messages', () => {
   it('warns about the projects that use a profile', () => {
     expect(deleteProfileWarning('Ana', [])).toBe('Apagar o perfil "Ana"?');
     const text = deleteProfileWarning('Ana', ['/a', '/b']);
-    expect(text).toContain('2 projeto(s)');
+    expect(text).toContain('2 projetos');
     expect(text).toContain('- /b');
   });
 
   it('never offers to delete the Tech Lead', () => {
     expect(canDeleteProfile(DEFAULT_TECH_LEAD_PROFILE)).toBe(false);
     expect(canDeleteProfile(designer)).toBe(true);
+  });
+});
+
+describe('locales', () => {
+  it('translates validation, failures, labels and the delete warning', () => {
+    const form = emptyForm(() => 0);
+    setLocale('en');
+    expect(validateForm(form, []).name).toBe('Enter a name.');
+    expect(startFailureMessage({ code: 'session-limit', message: 'x' })).toMatch(/Session limit/);
+    expect(stateLabel('running')).toBe('running');
+    expect(deleteProfileWarning('Ana', [])).toBe('Delete the profile "Ana"?');
+    expect(deleteProfileWarning('Ana', ['/a'])).toContain('1 project:');
+    expect(deleteProfileWarning('Ana', ['/a', '/b'])).toContain('2 projects:');
+    expect(linksLabel([])).toBe('Can talk to (0)');
+    setLocale('es');
+    expect(validateForm(form, []).name).toBe('Indica un nombre.');
+    expect(stateLabel('stopped')).toBe('detenido');
+    expect(deleteProfileWarning('Ana', [])).toBe('¿Eliminar el perfil "Ana"?');
+    expect(linksLabel([])).toBe('Puede hablar con (0)');
+    setLocale('pt-BR');
+    expect(stateLabel('failed')).toBe('falhou ao iniciar');
+  });
+
+  it('translates the audit log and tab hints', () => {
+    const event = {
+      cwd: '/p',
+      orchestratorId: 'd',
+      orchestratorName: 'Designer',
+      agentId: 'a',
+      agentName: 'Bot',
+      at: 'x',
+      type: 'criado',
+    } as const;
+    setLocale('en');
+    expect(auditLine(event)).toBe('x · Designer created Bot');
+    expect(auditLine({ ...event, type: 'encerrado', by: 'usuario' })).toContain('removed by you');
+    expect(taskHints([{ terminalId: 't', task: 'Do it' } as never])).toEqual({
+      t: 'Original task: Do it',
+    });
+    setLocale('es');
+    expect(auditLine(event)).toBe('x · Designer creó a Bot');
   });
 });
 

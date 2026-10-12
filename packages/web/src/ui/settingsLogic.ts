@@ -1,4 +1,5 @@
 import type { AgentsOfficeDesktop, HooksBridge, HooksStatus } from '@agents-office/shared';
+import { formatDateTime, t } from '../i18n/i18n';
 
 export const HOOKS_PROMPT_KEY = 'agents-office.hooksPrompt.dismissed';
 
@@ -34,20 +35,20 @@ export function summaryOf(status: HooksStatus): HooksSummary {
 
 export function summaryLabel(status: HooksStatus): string {
   const summary = summaryOf(status);
-  if (summary === 'none') return 'Nenhum hook instalado';
-  if (summary === 'all') return `Todos os ${status.total} hooks instalados`;
-  return `${status.installedCount} de ${status.total} hooks instalados`;
+  if (summary === 'none') return t('hooks.summary.none');
+  if (summary === 'all') return t('hooks.summary.all', { total: status.total });
+  return t('hooks.summary.partial', { n: status.installedCount, total: status.total });
 }
 
 export function hooksSeenLabel(status: HooksStatus, now: Date): string {
-  if (!status.daemonReachable) return 'Daemon inacessível';
-  if (status.hooksSeenAt === null) return 'Nenhum hook recebido ainda';
+  if (!status.daemonReachable) return t('hooks.seen.unreachable');
+  if (status.hooksSeenAt === null) return t('hooks.seen.never');
   const at = new Date(status.hooksSeenAt);
-  if (Number.isNaN(at.getTime())) return 'Nenhum hook recebido ainda';
+  if (Number.isNaN(at.getTime())) return t('hooks.seen.never');
   const seconds = Math.max(0, Math.round((now.getTime() - at.getTime()) / 1000));
-  if (seconds < 60) return `Último hook recebido há ${seconds} s`;
-  if (seconds < 3600) return `Último hook recebido há ${Math.round(seconds / 60)} min`;
-  return `Último hook recebido em ${at.toLocaleString('pt-BR')}`;
+  if (seconds < 60) return t('hooks.seen.seconds', { n: seconds });
+  if (seconds < 3600) return t('hooks.seen.minutes', { n: Math.round(seconds / 60) });
+  return t('hooks.seen.at', { when: formatDateTime(at) });
 }
 
 /** The button offers the action that still makes sense: install what is missing, or remove all. */

@@ -5,6 +5,7 @@ import {
   CHARACTER_ANIMATIONS,
   CharacterFactory,
 } from '../characters/characterFactory';
+import { logicalSizeOf, renderScaleOf } from '../renderScale';
 import { SKIN_KEYS, type Skin } from '../skin';
 import { EVENT_SCENE_READY, REGISTRY_SKIN } from './BootScene';
 
@@ -31,9 +32,10 @@ export class CharactersDebugScene extends Phaser.Scene {
     this.events.once(Phaser.Scenes.Events.CREATE, () => this.game.events.emit(EVENT_SCENE_READY));
     const { skin } = this.registry.get(REGISTRY_SKIN) as { skin: Skin };
     const factory = new CharacterFactory(this.textures, this.anims, skin);
-    this.cameras.main.setBackgroundColor(0x1d2233);
+    const view = logicalSizeOf(this);
+    this.cameras.main.setBackgroundColor(0x1d2233).setOrigin(0, 0).setZoom(renderScaleOf(this));
 
-    const cellW = this.scale.width / COLUMNS;
+    const cellW = view.width / COLUMNS;
     const professions: Profession[] = ProfessionSchema.options;
     let n = 0;
     for (const profession of professions) {
@@ -50,7 +52,7 @@ export class CharactersDebugScene extends Phaser.Scene {
       }
     }
     this.label = this.add
-      .bitmapText(2, this.scale.height - 12, SKIN_KEYS.font, '', 11)
+      .bitmapText(2, view.height - 12, SKIN_KEYS.font, '', 11)
       .setDepth(10)
       .setTint(0xffffff);
     this.advance();

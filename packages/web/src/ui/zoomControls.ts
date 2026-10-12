@@ -1,4 +1,5 @@
 import type Phaser from 'phaser';
+import { t } from '../i18n/i18n';
 import {
   readStoredZoom,
   ZOOM_CHANGED_EVENT,
@@ -51,8 +52,8 @@ export function mountZoomControls(game: Phaser.Game, parent: HTMLElement): void 
     button.addEventListener('click', () => game.events.emit(ZOOM_STEP_EVENT, direction));
     return button;
   };
-  const zoomIn = make('zoom-in', '+', 'Aproximar', 1);
-  const zoomOut = make('zoom-out', '−', 'Afastar', -1);
+  const zoomIn = make('zoom-in', '+', t('zoom.in'), 1);
+  const zoomOut = make('zoom-out', '−', t('zoom.out'), -1);
   box.append(zoomIn, zoomOut);
   parent.append(box);
 

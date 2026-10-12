@@ -1,11 +1,12 @@
 import Phaser from 'phaser';
+import { renderScaleOf } from '../renderScale';
 
 type Filterable = Phaser.GameObjects.GameObject & { cameraFilter: number };
 
 /**
  * Screen-fixed UI drawn by its own camera. `setScrollFactor(0)` only stops an object from
  * scrolling; it is still scaled by the camera zoom. So the UI lives in `layer`, which the main
- * (zoomed) camera skips and `camera` (zoom 1, no scroll) draws, while `camera` skips the world.
+ * (zoomed) camera skips and `camera` (zoom = render scale, no scroll) draws, while `camera` skips the world.
  */
 export class UiOverlay {
   readonly layer: Phaser.GameObjects.Layer;
@@ -16,6 +17,9 @@ export class UiOverlay {
     const { width, height } = scene.scale;
     this.layer = scene.add.layer();
     this.camera = scene.cameras.add(0, 0, width, height, false, 'ui');
+    // The canvas is `renderScale` times the logical size: the UI is laid out in logical units and
+    // zoomed up around the top-left corner, so it fills the canvas exactly.
+    this.camera.setOrigin(0, 0).setZoom(renderScaleOf(scene));
     // The layer's own filter hides all of its children from the main camera, now and later.
     this.layer.cameraFilter |= scene.cameras.main.id;
     for (const object of scene.children.list) this.pending.add(object);
@@ -33,8 +37,10 @@ export class UiOverlay {
     return object.willRender(camera);
   }
 
+  /** `width` and `height` are logical game pixels. */
   resize(width: number, height: number): void {
-    this.camera.setSize(width, height);
+    const scale = renderScaleOf(this.scene);
+    this.camera.setSize(Math.round(width * scale), Math.round(height * scale)).setZoom(scale);
   }
 
   destroy(): void {
