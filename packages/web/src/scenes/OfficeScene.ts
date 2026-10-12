@@ -38,13 +38,13 @@ import { RoomDecor } from '../world/roomDecor';
 import { type BuildingLayout, CHUNK, type Layer, layoutBuilding } from '../world/roomLayout';
 import { applyVignette, ensureVignette } from '../world/rugs';
 import {
+  REGISTRY_ACTIVE_TERMINAL,
   readStoredZoom,
   stepZoom,
+  TERMINAL_ACTIVE_EVENT,
   wheelDirection,
   writeStoredZoom,
   ZOOM_CHANGED_EVENT,
-  REGISTRY_ACTIVE_TERMINAL,
-  TERMINAL_ACTIVE_EVENT,
   ZOOM_STEP_EVENT,
   type ZoomDirection,
 } from '../zoom';

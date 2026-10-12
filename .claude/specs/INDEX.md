@@ -57,6 +57,7 @@ PRD: [agents-office.prd.md](../prds/agents-office.prd.md)
 | 051 | Parede com profundidade | high | done | enhancement, web, art, walls, lighting | 050 |
 | 052 | Helpers de volume e contraste dos materiais | medium | done | refactor, web, art, skin-generator | — |
 | 053 | Redesenho dos móveis com volume | high | done | enhancement, web, art, props, lighting | 051, 052 |
+| 054 | Splash único "Carregando..." | medium | done | bugfix, desktop, ui, splash | — |
 
 Fases do PRD: 001–002 = Fase 0 (spike) · 003–011 = Fase 1 (MVP) · 006, 012 = parte da Fase 2. Replay, minimapa e Tauri (Fase 3) ficam fora deste lote.
 
@@ -81,3 +82,5 @@ PRD sem flash ao redimensionar: [sem-flash-ao-redimensionar.prd.md](../prds/sem-
 PRD do terminal sem corte e scrollbars: [terminal-sem-corte-scrollbars.prd.md](../prds/terminal-sem-corte-scrollbars.prd.md) (047–049; 049 depende de 048).
 
 PRD do cenário com volume: [cenario-volume-portas-moveis.prd.md](../prds/cenario-volume-portas-moveis.prd.md) (050–053; 051 depende de 050, 053 de 051 e 052; 052 é independente).
+
+PRD do splash único: [splash-unico-carregando.prd.md](../prds/splash-unico-carregando.prd.md) (054; independente).

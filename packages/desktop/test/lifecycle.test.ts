@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
 import { resolveDaemonEntry } from '../src/main/daemonEntry';
 import { errorPageUrl } from '../src/main/errorPage';
@@ -456,6 +457,15 @@ describe('navigation, error page, tray icon, daemon entry', () => {
     expect(classifyNavigation('file:///etc/passwd', origin)).toBe('deny');
     expect(classifyNavigation('javascript:alert(1)', origin)).toBe('deny');
     expect(classifyNavigation('not a url', origin)).toBe('deny');
+  });
+
+  it('loads no page before the daemon is running; only errors load the error page', () => {
+    const src = readFileSync(new URL('../src/main/main.ts', import.meta.url), 'utf8');
+    expect(src).not.toContain('Iniciando o daemon');
+    const uses = src.match(/errorPageUrl\(/g) ?? [];
+    expect(uses).toHaveLength(1);
+    expect(src).toMatch(/const showError[\s\S]*?loadURL\(errorPageUrl\(title, message\)\)/);
+    expect(src).toContain("backgroundColor: '#0d1020'");
   });
 
   it('escapes the error page text', () => {

@@ -257,7 +257,7 @@ function main(): void {
       minHeight: 480,
       title: 'Agents Office',
       icon: windowIcon,
-      backgroundColor: '#1b1d2a',
+      backgroundColor: '#0d1020',
       autoHideMenuBar: true,
       webPreferences: {
         preload: join(__dirname, 'preload.cjs'),
@@ -410,7 +410,6 @@ function main(): void {
       dismiss: (id) => notifications.dismiss(id),
       quit: quitInteractively,
     });
-    void window.loadURL(errorPageUrl('Agents Office', 'Iniciando o daemon...'));
     controller.onStatus(onDaemonStatus);
     void controller.start();
   });
