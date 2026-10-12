@@ -66,6 +66,8 @@ export interface TerminalIpcDeps<E> {
   trusted(event: E): void;
   /** Where `terminal.data|exit` events go (the office window). */
   target(): EventTarget | undefined;
+  /** Called with the terminal id whenever the renderer writes to a terminal (user input). */
+  onUserInput?(id: string, data: string): void;
 }
 
 /**
@@ -101,6 +103,7 @@ export function registerTerminalIpc<E>(deps: TerminalIpcDeps<E>): () => void {
     guarded((id: unknown, data: unknown): void => {
       const parsed = terminalSchemas.write.parse({ id, data });
       manager.write(parsed.id, parsed.data);
+      deps.onUserInput?.(parsed.id, parsed.data);
     }),
   );
   ipcMain.handle(

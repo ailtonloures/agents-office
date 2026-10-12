@@ -1,0 +1,21 @@
+/** IPC channel names of the profiles bridge (shared by the main process and the preload). */
+export const PROFILES_CHANNELS = {
+  list: 'agents-office:profiles:list',
+  create: 'agents-office:profiles:create',
+  update: 'agents-office:profiles:update',
+  duplicate: 'agents-office:profiles:duplicate',
+  remove: 'agents-office:profiles:remove',
+  rosterGet: 'agents-office:profiles:roster-get',
+  rosterAddProfile: 'agents-office:profiles:roster-add-profile',
+  rosterRemove: 'agents-office:profiles:roster-remove',
+  rosterConnect: 'agents-office:profiles:roster-connect',
+  rosterDisconnect: 'agents-office:profiles:roster-disconnect',
+  rosterSetNotes: 'agents-office:profiles:roster-set-notes',
+  rosterSetAutoReopen: 'agents-office:profiles:roster-set-auto-reopen',
+  agentsHistory: 'agents-office:profiles:agents-history',
+  agentsSaveAsProfile: 'agents-office:profiles:agents-save-as-profile',
+  commsStatus: 'agents-office:profiles:comms-status',
+  commsMute: 'agents-office:profiles:comms-mute',
+  commsResume: 'agents-office:profiles:comms-resume',
+  commsStop: 'agents-office:profiles:comms-stop',
+} as const;

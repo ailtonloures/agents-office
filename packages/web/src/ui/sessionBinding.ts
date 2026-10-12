@@ -1,4 +1,4 @@
-import type { OfficeModel } from '@agents-office/shared';
+import type { ManagedSessionInfo, OfficeModel } from '@agents-office/shared';
 import { type BuildingLayout, type Door, type Tile, WALL_ROWS } from '../world/roomLayout';
 import { STATUS_LABEL } from './dialogContent';
 
@@ -18,11 +18,21 @@ export function roomCwd(model: OfficeModel, roomId: string): string | undefined 
   return cwd ? cwd : undefined;
 }
 
-/** Office state of each session started by the app, by terminal tab id (for the tab title). */
-export function activityByTerminal(model: OfficeModel): Record<string, string> {
+/**
+ * Office state of each session started by the app, by terminal tab id (for the tab title). Tabs of
+ * managed sessions lead with the profile name, even before the first hook binds the session.
+ */
+export function activityByTerminal(
+  model: OfficeModel,
+  managed: readonly ManagedSessionInfo[] = [],
+): Record<string, string> {
   const result: Record<string, string> = {};
   for (const session of Object.values(model.sessions)) {
     if (session.terminalId !== undefined) result[session.terminalId] = STATUS_LABEL[session.status];
+  }
+  for (const info of managed) {
+    const state = result[info.terminalId];
+    result[info.terminalId] = state === undefined ? info.name : `${info.name} · ${state}`;
   }
   return result;
 }

@@ -64,6 +64,37 @@ PRD: [agents-office.prd.md](../prds/agents-office.prd.md)
 | 058 | Banner de atualização na web | high | done | feature, web, ui, updater | 057 |
 | 059 | Reinício limpo integrado ao QuitCoordinator | high | done | feature, desktop, updater, quit | 056 |
 | 060 | Script de release e documentação | low | done | docs, release, tooling | 055 |
+| 061 | Contratos compartilhados de perfil, elenco e aparência | high | done | feature, shared, contracts, testing | — |
+| 062 | Biblioteca global de perfis e elenco por projeto (stores) | high | done | feature, desktop, persistence, testing | 061 |
+| 063 | Agent Bus (servidor MCP local) e injeção de instruções nas sessões | high | done | feature, desktop, mcp, session, testing | 062 |
+| 064 | Sessões gerenciadas: iniciar perfil, vínculo ao avatar e reabertura automática | high | done | feature, desktop, web, session, characters | 063 |
+| 065 | Painel Elenco e editor de perfil com pré-visualização | medium | done | feature, web, ui | 064 |
+| 066 | E2E e documentação de perfis e sessões gerenciadas | low | done | docs, testing, e2e | 065 |
+| 067 | Grafo de conexões entre agentes e painel "pode falar com" | high | done | feature, desktop, web, ui, testing | 065 |
+| 068 | Ferramentas de mensagem, fila e entrega ao PTY ocioso | high | done | feature, desktop, mcp, messaging, testing | 063, 067 |
+| 069 | Disjuntor de saltos, limite de taxa e silenciar agente | high | done | feature, desktop, safety, testing | 068 |
+| 070 | Histórico de mensagens e eventos de comunicação para o renderer | medium | done | feature, desktop, web, ipc, testing | 068 |
+| 071 | Animação: remetente visita a mesa do destinatário | high | done | feature, web, characters, animation, testing | 070 |
+| 072 | Papel Orquestrador e ferramentas spawn_agent / dismiss_agent | high | done | feature, desktop, mcp, orchestrator, testing | 068, 064 |
+| 073 | Cartão de aprovação de criação e "permitir sem perguntar" | high | done | feature, desktop, web, ui, safety | 072 |
+| 074 | Persistência dos agentes criados, auditoria e "Salvar como perfil" | medium | done | feature, desktop, web, persistence | 073, 064 |
+| 075 | Store da cena do quadro e ferramentas board_* | high | done | feature, desktop, mcp, board, testing | 063 |
+| 076 | Prop do quadro branco interativo (hover, cursor, rótulo, clique) | medium | done | feature, web, interaction, props | — |
+| 077 | Overlay Excalidraw em tela cheia (carregamento sob demanda) | high | done | feature, web, excalidraw, ui | 075, 076 |
+| 078 | Sincronização em tempo real agentes↔overlay e merge por versão | medium | done | feature, desktop, web, sync, testing | 077 |
+| 079 | Mermaid e bibliotecas de formas (.excalidrawlib) | low | done | feature, desktop, web, excalidraw | 077 |
+| 080 | BrowserHost: WebContentsView por workspace e aba no dock | high | done | feature, desktop, web, browser | 063 |
+| 081 | Ferramentas browser_* via CDP e fila de ações | high | done | feature, desktop, mcp, browser, testing | 080 |
+| 082 | Snapshot de acessibilidade, screenshot e console | high | done | feature, desktop, mcp, browser | 081 |
+| 083 | Confirmações, pausar agentes e rotulagem de conteúdo | high | done | feature, desktop, web, safety | 081 |
+| 084 | Seletor de elemento e injeção de contexto no agente | medium | done | feature, desktop, web, browser, context | 082 |
+| 085 | Reação do avatar, E2E e documentação do navegador | low | done | docs, testing, e2e, web | 084, 083 |
+| 086 | Release workflow publica o instalador do macOS | high | done | infra, ci, release, macos | — |
+| 087 | README comercial com instalação oficial | high | done | docs, readme, release | 086 |
+| 088 | DEVELOPMENT.md com o básico de desenvolvimento | medium | done | docs, development | — |
+| 089 | DESIGN.md com design, layout e jogo | medium | done | docs, design, game, web | — |
+| 090 | ARCHITECTURE.md com arquitetura e fluxo de comunicação | medium | done | docs, architecture, daemon, desktop | — |
+| 091 | CLAUDE.md com regras de arquitetura do projeto | medium | done | docs, claude, conventions | 088, 089, 090 |
 
 Fases do PRD: 001–002 = Fase 0 (spike) · 003–011 = Fase 1 (MVP) · 006, 012 = parte da Fase 2. Replay, minimapa e Tauri (Fase 3) ficam fora deste lote.
 
@@ -92,3 +123,15 @@ PRD do cenário com volume: [cenario-volume-portas-moveis.prd.md](../prds/cenari
 PRD do splash único: [splash-unico-carregando.prd.md](../prds/splash-unico-carregando.prd.md) (054; independente).
 
 PRD de auto-update e releases: [auto-update-releases.prd.md](../prds/auto-update-releases.prd.md) (055–060; 056 depende de 055, 057 de 056, 058 de 057, 059 de 056, 060 de 055).
+
+PRD de perfis e sessões gerenciadas: [perfis-sessoes-gerenciadas.prd.md](../prds/perfis-sessoes-gerenciadas.prd.md) (061–066; 062 depende de 061, 063 de 062, 064 de 063, 065 de 064, 066 de 065).
+
+PRD de comunicação entre agentes: [comunicacao-entre-agentes.prd.md](../prds/comunicacao-entre-agentes.prd.md) (067–071; 067 depende de 065, 068 de 063 e 067, 069 de 068, 070 de 068, 071 de 070).
+
+PRD do orquestrador: [orquestrador-de-agentes.prd.md](../prds/orquestrador-de-agentes.prd.md) (072–074; 072 depende de 068 e 064, 073 de 072, 074 de 073 e 064).
+
+PRD do quadro Excalidraw: [quadro-excalidraw.prd.md](../prds/quadro-excalidraw.prd.md) (075–079; 075 depende de 063, 076 é independente, 077 de 075 e 076, 078 e 079 de 077).
+
+PRD do navegador embutido: [navegador-embutido.prd.md](../prds/navegador-embutido.prd.md) (080–085; 080 depende de 063, 081 de 080, 082 e 083 de 081, 084 de 082, 085 de 083 e 084).
+
+PRD da documentação do projeto: [documentacao-do-projeto.prd.md](../prds/documentacao-do-projeto.prd.md) (086–091; 087 depende de 086, 091 de 088, 089 e 090; 088, 089 e 090 são independentes).

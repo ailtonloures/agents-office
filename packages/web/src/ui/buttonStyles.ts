@@ -4,6 +4,8 @@ const BUTTONS = [
   '.ao-hooks-banner button',
   '.ao-hooks-btn',
   '.ao-picker-box button:not(.star)',
+  '.ao-cast-box button',
+  '.ao-cast-btn',
   '.ao-picker-btn',
   '.ao-zoom-btn',
 ];

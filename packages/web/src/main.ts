@@ -1,3 +1,4 @@
+import type { ManagedSessionInfo } from '@agents-office/shared';
 import Phaser from 'phaser';
 import { installDebugState } from './debug/debugState';
 import { startDemo } from './net/demo';
@@ -6,19 +7,29 @@ import { computeViewport, type Viewport, viewportChanged } from './scale';
 import { BootScene, EVENT_SCENE_READY, REGISTRY_START_SCENE } from './scenes/BootScene';
 import { CharactersDebugScene, DEBUG_CHARACTERS_SCENE } from './scenes/CharactersDebugScene';
 import { OfficeScene, REGISTRY_CLIENT } from './scenes/OfficeScene';
+import { boardBridgeOf } from './ui/boardLogic';
+import { mountBoardOverlay } from './ui/boardOverlay';
+import { mountBrowserApprovalCard } from './ui/browserApprovalCard';
+import { castBridgesOf, taskHints } from './ui/castLogic';
+import { mountCastPanel } from './ui/castPanel';
 import { externalBridgeOf, openInVSCodeWithToast } from './ui/externalOpen';
 import { mountLostSessions } from './ui/lostSessions';
+import { managedBridgeOf, REGISTRY_MANAGED } from './ui/managedBinding';
+import { installMermaidRelay } from './ui/mermaidRelay';
 import { officeCwds, pickerBridgesOf } from './ui/projectPicker';
 import { mountProjectPicker } from './ui/projectPickerPanel';
 import { installScrollbars } from './ui/scrollbars';
-import { activityByTerminal, claudeSessionByTerminal } from './ui/sessionBinding';
+import { activityByTerminal, claudeSessionByTerminal, roomCwd } from './ui/sessionBinding';
 import { hooksBridgeOf } from './ui/settingsLogic';
 import { mountSettingsPanel } from './ui/settingsPanel';
+import { mountSpawnApprovalCard } from './ui/spawnApprovalCard';
+import { browserApprovalBridgeOf, spawnApprovalBridgeOf } from './ui/spawnApprovalLogic';
 import { mountTerminalPanel } from './ui/terminalPanel';
-import { terminalBridgeOf } from './ui/terminalTabs';
+import { browserBridgeOf, terminalBridgeOf } from './ui/terminalTabs';
 import { mountUpdateBanner } from './ui/updateBanner';
 import { updaterBridgeOf } from './ui/updateLogic';
 import { mountZoomControls } from './ui/zoomControls';
+import { BOARD_OPEN_EVENT, type BoardOpenRequest } from './world/boardProp';
 import { REGISTRY_ACTIVE_TERMINAL, TERMINAL_ACTIVE_EVENT } from './zoom';
 
 installScrollbars();
@@ -118,12 +129,42 @@ if (hooksBridge) mountSettingsPanel(hooksBridge, gameParent);
 const updaterBridge = updaterBridgeOf(window);
 if (updaterBridge) mountUpdateBanner(updaterBridge, gameParent);
 
+// The whiteboard overlay (Excalidraw, loaded on demand) only exists inside the desktop shell.
+const boardBridge = boardBridgeOf(window);
+if (boardBridge) {
+  // Agents' Mermaid diagrams are converted here (needs a DOM), with or without the board open.
+  installMermaidRelay(boardBridge);
+  const board = mountBoardOverlay(boardBridge, {
+    gameParent,
+    onKeyboardCapture: (captured) => {
+      const keyboard = game.input.keyboard;
+      if (!keyboard) return;
+      keyboard.enabled = !captured;
+      if (captured)
+        for (const scene of game.scene.getScenes(true)) scene.input.keyboard?.resetKeys();
+    },
+  });
+  game.events.on(BOARD_OPEN_EVENT, (request: BoardOpenRequest) => {
+    const model = client.getModel();
+    const cwd = roomCwd(model, request.roomId);
+    if (cwd) void board.open(cwd, model.projects[request.roomId]?.name);
+  });
+}
+
+// Orchestrator creations ask for approval through a card (desktop shell only).
+const spawnApprovalBridge = spawnApprovalBridgeOf(window);
+if (spawnApprovalBridge) mountSpawnApprovalCard(spawnApprovalBridge, gameParent);
+// Downloads, site permissions and browser_eval of the embedded browser wait for a card too.
+const browserApprovalBridge = browserApprovalBridgeOf(window);
+if (browserApprovalBridge) mountBrowserApprovalCard(browserApprovalBridge, gameParent);
+
 // The terminal panel only exists inside the desktop shell (it needs the pty bridge).
 const terminalBridge = terminalBridgeOf(window);
 const externalBridge = externalBridgeOf(window);
 if (terminalBridge) {
   const panel = mountTerminalPanel(terminalBridge, {
     gameParent,
+    browser: browserBridgeOf(window),
     onLayout: resize,
     onActiveChange: (terminalId) => {
       game.registry.set(REGISTRY_ACTIVE_TERMINAL, terminalId);
@@ -164,9 +205,26 @@ if (terminalBridge) {
       if (externalBridge) await openInVSCodeWithToast(externalBridge, cwd);
     },
   };
-  const syncTabActivity = () => panel.setActivity(activityByTerminal(client.getModel()));
+  // Sessions the app started for roster entries: the avatar and the tab take the profile's name.
+  const managedBridge = managedBridgeOf(window);
+  let managedSessions: ManagedSessionInfo[] = [];
+  const syncTabActivity = () =>
+    panel.setActivity(activityByTerminal(client.getModel(), managedSessions));
   client.on('model', syncTabActivity);
   syncTabActivity();
+  if (managedBridge) {
+    const applyManaged = (sessions: ManagedSessionInfo[]) => {
+      managedSessions = sessions;
+      game.registry.set(REGISTRY_MANAGED, sessions);
+      panel.setTabHints(taskHints(sessions));
+      syncTabActivity();
+    };
+    void managedBridge.list().then(
+      (change) => applyManaged(change.sessions),
+      () => {},
+    );
+    managedBridge.onChange((change) => applyManaged(change.sessions));
+  }
 
   // Tell the shell which Claude session runs in each tab (for `--resume` after a crash), and offer
   // to resume the tabs a previous run lost.
@@ -193,6 +251,31 @@ if (terminalBridge) {
         keyboard.enabled = !captured && !panel.terminalFocused;
         if (captured)
           for (const scene of game.scene.getScenes(true)) scene.input.keyboard?.resetKeys();
+      },
+    });
+  }
+  // The cast ("Elenco") panel and profile editor need the profiles and managed-session bridges.
+  const castBridges = castBridgesOf(window);
+  if (castBridges && pickerBridges) {
+    window.__castPanel = mountCastPanel(castBridges, pickerBridges.projects, gameParent, {
+      knownCwds: () => officeCwds(client.getModel()),
+      onKeyboardCapture: (captured) => {
+        const keyboard = game.input.keyboard;
+        if (!keyboard) return;
+        keyboard.enabled = !captured && !panel.terminalFocused;
+        if (captured)
+          for (const scene of game.scene.getScenes(true)) scene.input.keyboard?.resetKeys();
+      },
+      // Live avatar of the profile editor, drawn by the office scene's character factory.
+      drawAvatar: (look, canvas) => {
+        const scene = game.scene.getScene('OfficeScene') as OfficeScene | null;
+        if (!scene || !game.scene.isActive('OfficeScene')) return false;
+        try {
+          scene.drawAvatarPreview(look, canvas);
+          return true;
+        } catch {
+          return false;
+        }
       },
     });
   }

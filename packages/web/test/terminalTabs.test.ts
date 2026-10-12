@@ -301,3 +301,44 @@ describe('wheelScrollTabs', () => {
     expect(wheelScrollTabs({ scrollLeft: 0, scrollWidth: 500, clientWidth: 200 }, 0)).toBe(false);
   });
 });
+
+describe('browser tab', () => {
+  const terminal = { id: 't1', cwd: '/w/proj', state: 'running' as const };
+
+  it('opens one browser tab per workspace and activates it', async () => {
+    const t = await import('../src/ui/terminalTabs');
+    let model = t.addTab(t.createPanelModel(), terminal);
+    model = t.openBrowserTab(model, '/w/proj');
+    model = t.openBrowserTab(model, '/w/proj');
+    expect(model.tabs.map((x) => x.id)).toEqual(['t1', t.browserTabId('/w/proj')]);
+    expect(model.activeId).toBe(t.browserTabId('/w/proj'));
+    expect(t.tabTitle(model.tabs[1] as never)).toBe('Navegador · proj');
+  });
+
+  it('targets the active (else last) tab workspace', async () => {
+    const t = await import('../src/ui/terminalTabs');
+    expect(t.browserTargetCwd(t.createPanelModel())).toBeUndefined();
+    const model = t.addTab(t.createPanelModel(), terminal);
+    expect(t.browserTargetCwd(model)).toBe('/w/proj');
+  });
+
+  it('closing it needs no confirmation and the office sees no terminal while it is shown', async () => {
+    const t = await import('../src/ui/terminalTabs');
+    const model = t.openBrowserTab(t.addTab(t.createPanelModel(), terminal), '/w/proj');
+    expect(t.needsCloseConfirm(model.tabs[1] as never)).toBe(false);
+    expect(t.needsCloseConfirm(terminal)).toBe(true);
+    expect(t.shownTerminalId(model)).toBeUndefined();
+    expect(t.shownTerminalId(t.setActive(model, 't1'))).toBe('t1');
+    expect(t.shownTerminalId(t.toggleCollapsed(t.setActive(model, 't1')))).toBeUndefined();
+    const after = t.removeTab(model, t.browserTabId('/w/proj'));
+    expect(after.tabs.map((x) => x.id)).toEqual(['t1']);
+  });
+
+  it('browserBridgeOf needs the desktop shell and a browser bridge', async () => {
+    const t = await import('../src/ui/terminalTabs');
+    expect(t.browserBridgeOf({})).toBeUndefined();
+    expect(t.browserBridgeOf({ agentsOfficeDesktop: { desktop: true } })).toBeUndefined();
+    const browser = { show: () => {} };
+    expect(t.browserBridgeOf({ agentsOfficeDesktop: { desktop: true, browser } })).toBe(browser);
+  });
+});

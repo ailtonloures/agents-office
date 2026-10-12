@@ -42,6 +42,8 @@ declare global {
         approachDoor(roomId: string): boolean;
       };
     };
+    /** Cast ("Elenco") panel of the desktop shell (see packages/web/src/ui/castPanel.ts). */
+    __castPanel?: { open(cwd?: string): Promise<void>; close(): void };
     /** Terminal panel of the desktop shell (see packages/web/src/ui/terminalPanel.ts). */
     __terminalPanel?: {
       tabs: { id: string; title: string; state: string }[];
@@ -76,6 +78,9 @@ export interface OfficeCharacter {
   profession?: string;
   phase?: string;
   roomId?: string;
+  /** Position in tiles (fractional while walking). */
+  x?: number;
+  y?: number;
 }
 
 /** Waits for the office to be connected (WebSocket up, scene running). */

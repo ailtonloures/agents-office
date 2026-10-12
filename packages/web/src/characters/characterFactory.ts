@@ -8,7 +8,7 @@ import {
   type Skin,
   TYPING_ALT_POSE,
 } from '../skin';
-import { type Appearance, appearanceFor, PLAYER_LOOK } from './appearance';
+import { type Appearance, appearanceFor, appearanceKey, PLAYER_LOOK } from './appearance';
 import {
   applyPaletteSwap,
   buildSwapTable,
@@ -70,6 +70,9 @@ export interface BuiltCharacter {
   textureKey: string;
 }
 
+/** Id of the throwaway character of the profile editor preview. */
+const PREVIEW_ID = '__preview__';
+
 export const textureKeyFor = (id: string): string => `char-${id}`;
 /** Phaser animations are global, so each character's are namespaced by its texture key. */
 export const animationKeyFor = (id: string, animation: CharacterAnimation): string =>
@@ -83,6 +86,8 @@ const wrap = <T>(list: readonly T[], index: number): T => list[index % list.leng
  */
 export class CharacterFactory {
   private readonly cache = new Map<string, BuiltCharacter>();
+  /** Look key each cached character was built with. */
+  private readonly keys = new Map<string, string>();
 
   constructor(
     private readonly textures: Phaser.Textures.TextureManager,
@@ -90,13 +95,19 @@ export class CharacterFactory {
     private readonly skin: Skin,
   ) {}
 
-  /** Returns the cached character, building it first when needed (or when the profession changed). */
-  get(id: string, profession: Profession): BuiltCharacter {
+  /**
+   * Returns the cached character, building it first when needed (or when the profession or the
+   * explicit `look` changed). Without `look` the appearance is derived from the id's hash.
+   */
+  get(id: string, profession: Profession, look?: Appearance): BuiltCharacter {
     const cached = this.cache.get(id);
-    if (cached?.profession === profession) return cached;
+    if (cached?.profession === profession && this.keys.get(id) === appearanceKey(look)) {
+      return cached;
+    }
     if (cached) this.release(id);
-    const built = this.build(id, profession);
+    const built = this.build(id, profession, look);
     this.cache.set(id, built);
+    this.keys.set(id, appearanceKey(look));
     return built;
   }
 
@@ -114,6 +125,36 @@ export class CharacterFactory {
     return built;
   }
 
+  /**
+   * Draws the front-facing standing frame of `look` onto `target` (scaled by `scale`, no
+   * smoothing). Used by the profile editor for its live preview; the temporary character is
+   * rebuilt only when the look changes.
+   */
+  drawPreview(look: Appearance, target: HTMLCanvasElement, scale = 4): void {
+    const built = this.get(PREVIEW_ID, look.profession, look);
+    const { characters } = this.skin;
+    const { width: fw, height: fh } = characters.frame;
+    const frame = characters.walk.down[0];
+    const source = this.textures.get(built.textureKey).getSourceImage() as CanvasImageSource;
+    target.width = fw * scale;
+    target.height = fh * scale;
+    const ctx = target.getContext('2d');
+    if (!ctx) return;
+    ctx.imageSmoothingEnabled = false;
+    ctx.clearRect(0, 0, target.width, target.height);
+    ctx.drawImage(
+      source,
+      (frame % characters.columns) * fw,
+      Math.floor(frame / characters.columns) * fh,
+      fw,
+      fh,
+      0,
+      0,
+      target.width,
+      target.height,
+    );
+  }
+
   /** Height, in pixels above the feet, of the top of the head (standing or seated). */
   headHeight(seated: boolean): number {
     const { frame, head } = this.skin.characters;
@@ -127,6 +168,7 @@ export class CharacterFactory {
   /** Frees the texture and the animations of a character that left the office. */
   release(id: string): void {
     if (!this.cache.delete(id)) return;
+    this.keys.delete(id);
     for (const name of CHARACTER_ANIMATIONS) this.anims.remove(animationKeyFor(id, name));
     const key = textureKeyFor(id);
     if (this.textures.exists(key)) this.textures.remove(key);
@@ -171,7 +213,7 @@ export class CharacterFactory {
       height: fh,
     }));
     const image = ctx.getImageData(0, 0, canvasTexture.width, canvasTexture.height);
-    applyPaletteSwap(image.data, this.swapTable(appearance, fixed !== undefined));
+    applyPaletteSwap(image.data, this.swapTable(appearance, id === PLAYER_LOOK.id));
     outlineFrames(image.data, canvasTexture.width, frames, OUTLINE_COLOR, OUTLINE_INK);
     ctx.putImageData(image, 0, 0);
 
@@ -186,10 +228,13 @@ export class CharacterFactory {
 
   private swapTable(appearance: Appearance, player = false) {
     const { baseColors, palettes } = this.skin.characters;
-    const skin = hexToRgb(wrap(palettes.skin, appearance.skin));
-    const hair = hexToRgb(wrap(palettes.hair, appearance.hairColor));
+    const { explicit } = appearance;
+    const skin = hexToRgb(explicit?.skinColor ?? wrap(palettes.skin, appearance.skin));
+    const hair = hexToRgb(explicit?.hairColor ?? wrap(palettes.hair, appearance.hairColor));
     const shirt = hexToRgb(
-      player ? PLAYER_LOOK.shirtColor : wrap(palettes.shirt, appearance.shirt),
+      player
+        ? PLAYER_LOOK.shirtColor
+        : (explicit?.outfitColor ?? wrap(palettes.shirt, appearance.shirt)),
     );
     const pants = hexToRgb(
       player ? PLAYER_LOOK.pantsColor : wrap(palettes.pants, appearance.pants),

@@ -20,6 +20,9 @@ describe('decideClick', () => {
     ['empty space', { target: 'empty', session: undefined }, 'collapse'],
     ['empty space in a browser', { target: 'empty', desktop: false }, 'none'],
     ['subagent in a browser', { target: 'other', desktop: false }, 'open-dialog'],
+    ['whiteboard in the app', { target: 'board', session: undefined }, 'open-board'],
+    ['whiteboard in a browser', { target: 'board', session: undefined, desktop: false }, 'none'],
+    ['overlay over a whiteboard', { target: 'board', overlayOpen: true }, 'none'],
     ['overlay over a Tech Lead', { overlayOpen: true }, 'none'],
     ['overlay over empty space', { overlayOpen: true, target: 'empty' }, 'none'],
   ] as [string, Partial<ClickInput>, string][])('%s -> %s', (_name, patch, expected) => {

@@ -10,6 +10,7 @@ import {
   ROAMING_TOOL_TABLE,
   ruleForTool,
   SUMMON_HOLD_MS,
+  VISIT_TIMEOUT_MS,
   type VisualState,
 } from '../src/characters/characterMachine';
 
@@ -73,6 +74,21 @@ describe('tool table', () => {
     expect(ruleForTool('WebFetch', ROAMING_TOOL_TABLE).target).toBe('phone');
     expect(ruleForTool('WebSearch', ROAMING_TOOL_TABLE).target).toBe('window');
     expect(ruleForTool('Agent', ROAMING_TOOL_TABLE).target).toBe('door');
+  });
+
+  it('board drawing tools walk to the whiteboard with any table', () => {
+    for (const tool of ['board_add_elements', 'mcp__agents-office__board_add_mermaid']) {
+      expect(ruleForTool(tool)).toEqual({ activity: 'typing', target: 'whiteboard' });
+    }
+    expect(ruleForTool('mcp__agents-office__board_read').target).toBeUndefined();
+  });
+
+  it('browser tools keep the character at its computer looking at the web', () => {
+    for (const tool of ['browser_navigate', 'mcp__agents-office__browser_snapshot']) {
+      expect(ruleForTool(tool)).toEqual({ activity: 'web' });
+      expect(ruleForTool(tool, ROAMING_TOOL_TABLE).target).toBeUndefined();
+    }
+    expect(ruleForTool('mcp__agents-office__browser_unknown')).toEqual({ activity: 'typing' });
   });
 
   it('is configurable', () => {
@@ -262,5 +278,71 @@ describe('activities', () => {
     });
     expect(out.state.phase).toBe('at-desk');
     expect(out.state.activity).toBe('thinking');
+  });
+});
+
+describe('visits', () => {
+  const atDesk = (): VisualState => initialState('at-desk', 0);
+  const visit = (id: string, startedAt = 0) => ({ visit: { id, startedAt } });
+
+  it('goes to the recipient and stays there while the visit is offered', () => {
+    const first = step(atDesk(), lead('thinking'), 100, visit('m1'));
+    expect(first.state.phase).toBe('visiting');
+    expect(first.state.visitId).toBe('m1');
+    expect(first.goal).toEqual({ kind: 'visit', visitId: 'm1' });
+    const later = step(first.state, lead('working', 'Edit'), 30_000, visit('m1'));
+    expect(later.state.phase).toBe('visiting');
+  });
+
+  it('only returns to the desk once the visit is no longer offered (the reply)', () => {
+    const started = step(atDesk(), lead('thinking'), 100, visit('m1')).state;
+    const back = step(started, lead('thinking'), 5_000);
+    expect(back.state.phase).toBe('walking-to-desk');
+    expect(back.state.visitId).toBeUndefined();
+    expect(back.goal).toEqual({ kind: 'desk' });
+    const seated = step(back.state, lead('thinking'), 6_000, { arrived: true });
+    expect(seated.state.phase).toBe('at-desk');
+  });
+
+  it('gives up after the 60 s safety timeout and does not restart the same visit', () => {
+    const started = step(atDesk(), lead('thinking'), 100, visit('m1', 100)).state;
+    const timedOut = step(started, lead('thinking'), 100 + VISIT_TIMEOUT_MS, visit('m1', 100));
+    expect(timedOut.state.phase).toBe('walking-to-desk');
+    expect(timedOut.state.visitTimedOut).toBe('m1');
+    const again = step(timedOut.state, lead('thinking'), 100 + VISIT_TIMEOUT_MS + 10, {
+      arrived: true,
+      ...visit('m1', 100),
+    });
+    expect(again.state.phase).toBe('at-desk');
+  });
+
+  it('moves straight to the next recipient of a broadcast', () => {
+    const started = step(atDesk(), lead('thinking'), 100, visit('m1')).state;
+    const next = step(started, lead('thinking'), 5_000, visit('m2', 5_000));
+    expect(next.state.phase).toBe('visiting');
+    expect(next.state.visitId).toBe('m2');
+  });
+
+  it('waits to be at the desk before the first visit (entering characters do not visit)', () => {
+    const entering = step(initialState('entering', 0), lead('thinking'), 100, {
+      insideRoom: false,
+      ...visit('m1'),
+    });
+    expect(entering.state.phase).toBe('entering');
+  });
+
+  it('leaves for good when the session ends, mid-visit', () => {
+    const started = step(atDesk(), lead('thinking'), 100, visit('m1')).state;
+    const ended = step(started, undefined, 200, visit('m1'));
+    expect(ended.state.phase).toBe('leaving');
+    expect(ended.state.visitId).toBeUndefined();
+  });
+
+  it('resumes the previous activity afterwards', () => {
+    const working = step(atDesk(), lead('working', 'Edit'), 1_000).state;
+    const visiting = step(working, lead('working', 'Edit'), 2_000, visit('m1', 2_000)).state;
+    const back = step(visiting, lead('working', 'Edit'), 4_000).state;
+    expect(back.activity).toBe('typing');
+    expect(back.phase).toBe('walking-to-desk');
   });
 });

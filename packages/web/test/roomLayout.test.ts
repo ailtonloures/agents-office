@@ -69,6 +69,13 @@ describe('layoutBuilding', () => {
     expect(layout.collision[layout.spawn.y]?.[layout.spawn.x]).toBe(false);
   });
 
+  it('gives each workspace a walkable whiteboard point of interest', () => {
+    const layout = layoutBuilding([project('a', 1, [1]), project('b', 2, [2])]);
+    const spots = layout.pois.filter((p) => p.type === 'whiteboard');
+    expect(spots.map((p) => p.roomId).sort()).toEqual(['a', 'b']);
+    for (const spot of spots) expect(layout.collision[spot.tile.y]?.[spot.tile.x]).toBe(false);
+  });
+
   it.each([0, 1, 3, 4, 9])('seats exactly one cubicle per agent (%i)', (agents) => {
     const layout = layoutBuilding([project('p', 1, [agents])]);
     const cubicles = layout.desks.filter((d) => d.sessionId === undefined);

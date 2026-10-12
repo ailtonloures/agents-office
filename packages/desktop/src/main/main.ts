@@ -1,6 +1,7 @@
 import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
+import { rosterEntryId } from '@agents-office/shared';
 import {
   app,
   BrowserWindow,
@@ -16,8 +17,36 @@ import {
 } from 'electron';
 import { autoUpdater } from 'electron-updater';
 import { spawn as spawnPty } from 'node-pty';
+import { BoardTools, boardTools } from './agentBus/boardTools';
+import { BrowserTools, browserTools } from './agentBus/browserTools';
+import { CircuitBreaker } from './agentBus/circuitBreaker';
+import { CommsLog } from './agentBus/commsLog';
+import { OfficeIdleSource } from './agentBus/idleSource';
+import { MessageQueue } from './agentBus/messageQueue';
+import { Messaging, messagingTools } from './agentBus/messaging';
+import { AgentBus } from './agentBus/server';
+import { fileAuditStorage, SpawnAgents, spawnTools } from './agentBus/spawnAgent';
+import { SpawnApprovals } from './agentBus/spawnApproval';
 import { AppConfigStore } from './appConfig';
 import { BinaryResolver, realIsExecutable, realRunShell } from './binaries';
+import { registerBoardIpc } from './boardIpc';
+import { LibraryStore } from './boardLibraries';
+import { createMermaidRelay } from './boardMermaid';
+import { BoardStore } from './boardStore';
+import { BROWSER_APPROVAL_CHANNELS } from './browserApprovalChannels';
+import { registerBrowserApprovalIpc } from './browserApprovalIpc';
+import { BrowserApprovals } from './browserApprovals';
+import { BROWSER_CHANNELS } from './browserChannels';
+import { BrowserDriver } from './browserDriver';
+import { createBrowserGuard } from './browserGuard';
+import { BrowserHost } from './browserHost';
+import { registerBrowserIpc } from './browserIpc';
+import { BrowserPause } from './browserPause';
+import { BrowserPicker } from './browserPicker';
+import { createPickScreenshotSaver } from './browserPickFiles';
+import { BrowserQueue } from './browserQueue';
+import { createElectronBrowserViews } from './browserViews';
+import { registerCommsIpc } from './commsIpc';
 import { resolveDaemonEntry } from './daemonEntry';
 import { type ChildLike, DaemonController, type DaemonStatus } from './daemonProcess';
 import { errorPageUrl } from './errorPage';
@@ -31,16 +60,23 @@ import {
   isTrustedSender,
 } from './hooksService';
 import { registerTerminalIpc } from './ipc';
+import { registerManagedIpc } from './managedIpc';
+import { ManagedSessions } from './managedSessions';
 import { classifyNavigation } from './navigation';
 import { NotificationCenter } from './notificationCenter';
 import { PermissionWatcher } from './permissionWatcher';
 import { probeHealth, resolvePort } from './probe';
+import { ProfileLibrary } from './profileLibrary';
+import { registerProfilesIpc } from './profilesIpc';
 import { ProjectCatalog } from './projectCatalog';
 import { registerProjectsIpc } from './projectsIpc';
 import { buildQuitPrompt, QuitCoordinator } from './quitFlow';
+import { RosterStore } from './rosterStore';
 import { SessionManager } from './sessionManager';
 import { attachRegistry, SessionRegistry } from './sessionRegistry';
 import { Shell, type TrayLike } from './shell';
+import { SPAWN_APPROVAL_CHANNELS } from './spawnApprovalChannels';
+import { registerSpawnApprovalIpc } from './spawnApprovalIpc';
 import { renderTrayIcon } from './trayIcon';
 import { createUpdateService, type UpdateService, type UpdateState } from './updater';
 import { createUpdateStatusPusher, registerUpdaterIpc } from './updaterIpc';
@@ -185,7 +221,13 @@ function main(): void {
     isExecutable: realIsExecutable,
     runShell: realRunShell,
   });
+  const rosterStore = new RosterStore(join(app.getPath('userData'), 'rosters.json'));
+  const agentBus = new AgentBus({ roster: rosterStore });
   const sessions = new SessionManager({
+    agentBus: {
+      issue: (session) => (agentBus.listening ? agentBus.registerSession(session) : null),
+      revoke: (sessionId) => agentBus.revokeSession(sessionId),
+    },
     spawn: (file, args, options) => spawnPty(file, args, { name: 'xterm-256color', ...options }),
     resolveClaude: () => resolver.resolveClaude(config.get().claudePath),
     maxSessions: () => config.get().maxSessions,
@@ -206,6 +248,12 @@ function main(): void {
     isExecutable: realIsExecutable,
     trusted,
     target: () => window?.webContents,
+    // Only real keystrokes count: focus reports and terminal replies start with ESC.
+    onUserInput: (id, data) => {
+      if (data.startsWith('\u001b')) return;
+      const cwd = sessions.list().find((s) => s.id === id)?.cwd;
+      if (cwd) messaging.userActivity(cwd);
+    },
   });
 
   const catalog = new ProjectCatalog({
@@ -226,6 +274,281 @@ function main(): void {
         : await dialog.showOpenDialog(options);
       return result.canceled ? null : (result.filePaths[0] ?? null);
     },
+  });
+
+  const profileLibrary = new ProfileLibrary({
+    dir: join(app.getPath('userData'), 'profiles'),
+    usage: (id) => rosterStore.projectsUsing(id),
+  });
+  registerProfilesIpc({
+    ipcMain: { handle: (channel, listener) => ipcMain.handle(channel, listener) },
+    library: profileLibrary,
+    roster: rosterStore,
+    audit: {
+      history: (cwd) => spawnAgents.history(cwd),
+      removedByUser: (cwd, entry) => spawnAgents.recordRemovedByUser(cwd, entry),
+    },
+    comms: {
+      status: (cwd) => breaker.status(cwd),
+      mute: (cwd, entryId, muted) => messaging.setMuted(cwd, entryId, muted),
+      resume: (cwd) => messaging.resume(cwd),
+      stop: (cwd) => messaging.stopConversations(cwd),
+    },
+    trusted,
+  });
+
+  const managedSessions = new ManagedSessions({
+    host: sessions,
+    library: profileLibrary,
+    roster: rosterStore,
+    maxSessions: () => config.get().maxSessions,
+    liveCount: () => sessions.list().length,
+  });
+  // Agent-to-agent messages (spec 068): in-memory queues, delivered to the pty of an idle agent.
+  const idleSource = new OfficeIdleSource({ url: `${origin.replace(/^http/, 'ws')}/stream` });
+  const breaker = new CircuitBreaker({
+    onPause: (cwd, hops) => {
+      const name = basename(cwd);
+      notify(
+        'Agents Office: conversa entre agentes pausada',
+        `${hops} mensagens seguidas em "${name}" sem intervenção. Abra o app para continuar ou encerrar.`,
+        () => shellState?.showWindow(),
+      );
+      void askPausedChoice(cwd, name, hops);
+    },
+  });
+  const askPausedChoice = async (cwd: string, name: string, hops: number): Promise<void> => {
+    const options: Electron.MessageBoxOptions = {
+      type: 'question',
+      title: 'Agents Office',
+      message: `Os agentes de "${name}" trocaram ${hops} mensagens seguidas sem intervenção.`,
+      detail: 'As entregas estão pausadas. Continuar a conversa ou encerrá-la?',
+      buttons: ['Continuar', 'Encerrar'],
+      defaultId: 1,
+      cancelId: 1,
+      noLink: true,
+    };
+    const parent = window?.isVisible() ? window : undefined;
+    const result = parent
+      ? await dialog.showMessageBox(parent, options)
+      : await dialog.showMessageBox(options);
+    // The user may have typed in the meantime, which already resumed the project.
+    if (!breaker.isPaused(cwd)) return;
+    if (result.response === 0) messaging.resume(cwd);
+    else messaging.stopConversations(cwd);
+  };
+  const messageQueue = new MessageQueue();
+  const commsLog = new CommsLog();
+  commsLog.attach(messageQueue);
+  const messaging = new Messaging({
+    breaker,
+    queue: messageQueue,
+    idle: idleSource,
+    write: (terminalId, data) => sessions.write(terminalId, data),
+    directory: {
+      entries: (cwd) =>
+        rosterStore.get(cwd).entries.flatMap((entry) => {
+          const entryId = rosterEntryId(entry);
+          const name =
+            entry.kind === 'inline' ? entry.name : profileLibrary.get(entry.profileId)?.name;
+          return name ? [{ entryId, name }] : [];
+        }),
+      terminalOf: (cwd, entryId) =>
+        managedSessions.list().sessions.find((s) => s.cwd === cwd && s.entryId === entryId)
+          ?.terminalId ?? null,
+      canTalk: (cwd, a, b) => rosterStore.canTalk(cwd, a, b),
+    },
+  });
+  for (const tool of messagingTools(messaging)) agentBus.registerTool(tool);
+  // Orchestrators create and dismiss agents (spec 072); each creation waits for the approval card
+  // (spec 073) unless the user granted "allow without asking" to that orchestrator in the project.
+  const spawnApprovals = new SpawnApprovals({
+    path: join(app.getPath('userData'), 'spawn-approvals.json'),
+    pushRequest: (request) => {
+      const contents = window?.webContents;
+      if (contents && !contents.isDestroyed())
+        contents.send(SPAWN_APPROVAL_CHANNELS.request, request);
+    },
+    pushResolved: (id) => {
+      const contents = window?.webContents;
+      if (contents && !contents.isDestroyed()) contents.send(SPAWN_APPROVAL_CHANNELS.resolved, id);
+    },
+    notify: (request) =>
+      notifications.notifyPermission(
+        request.id,
+        'Criar agente?',
+        `${request.orchestratorName} quer criar "${request.name}".`,
+        () => shellState?.showWindow(),
+      ),
+    dismissNotice: (id) => notifications.dismiss(id),
+  });
+  registerSpawnApprovalIpc({
+    ipcMain: { handle: (channel, listener) => ipcMain.handle(channel, listener) },
+    approvals: spawnApprovals,
+    trusted,
+  });
+  const spawnAgents = new SpawnAgents({
+    roster: rosterStore,
+    names: (cwd) =>
+      rosterStore.get(cwd).entries.flatMap((entry) => {
+        const name =
+          entry.kind === 'inline' ? entry.name : profileLibrary.get(entry.profileId)?.name;
+        return name ? [{ entryId: rosterEntryId(entry), name }] : [];
+      }),
+    sessions: {
+      start: (cwd, entryId, task) => managedSessions.start(cwd, entryId, task),
+      stop: (cwd, entryId) => managedSessions.stop(cwd, entryId),
+    },
+    approve: spawnApprovals.approve,
+    auditStorage: fileAuditStorage(join(app.getPath('userData'), 'spawn-audit.json')),
+  });
+  for (const tool of spawnTools(spawnAgents)) agentBus.registerTool(tool);
+  // Shared whiteboard (spec 075): one scene per project, drawn by agents through board_* tools.
+  const boardStore = new BoardStore({ dir: join(app.getPath('userData'), 'boards') });
+  // Shape libraries (.excalidrawlib, spec 079) live in the app's data folder.
+  const libraryStore = new LibraryStore({ dir: join(app.getPath('userData'), 'board-libraries') });
+  // Mermaid needs a DOM: the window converts it (spec 079); fails with `unavailable` without one.
+  const mermaidRelay = createMermaidRelay({
+    ipcMain: { handle: (channel, listener) => ipcMain.handle(channel, listener) },
+    trusted,
+    target: () => window?.webContents,
+  });
+  const agentDisplayName = (session: { cwd: string; entryId: string | null }): string => {
+    const entry = rosterStore
+      .get(session.cwd)
+      .entries.find((candidate) => rosterEntryId(candidate) === session.entryId);
+    if (!entry) return 'Agente';
+    return (
+      (entry.kind === 'inline' ? entry.name : profileLibrary.get(entry.profileId)?.name) ?? 'Agente'
+    );
+  };
+  const boardAgentTools = new BoardTools({
+    store: boardStore,
+    libraries: libraryStore,
+    mermaid: (definition) => mermaidRelay.convert(definition),
+    authorName: (session) => agentDisplayName(session),
+    approveClearAll: async ({ authorName }) => {
+      const options = {
+        type: 'question' as const,
+        buttons: ['Limpar tudo', 'Cancelar'],
+        defaultId: 1,
+        cancelId: 1,
+        title: 'Limpar o quadro',
+        message: `${authorName} quer limpar o quadro inteiro.`,
+        detail: 'Isso apaga também o que você e outros agentes desenharam.',
+      };
+      const parent = window && !window.isDestroyed() ? window : null;
+      const result = parent
+        ? await dialog.showMessageBox(parent, options)
+        : await dialog.showMessageBox(options);
+      return result.response === 0;
+    },
+  });
+  for (const tool of boardTools(boardAgentTools)) agentBus.registerTool(tool);
+  // Whiteboard overlay (spec 077): scene load/save from the window, agent drawings pushed to it.
+  registerBoardIpc({
+    ipcMain: { handle: (channel, listener) => ipcMain.handle(channel, listener) },
+    store: boardStore,
+    libraries: libraryStore,
+    trusted,
+    target: () => window?.webContents,
+  });
+  // Embedded browser (spec 080): one view per workspace, shown as a dock tab of the window.
+  // Agent actions on a browser are serialized per workspace; the window shows who is using it.
+  const browserQueue = new BrowserQueue({ onChange: (cwd) => browserHost.notify(cwd) });
+  // Confirmation cards (spec 083): downloads, site permissions and browser_eval wait for "Permitir".
+  const browserApprovals = new BrowserApprovals({
+    pushRequest: (request) => {
+      const contents = window?.webContents;
+      if (contents && !contents.isDestroyed())
+        contents.send(BROWSER_APPROVAL_CHANNELS.request, request);
+    },
+    pushResolved: (id) => {
+      const contents = window?.webContents;
+      if (contents && !contents.isDestroyed())
+        contents.send(BROWSER_APPROVAL_CHANNELS.resolved, id);
+    },
+    notify: (request) =>
+      notifications.notifyPermission(request.id, 'Navegador', request.title, () =>
+        shellState?.showWindow(),
+      ),
+    dismissNotice: (id) => notifications.dismiss(id),
+  });
+  // "Pausar agentes": the tools answer "paused by the user" and open cards are denied.
+  const browserPause = new BrowserPause((cwd, paused) => {
+    if (paused) browserApprovals.denyWorkspace(cwd);
+    browserHost.notify(cwd);
+  });
+  registerBrowserApprovalIpc({
+    ipcMain: { handle: (channel, listener) => ipcMain.handle(channel, listener) },
+    approvals: browserApprovals,
+    trusted,
+  });
+  const browserHost: BrowserHost = new BrowserHost({
+    createView: createElectronBrowserViews(() => window, createBrowserGuard(browserApprovals)),
+    decorate: (state) => {
+      const active = browserQueue.current(state.cwd);
+      const queued = browserQueue.pending(state.cwd);
+      const base = browserPause.isPaused(state.cwd) ? { ...state, paused: true } : state;
+      return active
+        ? { ...base, agent: active.actor.name, ...(queued > 0 ? { queued } : {}) }
+        : base;
+    },
+    onState: (state) => {
+      const target = window?.webContents;
+      if (target && !target.isDestroyed()) target.send(BROWSER_CHANNELS.state, state);
+    },
+  });
+  // Browser tools of the Agent Bus (spec 081): CDP driver behind the queue.
+  const browserAgentTools = new BrowserTools({
+    driver: new BrowserDriver({ host: browserHost }),
+    queue: browserQueue,
+    authorName: (session) => agentDisplayName(session),
+    isPaused: (cwd) => browserPause.isPaused(cwd),
+    confirmEval: (session, agentName, expression) =>
+      browserApprovals.ask({
+        cwd: session.cwd,
+        kind: 'eval',
+        title: `${agentName} quer executar JavaScript na página`,
+        detail: expression.slice(0, 2000),
+        agentName,
+      }),
+  });
+  for (const tool of browserTools(browserAgentTools)) agentBus.registerTool(tool);
+  // Element picker (spec 084): the user points at an element; the window reviews it before sending.
+  const browserPicker = new BrowserPicker({
+    host: browserHost,
+    push: (event) => {
+      const target = window?.webContents;
+      if (target && !target.isDestroyed()) target.send(BROWSER_CHANNELS.pick, event);
+    },
+    saveScreenshot: createPickScreenshotSaver(join(app.getPath('userData'), 'browser-picks')),
+  });
+  registerBrowserIpc({
+    ipcMain: { handle: (channel, listener) => ipcMain.handle(channel, listener) },
+    host: browserHost,
+    picker: browserPicker,
+    trusted,
+    pause: browserPause,
+    stateOf: (cwd) => browserHost.state(cwd),
+  });
+  messaging.start();
+  idleSource.start();
+  const messagingTimer = setInterval(() => messaging.flush(), 5000);
+  messagingTimer.unref();
+
+  registerCommsIpc({
+    ipcMain: { handle: (channel, listener) => ipcMain.handle(channel, listener) },
+    log: commsLog,
+    trusted,
+    target: () => window?.webContents,
+  });
+
+  registerManagedIpc({
+    ipcMain: { handle: (channel, listener) => ipcMain.handle(channel, listener) },
+    managed: managedSessions,
+    trusted,
+    target: () => window?.webContents,
   });
 
   registerExternalIpc({
@@ -315,6 +638,11 @@ function main(): void {
       event.preventDefault();
       if (action === 'open-external') void electronShell.openExternal(url);
     };
+    // A reload of the page loses the dock tab that positions the browser view: hide it until the
+    // renderer shows it again.
+    win.webContents.on('did-start-navigation', (details) => {
+      if (details.isMainFrame && !details.isSameDocument) browserHost.hide();
+    });
     win.webContents.on('will-navigate', guard);
     win.webContents.on('will-redirect', guard);
     win.webContents.setWindowOpenHandler(({ url }) => {
@@ -407,7 +735,15 @@ function main(): void {
       shellState?.markQuitting();
       if (keepRecoverable) registry.keepOnExitFromNow();
       watcher?.stop();
+      clearInterval(messagingTimer);
+      spawnApprovals.denyAll('The app is closing.');
+      browserApprovals.denyAll();
+      browserHost.dispose();
+      idleSource.stop();
+      messaging.stop();
+      commsLog.detach();
       await sessions.killAll();
+      await agentBus.stop();
       await controller.stop();
     },
     finish: ({ install }) => {
@@ -437,6 +773,12 @@ function main(): void {
   }
 
   void app.whenReady().then(() => {
+    // The roster reopens from scratch (no --resume) once the Agent Bus can issue credentials.
+    void agentBus
+      .start()
+      .catch((error) => console.error('Agent Bus failed to start:', error))
+      .then(() => managedSessions.reopenAll())
+      .catch((error) => console.error('Reopening the roster failed:', error));
     // 'shutdown' (Linux/macOS) is missing from Electron's typings.
     (powerMonitor as unknown as NodeJS.EventEmitter).on('shutdown', (event: Electron.Event) => {
       event.preventDefault();

@@ -1,5 +1,6 @@
-import type { OfficeModel } from '@agents-office/shared';
+import type { ManagedSessionInfo, OfficeModel } from '@agents-office/shared';
 import Phaser from 'phaser';
+import type { Appearance } from '../characters/appearance';
 import { CharacterController } from '../characters/characterController';
 import { CharacterFactory } from '../characters/characterFactory';
 import { type DebugState, installDebugState, updateDebugState } from '../debug/debugState';
@@ -8,6 +9,7 @@ import { PlayerAvatar } from '../player/player';
 import { DirectionInput, directionBetween } from '../player/playerMotion';
 import { type Direction, type LoadedSkin, SKIN_KEYS, tileFrame } from '../skin';
 import { decideClick } from '../ui/clickDecision';
+import { commsBridgeOf } from '../ui/commsBinding';
 import { DialogBox } from '../ui/dialogBox';
 import { type DialogAction, pagesFor, sessionActions } from '../ui/dialogContent';
 import { hallOfFamePages } from '../ui/hallOfFame';
@@ -23,12 +25,20 @@ import {
   promptFor,
   roomFront,
 } from '../ui/hudLogic';
+import { type ManagedLook, managedLooks, REGISTRY_MANAGED } from '../ui/managedBinding';
 import { ROLE_COLOR, STATUS_COLOR } from '../ui/nameTag';
 import { DARK_PANEL, drawPanel } from '../ui/panel';
 import { pendingActorIds } from '../ui/permissionLogic';
 import { PromptBar } from '../ui/promptBar';
 import { doorAt, roomCwd, sessionIdByTerminal } from '../ui/sessionBinding';
 import { UiOverlay } from '../ui/uiOverlay';
+import {
+  BOARD_LABEL,
+  BOARD_OPEN_EVENT,
+  type BoardOpenRequest,
+  boardAtPoint,
+  boardSpots,
+} from '../world/boardProp';
 import { DeskScreens } from '../world/deskScreens';
 import { DoorAnimator } from '../world/doors';
 import { LayoutInputBuilder } from '../world/layoutInput';
@@ -126,6 +136,9 @@ export class OfficeScene extends Phaser.Scene {
   private reveals: Reveal[] = [];
   /** Props on screen, by `id@x,y`. */
   private props = new Map<string, Phaser.GameObjects.Image>();
+  /** The whiteboard under the pointer (highlighted, hand cursor, label). */
+  private hoveredBoard: BoardOpenRequest | undefined;
+  private boardLabel: Phaser.GameObjects.Text | undefined;
   /** Whether the skin has a props atlas (else the furniture tiles are drawn). */
   private propsActive = false;
   /** Furniture cells hidden because a prop is drawn over them (`x,y`). */
@@ -203,11 +216,14 @@ export class OfficeScene extends Phaser.Scene {
       this.dirty = true;
     });
     const offEvent = this.client.on('event', (event) => this.controller.noteEvent(event));
+    // Messages between agents: the sender walks to the recipient's desk (desktop shell only).
+    const offComms = commsBridgeOf(window)?.onEvent((event) => this.controller.noteComm(event));
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       this.scale.off(Phaser.Scale.Events.RESIZE, onResize);
       offConnection();
       offModel();
       offEvent();
+      offComms?.();
       this.game.events.off(ZOOM_STEP_EVENT, this.zoomBy, this);
       this.game.events.off(TERMINAL_ACTIVE_EVENT, this.onTerminalActive, this);
       this.controller.destroy();
@@ -373,6 +389,20 @@ export class OfficeScene extends Phaser.Scene {
   }
 
   /** One zoom step closer (1) or farther (-1); ignored in the overview. */
+  private managedCache:
+    | { model: OfficeModel; list: unknown; looks: ReadonlyMap<string, ManagedLook> }
+    | undefined;
+
+  /** Looks of the managed sessions, recomputed only when the model or the list changes. */
+  private managedLooksFor(model: OfficeModel): ReadonlyMap<string, ManagedLook> {
+    const list = (this.registry.get(REGISTRY_MANAGED) as ManagedSessionInfo[] | undefined) ?? [];
+    const cache = this.managedCache;
+    if (cache && cache.model === model && cache.list === list) return cache.looks;
+    const looks = managedLooks(model, list);
+    this.managedCache = { model, list, looks };
+    return looks;
+  }
+
   private onTerminalActive(terminalId: string | undefined): void {
     this.activeTerminal = terminalId;
   }
@@ -442,6 +472,11 @@ export class OfficeScene extends Phaser.Scene {
   }
 
   /** The desktop shell's actions; undefined in the browser, where the game has none. */
+  /** Draws an avatar look (profile editor preview) onto `canvas`. */
+  drawAvatarPreview(look: Appearance, canvas: HTMLCanvasElement): void {
+    this.factory?.drawPreview(look, canvas);
+  }
+
   private desktopActions() {
     return window.__desktopActions;
   }
@@ -501,21 +536,66 @@ export class OfficeScene extends Phaser.Scene {
     const world = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
     const target = this.controller.characterAtPoint(world.x, world.y);
     const session = target ? this.client.getModel().sessions[target] : undefined;
+    const board = target ? undefined : boardAtPoint(boardSpots(this.layout), world, TILE);
     const decision = decideClick({
-      target: session ? 'tech-lead' : target ? 'other' : 'empty',
+      target: session ? 'tech-lead' : target ? 'other' : board ? 'board' : 'empty',
       session,
       desktop: desktop !== undefined,
       // The scene cannot see the tabs: openTerminal() answers false for a closed one.
       tabExists: true,
       overlayOpen: false,
     });
-    if (decision === 'collapse') desktop?.collapseTerminal();
+    if (decision === 'open-board' && board) this.game.events.emit(BOARD_OPEN_EVENT, board);
+    else if (decision === 'collapse') desktop?.collapseTerminal();
     else if (target && decision === 'open-terminal' && session?.terminalId) {
       if (!desktop?.openTerminal(session.terminalId)) {
         this.openDialog(target);
         this.showToast('TERMINAL FECHADO', 0xe8c14a);
       }
     } else if (target && decision === 'open-dialog') this.openDialog(target);
+  }
+
+  /** Highlights the whiteboard under the pointer, with a hand cursor and an explicit label. */
+  private updateBoardHover(world: { x: number; y: number } | undefined): void {
+    const blocked = this.help.isOpen || this.dialog.isOpen || this.overview;
+    const hit =
+      world &&
+      !blocked &&
+      this.desktopActions() &&
+      !this.controller.characterAtPoint(world.x, world.y)
+        ? boardAtPoint(boardSpots(this.layout), world, TILE)
+        : undefined;
+    if (hit?.roomId === this.hoveredBoard?.roomId && hit?.x === this.hoveredBoard?.x) return;
+    if (this.hoveredBoard) this.setBoardHighlight(this.hoveredBoard, false);
+    this.hoveredBoard = hit;
+    if (hit) this.setBoardHighlight(hit, true);
+    this.input.setDefaultCursor(hit ? 'pointer' : '');
+    if (!hit) {
+      this.boardLabel?.setVisible(false);
+      return;
+    }
+    if (!this.boardLabel) {
+      this.boardLabel = this.add
+        .text(0, 0, BOARD_LABEL, {
+          fontFamily: 'monospace',
+          fontSize: '8px',
+          color: '#ffffff',
+          backgroundColor: '#1d2433',
+          padding: { x: 3, y: 2 },
+        })
+        .setOrigin(0.5, 1)
+        .setDepth(DEPTH.vignette - 1);
+    }
+    this.boardLabel
+      .setPosition((hit.x + hit.w / 2) * TILE, (hit.y - 1) * TILE - 2)
+      .setVisible(true);
+  }
+
+  private setBoardHighlight(board: BoardOpenRequest, on: boolean): void {
+    const image = this.props.get(`whiteboard@${board.x},${board.y}`);
+    if (!image) return;
+    if (on) image.setTint(0xfff2b0);
+    else image.clearTint();
   }
 
   private openDialog(id: string): void {
@@ -877,6 +957,8 @@ export class OfficeScene extends Phaser.Scene {
     this.controller.setFocus(player.tile, world && { x: world.x, y: world.y });
     const facingId = this.controller.characterAtTile(player.frontTile());
     const hoveredId = world ? this.controller.characterAtPoint(world.x, world.y) : undefined;
+    this.updateBoardHover(world);
+    this.controller.setManaged(this.managedLooksFor(model));
     this.controller.setActiveLead(sessionIdByTerminal(model, this.activeTerminal));
     this.controller.setHighlight(this.overview ? undefined : (hoveredId ?? facingId));
     const permissions = this.client.getPermissions();

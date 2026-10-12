@@ -1,4 +1,6 @@
 import type {
+  BrowserBridge,
+  BrowserState,
   TerminalBridge,
   TerminalDataEvent,
   TerminalExitEvent,
@@ -8,10 +10,14 @@ import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import { Terminal } from '@xterm/xterm';
 import '@xterm/xterm/css/xterm.css';
+import { BROWSER_CSS, type BrowserPane, createBrowserPane } from './browserPane';
+import { pickTargets } from './browserPickLogic';
 import {
   activeTab,
   addTab,
   applyActivity,
+  browserTabId as browserTabIdOf,
+  browserTargetCwd,
   clampHeight,
   clampWidth,
   clipboardAction,
@@ -21,11 +27,13 @@ import {
   DEFAULT_PANEL_WIDTH,
   exitMessage,
   type FocusOwner,
+  isBrowserTab,
   isToggleShortcut,
   keyboardOwner,
   layoutKey,
   markExited,
   needsCloseConfirm,
+  openBrowserTab,
   type PanelDock,
   type PanelModel,
   panelOccupiedHeight,
@@ -39,6 +47,7 @@ import {
   setFocus,
   setHeight,
   setWidth,
+  shownTerminalId,
   TAB_BAR_HEIGHT,
   tabTitle,
   toggleCollapsed,
@@ -48,7 +57,7 @@ import {
 export const TERMINAL_PANEL_KEY = 'agents-office.terminalPanel';
 const SCROLLBACK = 5000;
 
-const CSS = `
+const CSS = `${BROWSER_CSS}
 #ao-terminal{box-sizing:border-box;flex:none;display:flex;flex-direction:column;position:relative;background:#0d1020;
   border-top:2px solid #3a3f5c;font:12px monospace;color:#f0e6b8;min-height:0;min-width:0;overflow:hidden;max-height:100%}
 #ao-terminal[data-dock="left"]{border-top:0;border-right:2px solid #3a3f5c;order:-1;max-height:none;max-width:100%}
@@ -153,6 +162,8 @@ export interface TerminalPanelOptions {
   onActiveChange?(terminalId: string | undefined): void;
   /** The office area changed size (panel opened, collapsed, dragged). */
   onLayout(): void;
+  /** Embedded browser of the desktop shell; the "Navegador" button shows only when given. */
+  browser?: BrowserBridge;
 }
 
 export interface TerminalPanel {
@@ -168,10 +179,14 @@ export interface TerminalPanel {
   focusTerminal(): void;
   /** Office state of the sessions bound to tabs, by terminal id (shown in the tab titles). */
   setActivity(activity: Readonly<Record<string, string>>): void;
+  /** Tooltip of each tab by terminal id (the original task of a created agent). */
+  setTabHints(hints: Readonly<Record<string, string>>): void;
   /** The pointer went to the office: keys go to the player again. */
   focusPlayer(): void;
   /** Minimizes the panel (keeps tabs and sessions) and gives the keyboard back to the game. */
   collapse(): void;
+  /** Opens (or shows) the browser tab of a workspace; false without the browser bridge. */
+  openBrowser(cwd?: string): boolean;
   /** True when the terminal owns the keyboard. */
   readonly terminalFocused: boolean;
   destroy(): void;
@@ -221,6 +236,7 @@ export function mountTerminalPanel(
   options: TerminalPanelOptions,
 ): TerminalPanel {
   document.head.append(Object.assign(document.createElement('style'), { textContent: CSS }));
+  const ptyBridge = bridge;
   const stored = readStored();
   let model = createPanelModel(
     clampHeight(stored.height ?? DEFAULT_PANEL_HEIGHT, window.innerHeight),
@@ -266,17 +282,31 @@ export function mountTerminalPanel(
     const tab = activeTab(model);
     if (tab) options.onOpenInVSCode?.(tab.cwd);
   });
+  const browserBtn = el('button', 'ao-term-btn', 'terminal-browser', 'Navegador');
+  browserBtn.title = 'Abrir o navegador do projeto';
+  browserBtn.hidden = !options.browser;
+  browserBtn.addEventListener('click', () => {
+    openBrowser();
+  });
   const confirmEl = el('div', 'ao-term-confirm', 'terminal-confirm');
   confirmEl.hidden = true;
   const body = el('div', 'ao-term-body');
   tabsEl.addEventListener('wheel', (event) => {
     if (wheelScrollTabs(tabsEl, event.deltaY)) event.preventDefault();
   });
-  bar.append(tabsEl, focusLabel, vscodeBtn, docksEl, toggleBtn);
+  bar.append(tabsEl, focusLabel, browserBtn, vscodeBtn, docksEl, toggleBtn);
   root.append(resizer, bar, confirmEl, body);
   options.gameParent.after(root);
 
   const views = new Map<string, View>();
+  /** Browser tabs (by tab id): toolbar + stage; the page is a native view placed over the stage. */
+  const panes = new Map<string, BrowserPane>();
+  const paneCleanups = new Map<string, () => void>();
+  /** Workspace whose native browser view this panel last asked to show (undefined: hidden). */
+  let shownBrowser: string | undefined;
+  /** Browser tab whose review dialog covers the page (the native view stays hidden meanwhile). */
+  let coveredBrowser: string | undefined;
+  let boundsFrame = 0;
   /** Sessions closed by the user: late output of a killed process must not reopen the tab. */
   const closed = new Set<string>();
   const adopting = new Set<string>();
@@ -284,6 +314,7 @@ export function mountTerminalPanel(
   let confirmingId: string | undefined;
   let lastOwner: FocusOwner | undefined;
   let activity: Readonly<Record<string, string>> = {};
+  let tabHints: Readonly<Record<string, string>> = {};
 
   let lastLayoutKey: string | undefined;
   let layoutPending = false;
@@ -383,7 +414,7 @@ export function mountTerminalPanel(
     root.dataset.collapsed = String(model.collapsed);
     root.dataset.dock = model.dock;
     document.body.dataset.dock = model.dock;
-    const shown = model.tabs.length > 0 && !model.collapsed ? model.activeId : undefined;
+    const shown = shownTerminalId(model);
     if (shown !== lastShown) {
       lastShown = shown;
       options.onActiveChange?.(shown);
@@ -398,6 +429,8 @@ export function mountTerminalPanel(
         const node = el('div', 'ao-term-tab', `terminal-tab-${tab.id}`);
         node.dataset.active = String(tab.id === model.activeId);
         node.dataset.state = tab.state;
+        const hint = tabHints[tab.id];
+        if (hint) node.title = hint;
         const title = el('span', 'ao-term-tab-title', undefined, tabTitle(tab));
         const close = el('button', 'ao-term-x', `terminal-close-${tab.id}`, '×');
         close.title = 'Fechar aba';
@@ -413,6 +446,7 @@ export function mountTerminalPanel(
     for (const [id, view] of views) {
       view.host.hidden = id !== model.activeId || model.collapsed;
     }
+    for (const [id, pane] of panes) pane.host.hidden = id !== model.activeId || model.collapsed;
     // jsdom has no scrollIntoView; real browsers keep the active tab visible without touching the page scroll.
     const activeNode = tabsEl.querySelector<HTMLElement>('.ao-term-tab[data-active="true"]');
     if (typeof activeNode?.scrollIntoView === 'function') {
@@ -422,6 +456,7 @@ export function mountTerminalPanel(
     applyOwner();
     publishDebug();
     emitLayout();
+    scheduleBrowserSync();
   }
 
   /** Arrow pointing where the panel goes when pressed: expands towards the office, collapses to its edge. */
@@ -474,6 +509,82 @@ export function mountTerminalPanel(
     if (tab && !model.collapsed) views.get(tab.id)?.term.focus();
   }
 
+  /** Puts the native browser view over the stage of the active browser tab, or hides it. */
+  function syncBrowser(): void {
+    const bridge = options.browser;
+    if (!bridge) return;
+    const tab = activeTab(model);
+    const pane =
+      tab && isBrowserTab(tab) && !model.collapsed && coveredBrowser !== tab.id
+        ? panes.get(tab.id)
+        : undefined;
+    if (!tab || !pane) {
+      if (shownBrowser !== undefined) {
+        shownBrowser = undefined;
+        void bridge.hide().catch(() => {});
+      }
+      return;
+    }
+    const bounds = pane.stageBounds();
+    if (bounds.width <= 0 || bounds.height <= 0) return;
+    if (shownBrowser === tab.cwd) {
+      void bridge.setBounds(bounds).catch(() => {});
+      return;
+    }
+    shownBrowser = tab.cwd;
+    void bridge
+      .show(tab.cwd, bounds)
+      .then((result) => {
+        if (result.ok) pane.update(result.state);
+      })
+      .catch(() => {});
+  }
+
+  function scheduleBrowserSync(): void {
+    if (!options.browser) return;
+    cancelAnimationFrame(boundsFrame);
+    boundsFrame = requestAnimationFrame(syncBrowser);
+  }
+
+  function openBrowser(cwd = browserTargetCwd(model)): boolean {
+    const bridge = options.browser;
+    if (!bridge || cwd === undefined) return false;
+    const existing = model.tabs.find((t) => isBrowserTab(t) && t.cwd === cwd);
+    if (!existing) {
+      const tabId = browserTabIdOf(cwd);
+      const pane = createBrowserPane(bridge, cwd, {
+        pickTargets: () => pickTargets(model.tabs, cwd),
+        writeTerminal: (id, data) => ptyBridge.write(id, data),
+        onPickReview(open) {
+          // The page is a native view over the window: it hides while the review dialog is open.
+          if (open) coveredBrowser = tabId;
+          else if (coveredBrowser === tabId) coveredBrowser = undefined;
+          scheduleBrowserSync();
+        },
+        onPickSent(id) {
+          if (model.tabs.some((t) => t.id === id)) activate(id, true);
+        },
+        onFocusChange(focused) {
+          model = setFocus(model, focused ? 'terminal' : 'player');
+          applyOwner();
+          publishDebug();
+        },
+      });
+      body.append(pane.host);
+      panes.set(tabId, pane);
+      paneCleanups.set(tabId, pane.onStageResize(scheduleBrowserSync));
+    }
+    model = openBrowserTab(model, cwd);
+    if (model.collapsed) {
+      model = toggleCollapsed(model);
+      writeStored(model);
+    }
+    // The page owns the keyboard once shown; the address field takes it back only when focused.
+    model = setFocus(model, 'player');
+    render();
+    return true;
+  }
+
   function activate(id: string, focus: boolean): void {
     model = setActive(model, id);
     render();
@@ -491,7 +602,23 @@ export function mountTerminalPanel(
     } else closeTab(id, false);
   }
 
+  function closeBrowserTab(id: string): void {
+    // Only the tab goes away: the browser of the workspace (page, cookies) and the agents'
+    // sessions keep running in the shell, hidden.
+    paneCleanups.get(id)?.();
+    paneCleanups.delete(id);
+    panes.get(id)?.destroy();
+    panes.delete(id);
+    model = removeTab(model, id);
+    render();
+    if (model.focus === 'terminal') focusActive();
+  }
+
   function closeTab(id: string, kill: boolean): void {
+    if (panes.has(id)) {
+      closeBrowserTab(id);
+      return;
+    }
     closed.add(id);
     if (kill) void bridge.kill(id).catch(() => {});
     const view = views.get(id);
@@ -643,6 +770,12 @@ export function mountTerminalPanel(
       if (view.ready) view.term.write(event.data);
     } else if (!closed.has(event.id)) void adopt(event.id);
   });
+  const offBrowserPick = options.browser?.onPick((event) => {
+    for (const pane of panes.values()) pane.handlePick(event);
+  });
+  const offBrowserState = options.browser?.onState((state: BrowserState) => {
+    for (const pane of panes.values()) pane.update(state);
+  });
   const offExit = bridge.onExit((event: TerminalExitEvent) => {
     const view = views.get(event.id);
     if (!view) return;
@@ -743,6 +876,14 @@ export function mountTerminalPanel(
       activity = next;
       render();
     },
+    setTabHints(next) {
+      const same =
+        Object.keys(next).length === Object.keys(tabHints).length &&
+        Object.entries(next).every(([id, value]) => tabHints[id] === value);
+      if (same) return;
+      tabHints = next;
+      render();
+    },
     focusPlayer() {
       model = setFocus(model, 'player');
       (document.activeElement as HTMLElement | null)?.blur();
@@ -756,12 +897,18 @@ export function mountTerminalPanel(
       render();
       (document.activeElement as HTMLElement | null)?.blur();
     },
+    openBrowser: (cwd) => openBrowser(cwd),
     get terminalFocused() {
       return keyboardOwner(model) === 'terminal';
     },
     destroy() {
       offData();
       offExit();
+      offBrowserState?.();
+      offBrowserPick?.();
+      cancelAnimationFrame(boundsFrame);
+      for (const cleanup of paneCleanups.values()) cleanup();
+      if (shownBrowser !== undefined) void options.browser?.hide().catch(() => {});
       document.removeEventListener('keydown', onKeydown, true);
       window.removeEventListener('resize', onWindowResize);
       bodyObserver?.disconnect();

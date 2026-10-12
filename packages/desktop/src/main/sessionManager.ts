@@ -7,6 +7,7 @@ import type {
   TerminalPermissionMode,
   TerminalSessionInfo,
 } from '@agents-office/shared';
+import { buildMcpConfig } from './agentBus/server';
 import { ClaudeNotFound } from './binaries';
 import { RingBuffer, type RingBufferLimits } from './ringBuffer';
 
@@ -40,6 +41,16 @@ export interface StartOptions {
   args?: string[];
   cols?: number;
   rows?: number;
+  /** Text appended to the system prompt (`--append-system-prompt`); adds to CLAUDE.md. */
+  instructions?: string;
+  /** Model alias or id (`--model`). */
+  model?: string;
+  /** Library profile / roster entry id of the agent; exported as AGENTS_OFFICE_PROFILE_ID. */
+  profileId?: string;
+  /** Project id (its path); exported as AGENTS_OFFICE_PROJECT_ID. */
+  projectId?: string;
+  /** Role used to pick the Agent Bus tools. Default 'padrao'. */
+  role?: string;
 }
 
 export class SessionError extends Error {
@@ -69,6 +80,19 @@ export interface SessionManagerOptions {
    * it signals real pids: tests with fake ptys must not set it.
    */
   killGroup?: (pid: number, signal: 'SIGHUP' | 'SIGKILL') => void;
+  /**
+   * Agent Bus hooks: `issue` returns the MCP credentials for the new session (null = no bus),
+   * `revoke` is called when the session ends.
+   */
+  agentBus?: {
+    issue(session: {
+      sessionId: string;
+      entryId: string | null;
+      cwd: string;
+      role: string;
+    }): { url: string; token: string } | null;
+    revoke(sessionId: string): void;
+  };
   newId?: () => string;
   now?: () => Date;
 }
@@ -135,21 +159,33 @@ export class SessionManager {
       args = [];
       env.PATH = claude.pathEnv;
     }
+    const id = this.options.newId?.() ?? `term-${randomUUID()}`;
     if (!start.command) {
+      if (start.instructions) args.push('--append-system-prompt', start.instructions);
+      if (start.model) args.push('--model', start.model);
+      const credentials = this.options.agentBus?.issue({
+        sessionId: id,
+        entryId: start.profileId ?? null,
+        cwd: start.cwd,
+        role: start.role ?? 'padrao',
+      });
+      if (credentials) args.push('--mcp-config', buildMcpConfig(credentials));
       if (start.permissionMode) args.push('--permission-mode', start.permissionMode);
       if (start.resume) args.push('--resume', start.resume);
       else if (start.continueLast) args.push('--continue');
     }
     // Re-checked after the await: other starts may have happened meanwhile.
     if (this.sessions.size >= limit) {
+      this.options.agentBus?.revoke(id);
       throw new SessionError(
         'session-limit',
         `The limit of ${limit} simultaneous sessions was reached.`,
       );
     }
 
-    const id = this.options.newId?.() ?? `term-${randomUUID()}`;
     env.AGENTS_OFFICE_TERMINAL_ID = id;
+    if (start.profileId) env.AGENTS_OFFICE_PROFILE_ID = start.profileId;
+    if (start.projectId) env.AGENTS_OFFICE_PROJECT_ID = start.projectId;
     env.TERM = env.TERM && env.TERM !== 'dumb' ? env.TERM : 'xterm-256color';
     const cols = start.cols ?? 80;
     const rows = start.rows ?? 24;
@@ -158,6 +194,7 @@ export class SessionManager {
     try {
       pty = this.options.spawn(file, args, { cwd: start.cwd, env, cols, rows });
     } catch (error) {
+      this.options.agentBus?.revoke(id);
       throw new SessionError(
         'spawn-failed',
         `Could not start "${file}": ${error instanceof Error ? error.message : String(error)}`,
@@ -188,6 +225,7 @@ export class SessionManager {
       session.exited = true;
       if (session.killTimer) clearTimeout(session.killTimer);
       this.sessions.delete(id);
+      safe(() => this.options.agentBus?.revoke(id));
       // The leader is gone: whatever is left in its group (a child ignoring SIGHUP) must not outlive
       // the session, whether the user ended it or the process exited by itself.
       safe(() => this.options.killGroup?.(session.info.pid, 'SIGKILL'));

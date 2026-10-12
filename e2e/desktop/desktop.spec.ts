@@ -901,6 +901,226 @@ test.describe(`desktop app (${mode})`, () => {
     }
   });
 
+  test('cast panel: claude missing message, create profile with preview, add to the cast, start and stop', async () => {
+    const box = await sandbox();
+    const fake = join(box.home, 'claude');
+    writeFileSync(fake, ['#!/bin/sh', 'echo "ARGS $*"', 'sleep 30'].join('\n'));
+    chmodSync(fake, 0o755);
+    const project = join(box.home, 'cast-app');
+    mkdirSync(project);
+    const app = await launch(box);
+    try {
+      await until(async () => (await windowState(app))?.url === box.url, 'office URL');
+      const page = await app.firstWindow();
+      await page.waitForFunction(() => window.__office?.connected === true);
+      const setConfig = (claudePath: string) =>
+        page.evaluate(
+          (value) =>
+            (
+              window as unknown as {
+                agentsOfficeDesktop: { terminal: { setConfig(p: object): Promise<unknown> } };
+              }
+            ).agentsOfficeDesktop.terminal.setConfig({ claudePath: value }),
+          claudePath,
+        );
+      await setConfig(join(box.home, 'no-such-claude'));
+
+      await page.evaluate((cwd) => window.__castPanel?.open(cwd), project);
+      await expect(page.getByTestId('cast-panel')).toBeVisible();
+      await expect(page.getByTestId('cast-empty')).toBeVisible();
+
+      // New profile: the live preview draws the avatar and "sortear" keeps it drawn.
+      await page.getByTestId('cast-new-profile').click();
+      await expect(page.getByTestId('profile-preview')).toHaveAttribute('data-drawn', 'true');
+      await page.getByTestId('profile-save').click();
+      await expect(page.getByTestId('profile-error-name')).toBeVisible();
+      await page.getByTestId('profile-name').fill('Designer');
+      await page.getByTestId('profile-instructions').fill('Cuide da interface.');
+      await page.getByTestId('profile-randomize').click();
+      await expect(page.getByTestId('profile-preview')).toHaveAttribute('data-drawn', 'true');
+      await page.getByTestId('profile-name').fill('Designer');
+      await page.getByTestId('profile-save').click();
+      await expect(page.getByTestId('cast-profile-designer')).toBeVisible();
+
+      // Add to the cast; with claude missing the failure is explained.
+      await page.getByTestId('cast-add-select').selectOption('designer');
+      await page.getByTestId('cast-add').click();
+      await expect(page.getByTestId('cast-row-designer')).toBeVisible();
+      await page.getByTestId('cast-row-designer').getByTestId('cast-start').click();
+      await expect(page.getByTestId('cast-error')).toContainText('Claude Code não encontrado');
+
+      // With claude available the session starts, carries the instructions, and stops.
+      await setConfig(fake);
+      await page.getByTestId('cast-row-designer').getByTestId('cast-start').click();
+      await expect(page.getByTestId('cast-row-designer').getByTestId('cast-state')).toHaveText(
+        'em execução',
+      );
+      await expect
+        .poll(() => page.evaluate(() => window.__terminalPanel?.text() ?? ''))
+        .toContain('--append-system-prompt');
+      await page.getByTestId('cast-row-designer').getByTestId('cast-stop').click();
+      await expect(page.getByTestId('cast-row-designer').getByTestId('cast-state')).toHaveText(
+        'parado',
+      );
+    } finally {
+      await app.close().catch(() => {});
+      dispose(box);
+    }
+  });
+
+  test('cast reopening: the roster comes back with the app, honoring auto-reopen', async () => {
+    const box = await sandbox();
+    const fake = join(box.home, 'claude');
+    writeFileSync(fake, ['#!/bin/sh', 'echo "ARGS $*"', 'sleep 60'].join('\n'));
+    chmodSync(fake, 0o755);
+    const project = join(box.home, 'reopen-app');
+    mkdirSync(project);
+    type CastBridge = {
+      terminal: { setConfig(p: object): Promise<unknown> };
+      profiles: {
+        create(d: object): Promise<{ id: string }>;
+        roster: {
+          addProfile(cwd: string, id: string): Promise<unknown>;
+          setAutoReopen(cwd: string, on: boolean): Promise<unknown>;
+        };
+      };
+      managed: { start(cwd: string, id: string): Promise<{ ok: boolean }> };
+    };
+    const first = await launch(box);
+    try {
+      await until(async () => (await windowState(first))?.url === box.url, 'office URL');
+      const page = await first.firstWindow();
+      await page.waitForFunction(() => window.__office?.connected === true);
+      const ok = await page.evaluate(
+        async ({ claudePath, cwd }) => {
+          const api = (window as unknown as { agentsOfficeDesktop: CastBridge })
+            .agentsOfficeDesktop;
+          await api.terminal.setConfig({ claudePath });
+          const profile = await api.profiles.create({
+            name: 'Revisor',
+            description: '',
+            appearance: {
+              base: 'developer',
+              hairStyle: 0,
+              hairColor: '#442211',
+              skinColor: '#e0b090',
+              outfitColor: '#3366aa',
+            },
+            instructions: 'Revise o codigo.',
+            permissionMode: 'default',
+            role: 'padrao',
+          });
+          await api.profiles.roster.addProfile(cwd, profile.id);
+          return (await api.managed.start(cwd, profile.id)).ok;
+        },
+        { claudePath: fake, cwd: project },
+      );
+      expect(ok).toBe(true);
+    } finally {
+      await first.close().catch(() => {});
+    }
+
+    // Second launch: auto-reopen is on, so the session starts by itself with the profile prompt.
+    const second = await launch(box);
+    try {
+      await until(async () => (await windowState(second))?.url === box.url, 'office URL again');
+      const page = await second.firstWindow();
+      await page.waitForFunction(() => window.__office?.connected === true);
+      await expect.poll(() => page.evaluate(() => window.__terminalPanel?.tabs.length)).toBe(1);
+      await expect
+        .poll(() => page.evaluate(() => window.__terminalPanel?.text() ?? ''))
+        .toContain('--append-system-prompt');
+      await page.evaluate(async (cwd) => {
+        await (
+          window as unknown as { agentsOfficeDesktop: CastBridge }
+        ).agentsOfficeDesktop.profiles.roster.setAutoReopen(cwd, false);
+      }, project);
+    } finally {
+      await second.close().catch(() => {});
+    }
+
+    // Third launch: auto-reopen is off, nothing starts.
+    const third = await launch(box);
+    try {
+      await until(async () => (await windowState(third))?.url === box.url, 'office URL third');
+      const page = await third.firstWindow();
+      await page.waitForFunction(() => window.__office?.connected === true);
+      await page.waitForTimeout(1500);
+      expect(await page.evaluate(() => window.__terminalPanel?.tabs.length)).toBe(0);
+    } finally {
+      await third.close().catch(() => {});
+      dispose(box);
+    }
+  });
+
+  test('whiteboard overlay: opens lazily, draws, closes with Esc and the drawing persists on reopen', async () => {
+    const box = await sandbox();
+    const project = join(box.home, 'board-app');
+    mkdirSync(project);
+    const app = await launch(box);
+    try {
+      await until(async () => (await windowState(app))?.url === box.url, 'office URL');
+      const page = await app.firstWindow();
+      await page.waitForFunction(() => window.__office?.connected === true);
+      type BoardWindow = {
+        __boardOverlay?: { open(cwd: string, title?: string): Promise<void>; isOpen(): boolean };
+        agentsOfficeDesktop: {
+          board: { load(cwd: string): Promise<{ scene: { elements: { isDeleted: boolean }[] } }> };
+        };
+      };
+      // The editor is not part of the splash/main bundle: nothing loaded before the first open.
+      expect(
+        await page.evaluate(() =>
+          performance.getEntriesByType('resource').some((r) => r.name.includes('boardIsland')),
+        ),
+      ).toBe(false);
+
+      await page.evaluate(
+        (cwd) => (window as unknown as BoardWindow).__boardOverlay?.open(cwd),
+        project,
+      );
+      const overlay = page.getByTestId('board-overlay');
+      await expect(overlay).toBeVisible();
+      await expect(overlay.locator('.excalidraw')).toBeVisible({ timeout: 30_000 });
+
+      // Draw a rectangle with the keyboard shortcut and a drag.
+      await overlay.locator('canvas.interactive').click({ position: { x: 5, y: 5 } });
+      await page.keyboard.press('r');
+      const box2 = await overlay.locator('canvas.interactive').boundingBox();
+      if (!box2) throw new Error('no canvas');
+      await page.mouse.move(box2.x + 200, box2.y + 200);
+      await page.mouse.down();
+      await page.mouse.move(box2.x + 320, box2.y + 280, { steps: 5 });
+      await page.mouse.up();
+      await expect(page.getByTestId('board-status')).toHaveText('Salvo', { timeout: 10_000 });
+
+      await page.keyboard.press('Escape');
+      await expect(overlay).toBeHidden();
+      const saved = await page.evaluate(
+        (cwd) => (window as unknown as BoardWindow).agentsOfficeDesktop.board.load(cwd),
+        project,
+      );
+      expect(saved.scene.elements.filter((e) => !e.isDeleted)).toHaveLength(1);
+
+      // Reopening shows the same drawing.
+      await page.evaluate(
+        (cwd) => (window as unknown as BoardWindow).__boardOverlay?.open(cwd),
+        project,
+      );
+      await expect(overlay.locator('.excalidraw')).toBeVisible({ timeout: 30_000 });
+      const elements = await page.evaluate(
+        (cwd) => (window as unknown as BoardWindow).agentsOfficeDesktop.board.load(cwd),
+        project,
+      );
+      expect(elements.scene.elements.filter((e) => !e.isDeleted)).toHaveLength(1);
+      await overlay.getByTestId('board-close').click();
+      await expect(overlay).toBeHidden();
+    } finally {
+      await app.close().catch(() => {});
+      dispose(box);
+    }
+  });
+
   test('tab <-> session binding: app sessions open their terminal from the dialog, external ones do not; the door opens the picker', async () => {
     const box = await sandbox();
     const hookBin = join(ROOT, 'packages', 'cli', 'bin', 'agents-office.mjs');

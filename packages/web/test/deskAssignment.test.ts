@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DeskAssignments } from '../src/characters/deskAssignment';
+import { ConversationPoints, DeskAssignments, deskSpots } from '../src/characters/deskAssignment';
 import { CUBICLES_PER_CHUNK, layoutBuilding } from '../src/world/roomLayout';
 
 const layoutWith = (agents: number, projects = 1) =>
@@ -112,5 +112,67 @@ describe('DeskAssignments', () => {
     const seat = desks.assign(active, 'p0', small.desks);
     expect(seat).toBeDefined();
     expect(keptIds.has(seat?.id as string)).toBe(true);
+  });
+});
+
+describe('conversation points', () => {
+  const layout = layoutWith(2);
+  const desk = layout.desks[0] as (typeof layout.desks)[number];
+  const walkable = (t: { x: number; y: number }) => layout.collision[t.y]?.[t.x] === false;
+  const spots = deskSpots(desk, walkable);
+  const same = (a: { x: number; y: number }, b: { x: number; y: number }) =>
+    a.x === b.x && a.y === b.y;
+
+  it('finds walkable talk and waiting tiles around the seat, facing it, never the seat', () => {
+    expect(spots.talk.length).toBeGreaterThanOrEqual(2);
+    expect(spots.wait.length).toBeGreaterThan(0);
+    for (const spot of [...spots.talk, ...spots.wait]) {
+      expect(walkable(spot.tile)).toBe(true);
+      expect(same(spot.tile, desk.tile)).toBe(false);
+    }
+    const first = spots.talk[0] as (typeof spots.talk)[number];
+    expect(first.facing).toBe(first.tile.x > desk.tile.x ? 'left' : 'right');
+    const tiles = [...spots.talk, ...spots.wait].map((s) => `${s.tile.x},${s.tile.y}`);
+    expect(new Set(tiles).size).toBe(tiles.length);
+  });
+
+  it('gives each visitor a distinct talk spot and keeps it stable', () => {
+    const points = new ConversationPoints();
+    const taken: string[] = [];
+    for (let i = 0; i < spots.talk.length; i += 1) {
+      const spot = points.acquire(`v${i}`, desk.id, spots);
+      expect(points.isTalking(`v${i}`)).toBe(true);
+      taken.push(`${spot?.tile.x},${spot?.tile.y}`);
+    }
+    expect(new Set(taken).size).toBe(spots.talk.length);
+    expect(points.acquire('v0', desk.id, spots)?.tile).toEqual(spots.talk[0]?.tile);
+  });
+
+  it('makes extra visitors wait on their feet in order, then promotes the first in line', () => {
+    const points = new ConversationPoints();
+    for (let i = 0; i < spots.talk.length; i += 1) points.acquire(`v${i}`, desk.id, spots);
+    const w1 = points.acquire('w1', desk.id, spots);
+    const w2 = points.acquire('w2', desk.id, spots);
+    expect(points.isTalking('w1')).toBe(false);
+    expect(w1 && w2 && same(w1.tile, w2.tile)).toBe(false);
+    expect(spots.wait.some((s) => w1 !== undefined && same(s.tile, w1.tile))).toBe(true);
+    expect(points.queueLength(desk.id)).toBe(2);
+    // The second in line does not jump the queue.
+    points.release('v0');
+    expect(points.acquire('w2', desk.id, spots)?.tile).toEqual(w2?.tile);
+    expect(points.isTalking('w2')).toBe(false);
+    expect(points.acquire('w1', desk.id, spots)?.tile).toEqual(spots.talk[0]?.tile);
+    expect(points.isTalking('w1')).toBe(true);
+    expect(points.queueLength(desk.id)).toBe(1);
+  });
+
+  it('returns undefined when even the waiting tiles are taken, and frees on release', () => {
+    const points = new ConversationPoints();
+    const total = spots.talk.length + spots.wait.length;
+    for (let i = 0; i < total; i += 1)
+      expect(points.acquire(`v${i}`, desk.id, spots)).toBeDefined();
+    expect(points.acquire('late', desk.id, spots)).toBeUndefined();
+    points.release(`v${total - 1}`);
+    expect(points.acquire('late', desk.id, spots)).toBeDefined();
   });
 });

@@ -1,4 +1,4 @@
-import type { Profession } from '@agents-office/shared';
+import type { Profession, Appearance as ProfileAppearance } from '@agents-office/shared';
 
 /** Fixed accessory per profession; the names match the accessory art of the default skin. */
 export const ACCESSORY_BY_PROFESSION = {
@@ -29,6 +29,11 @@ export interface Appearance {
   hairColor: number;
   shirt: number;
   pants: number;
+  /**
+   * Explicit colors (`#rrggbb`) chosen in a profile; they replace the palette entries picked by
+   * `skin`, `hairColor` and `shirt`. Absent for hash-based looks.
+   */
+  explicit?: { skinColor: string; hairColor: string; outfitColor: string };
 }
 
 /** FNV-1a, 32 bits. */
@@ -57,6 +62,31 @@ export function appearanceFor(id: string, profession: Profession): Appearance {
     shirt: pick(id, 'shirt', APPEARANCE_RANGES.shirt),
     pants: pick(id, 'pants', APPEARANCE_RANGES.pants),
   };
+}
+
+/**
+ * Look of an agent from an explicit profile appearance (base, hair style, colors). The traits the
+ * profile does not choose (pants) still come from the hash of `id`, so the result is stable.
+ */
+export function explicitAppearance(id: string, look: ProfileAppearance): Appearance {
+  return {
+    ...appearanceFor(id, look.base),
+    hairStyle: look.hairStyle,
+    explicit: {
+      skinColor: look.skinColor,
+      hairColor: look.hairColor,
+      outfitColor: look.outfitColor,
+    },
+  };
+}
+
+/** Stable text key of a look, to tell whether a built texture is still current. */
+export function appearanceKey(look: Appearance | undefined): string {
+  if (!look) return '';
+  const { profession, hairStyle, explicit } = look;
+  return explicit
+    ? `${profession}|${hairStyle}|${explicit.skinColor}|${explicit.hairColor}|${explicit.outfitColor}`
+    : `${profession}|${look.hairStyle}|${look.skin}|${look.hairColor}|${look.shirt}|${look.pants}`;
 }
 
 /**

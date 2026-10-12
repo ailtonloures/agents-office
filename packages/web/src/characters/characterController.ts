@@ -1,16 +1,31 @@
-import type { Agent, OfficeEvent, OfficeModel, Profession, Session } from '@agents-office/shared';
+import type {
+  Agent,
+  CommEvent,
+  OfficeEvent,
+  OfficeModel,
+  Profession,
+  Session,
+} from '@agents-office/shared';
 import type Phaser from 'phaser';
 import type { DebugCharacter } from '../debug/debugState';
 import type { Direction } from '../skin';
 import { SKIN_KEYS } from '../skin';
 import { actionLine, agentDisplayNames, prettyAgentType } from '../ui/identity';
+import type { ManagedLook } from '../ui/managedBinding';
 import { NameTag, ROLE_COLOR, STATUS_COLOR } from '../ui/nameTag';
 import type { SeatedWorker } from '../world/deskScreens';
 import { DOT_KEY, ensureParticleTextures, Z_KEY } from '../world/lighting';
 import { findPath } from '../world/pathfinding';
 import type { BuildingLayout, Desk, Tile } from '../world/roomLayout';
 import { ensureRing, ensureShadow, RING_KEY, SHADOW_KEY } from '../world/rugs';
-import { type BalloonId, balloonTextureKey, createBalloonTextures } from './balloons';
+import { appearanceKey } from './appearance';
+import {
+  type BalloonId,
+  balloonTextureKey,
+  createBalloonTextures,
+  TextBubble,
+  visitBubbleText,
+} from './balloons';
 import {
   animationKeyFor,
   type CharacterAnimation,
@@ -23,9 +38,11 @@ import {
   type MachineActor,
   nextVisualState,
   type Target,
+  VISIT_TIMEOUT_MS,
   type VisualState,
 } from './characterMachine';
-import { DeskAssignments } from './deskAssignment';
+import { ConversationPoints, DeskAssignments, deskSpots } from './deskAssignment';
+import { type Visit, VisitQueue } from './visits';
 
 const TILE = 16;
 /** Movement speed: 4 tiles per second, like the Pokemon games. */
@@ -61,6 +78,8 @@ interface Character {
   spawnDepth: number;
   sprite: Phaser.GameObjects.Sprite;
   balloon: Phaser.GameObjects.Image;
+  /** Speech bubble with the message summary (created on the first visit). */
+  bubble: TextBubble | undefined;
   shadow: Phaser.GameObjects.Image;
   /** Status ring under the feet (working, thinking, waiting, error). */
   ring: Phaser.GameObjects.Image;
@@ -83,6 +102,8 @@ interface Character {
   anim: string;
   balloonId: BalloonId | undefined;
   status: MachineActor['status'] | undefined;
+  /** Key of the explicit look the sprite was built with ('' = hash-based). */
+  lookKey: string;
   /** Turned towards the player during a dialog: keeps `facing` and the idle pose until it walks. */
   faceLock: boolean;
 }
@@ -106,6 +127,8 @@ function directionTo(from: Tile, to: Tile): Direction | undefined {
 export class CharacterController {
   private readonly chars = new Map<string, Character>();
   private readonly desks = new DeskAssignments();
+  private readonly visits = new VisitQueue();
+  private readonly points = new ConversationPoints();
   /** Actors seen through the live event stream (not just a snapshot): they walk in. */
   private readonly live = new Set<string>();
   private layout: BuildingLayout | undefined;
@@ -130,6 +153,7 @@ export class CharacterController {
   private readonly highlight: Phaser.GameObjects.Sprite[] = [];
   /** Confetti burst when a report is delivered. */
   private confetti: Phaser.GameObjects.Particles.ParticleEmitter | undefined;
+  private managed: ReadonlyMap<string, ManagedLook> = new Map();
   private names = new Map<string, string>();
   private namesModel: OfficeModel | undefined;
   /** Next time (ms) each sleeping character lets out a "z". */
@@ -160,6 +184,22 @@ export class CharacterController {
   /** Characters with a permission request pending: they show the `!` balloon until it is answered. */
   setAsking(ids: ReadonlySet<string>): void {
     this.askingIds = ids;
+  }
+
+  /**
+   * Sessions started by the app for a roster entry (session id -> look). Their avatars take the
+   * profile's name and appearance; every other session stays a generic, external Tech Lead.
+   */
+  setManaged(looks: ReadonlyMap<string, ManagedLook>): void {
+    this.managed = looks;
+  }
+
+  /**
+   * A message between managed agents: its sender walks to the recipient's desk and stays until the
+   * answer arrives (or the safety timeout), one recipient at a time.
+   */
+  noteComm(event: CommEvent): void {
+    this.visits.note(event);
   }
 
   /** Outlines the Tech Lead whose terminal tab is open (undefined: none). */
@@ -439,7 +479,9 @@ export class CharacterController {
     tile: Tile;
     entering: boolean;
   }): Character {
-    const { textureKey } = this.factory.get(init.id, init.profession);
+    const managed = init.role === 'lead' ? this.managed.get(init.id) : undefined;
+    const profession = managed?.profession ?? init.profession;
+    const { textureKey } = this.factory.get(init.id, profession, managed?.look);
     const sprite = this.scene.add
       .sprite(0, 0, textureKey, 0)
       .setOrigin(0.5, 1)
@@ -467,11 +509,13 @@ export class CharacterController {
       role: init.role,
       sessionId: init.sessionId,
       roomId: init.roomId,
-      profession: init.profession,
+      profession,
+      lookKey: appearanceKey(managed?.look),
       parentAgentId: init.parentAgentId,
       spawnDepth: init.spawnDepth,
       sprite,
       balloon,
+      bubble: undefined,
       shadow,
       ring,
       tag,
@@ -501,6 +545,8 @@ export class CharacterController {
   private dispose(c: Character): void {
     c.sprite.destroy();
     c.balloon.destroy();
+    c.bubble?.destroy();
+    this.points.release(c.id);
     c.shadow.destroy();
     c.ring.destroy();
     this.nextZ.delete(c.id);
@@ -518,7 +564,7 @@ export class CharacterController {
 
   /** The name shown on a character's tag (the Tech Lead, or the subagent's numbered type). */
   displayName(id: string, model: OfficeModel): string {
-    if (model.sessions[id]) return 'Tech Lead';
+    if (model.sessions[id]) return this.managed.get(id)?.name ?? 'Tech Lead';
     const agent = model.agents[id];
     if (!agent) return 'alguém';
     return this.namesOf(model).get(id) ?? prettyAgentType(agent.agentType);
@@ -538,10 +584,11 @@ export class CharacterController {
       const session = model.sessions[c.id];
       if (!session) return;
       const project = model.projects[session.projectId];
+      const managed = this.managed.get(c.id);
       c.tag.set({
-        profession: session.profession,
-        name: 'Tech Lead',
-        role: 'LIDER',
+        profession: managed?.profession ?? session.profession,
+        name: managed?.name ?? 'Tech Lead',
+        role: managed ? 'ELENCO' : 'LIDER',
         detail: actionLine(
           session.status,
           session.currentTool,
@@ -588,6 +635,47 @@ export class CharacterController {
     return this.desks.assign(id, roomId, layout.desks, anchor);
   }
 
+  /** Character of the managed session running roster entry `entryId` of project `cwd`. */
+  private characterOfEntry(cwd: string, entryId: string): Character | undefined {
+    for (const [sessionId, look] of this.managed) {
+      if (look.entryId !== entryId || look.cwd !== cwd) continue;
+      const found = this.chars.get(sessionId);
+      if (found?.role === 'lead') return found;
+    }
+    return undefined;
+  }
+
+  /** Desk of the recipient of `visit`, when it sits in the visitor's room (else no visit). */
+  private visitDesk(c: Character, visit: Visit, layout: BuildingLayout): Desk | undefined {
+    const to = this.characterOfEntry(visit.cwd, visit.toEntryId);
+    if (!to?.spawned || to.roomId !== c.roomId || to.id === c.id) return undefined;
+    if (to.visual.phase === 'leaving' || to.visual.phase === 'gone') return undefined;
+    return layout.desks.find((d) => d.sessionId === to.sessionId);
+  }
+
+  /**
+   * The visit `c` should be making: the first of its sender's line whose recipient is in the
+   * room. Visits past the safety timeout are dropped on the way.
+   */
+  private visitOf(
+    c: Character,
+    layout: BuildingLayout,
+  ): { id: string; startedAt: number } | undefined {
+    if (c.role !== 'lead') return undefined;
+    const look = this.managed.get(c.id);
+    if (!look) return undefined;
+    for (const visit of [...this.visits.list(look.cwd, look.entryId)]) {
+      if (visit.startedAt !== undefined && this.now - visit.startedAt >= VISIT_TIMEOUT_MS) {
+        this.visits.drop(visit.id);
+        continue;
+      }
+      if (!this.visitDesk(c, visit, layout)) continue;
+      visit.startedAt ??= this.now;
+      return { id: visit.id, startedAt: visit.startedAt };
+    }
+    return undefined;
+  }
+
   private doorOf(c: Character, layout: BuildingLayout) {
     return layout.doors.find((d) => d.roomId === c.roomId);
   }
@@ -621,6 +709,17 @@ export class CharacterController {
         const poi = layout.pois.find((p) => p.type === goal.target && p.roomId === c.roomId);
         return poi ? { tile: poi.tile, facing: 'up' } : undefined;
       }
+      case 'visit': {
+        const visit = this.visits.get(goal.visitId);
+        const desk = visit ? this.visitDesk(c, visit, layout) : undefined;
+        if (!desk) return undefined;
+        const spot = this.points.acquire(
+          c.id,
+          desk.id,
+          deskSpots(desk, (tile) => this.walkable(layout, tile)),
+        );
+        return spot ? { tile: spot.tile, facing: spot.facing } : undefined;
+      }
       case 'exit':
         return door ? { tile: door.tile, facing: 'up' } : undefined;
     }
@@ -652,10 +751,15 @@ export class CharacterController {
       return;
     }
 
-    const profession = (c.role === 'lead' ? model.sessions[c.id] : model.agents[c.id])?.profession;
-    if (profession && profession !== c.profession) {
+    const managed = c.role === 'lead' ? this.managed.get(c.id) : undefined;
+    const profession =
+      managed?.profession ??
+      (c.role === 'lead' ? model.sessions[c.id] : model.agents[c.id])?.profession;
+    const lookKey = appearanceKey(managed?.look);
+    if (profession && (profession !== c.profession || lookKey !== c.lookKey)) {
       c.profession = profession;
-      c.sprite.setTexture(this.factory.get(c.id, profession).textureKey);
+      c.lookKey = lookKey;
+      c.sprite.setTexture(this.factory.get(c.id, profession, managed?.look).textureKey);
       c.anim = '';
     }
 
@@ -682,6 +786,7 @@ export class CharacterController {
         lead.spawned &&
         lead.visual.phase !== 'leaving' &&
         lead.visual.phase !== 'gone',
+      visit: this.visitOf(c, layout),
       holdSummon: [...this.chars.values()].some(
         (o) => o.sessionId === c.sessionId && o.role === 'agent' && o.visual.phase === 'entering',
       ),
@@ -689,6 +794,8 @@ export class CharacterController {
     const { state, goal } = nextVisualState(c.visual, actor, ctx);
     c.visual = state;
     if (state.phase === 'delivering' || state.phase === 'leaving') this.desks.release(c.id);
+    if (state.phase !== 'visiting') this.points.release(c.id);
+    if (state.visitTimedOut !== undefined) this.visits.drop(state.visitTimedOut);
 
     const resolved = this.resolveGoal(c, goal, layout);
     const key = resolved ? `${goal.kind}:${keyOf(resolved.tile)}` : goal.kind;
@@ -818,11 +925,27 @@ export class CharacterController {
     return `idle-${c.facing}`;
   }
 
+  private atGoal(c: Character): boolean {
+    return c.goal !== undefined && !c.to && c.path.length === 0 && sameTile(c.tile, c.goal.tile);
+  }
+
+  /** Summary shown in the visitor's speech bubble right now (undefined: none, e.g. still walking). */
+  private visitText(c: Character): string | undefined {
+    if (c.visual.phase !== 'visiting' || !this.atGoal(c) || c.visual.visitId === undefined) {
+      return undefined;
+    }
+    const visit = this.visits.get(c.visual.visitId);
+    return visit ? visitBubbleText(this.now, visit.preview) : undefined;
+  }
+
   private balloonFor(c: Character): BalloonId | undefined {
     const { phase, activity } = c.visual;
     if (this.askingIds.has(c.id) && phase !== 'leaving' && phase !== 'gone') return 'wait';
     if (phase === 'delivering') return c.visual.deliveredAt !== undefined ? 'doc' : undefined;
     if (phase === 'leaving' || phase === 'gone') return undefined;
+    // A visitor's balloon is the speech bubble; between summaries it shows "...".
+    if (phase === 'visiting')
+      return this.visitText(c) === undefined && this.atGoal(c) ? 'think' : undefined;
     // Seated, the monitor already shows thinking (Claude's spinner) and sleep (the screensaver).
     const seated = phase === 'at-desk' && !c.to;
     if (seated && (activity === 'thinking' || activity === 'sleeping')) return undefined;
@@ -889,6 +1012,14 @@ export class CharacterController {
       if (balloonId) c.balloon.setTexture(balloonTextureKey(balloonId));
       c.balloon.setVisible(balloonId !== undefined);
     }
+    const speech = this.askingIds.has(c.id) ? undefined : this.visitText(c);
+    if (speech !== undefined && !c.bubble) c.bubble = new TextBubble(this.scene);
+    c.bubble?.show(
+      speech,
+      px,
+      py - this.factory.headHeight(SEATED_ANIMATIONS.has(animation)) - 2,
+      BALLOON_DEPTH + py / 10_000,
+    );
     if (animation === 'sleep' && alpha > 0) this.snore(c, px, py);
     if (balloonId) {
       const bounce = balloonId === 'wait' ? Math.round(Math.abs(Math.sin(this.now / 130)) * 3) : 0;

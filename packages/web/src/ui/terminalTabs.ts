@@ -1,4 +1,4 @@
-import type { AgentsOfficeDesktop, TerminalBridge } from '@agents-office/shared';
+import type { AgentsOfficeDesktop, BrowserBridge, TerminalBridge } from '@agents-office/shared';
 // Pure model of the terminal panel (tabs, titles, focus, size). No DOM and no xterm: the view in
 // `terminalPanel.ts` renders it. Tested with Vitest.
 
@@ -12,6 +12,39 @@ export interface TerminalTab {
   exitCode?: number;
   /** Office state of the session bound to this tab (`pensando`, `trabalhando`...), if any. */
   activity?: string;
+  /** `browser`: the embedded browser of `cwd` (no pty behind it). Absent: a terminal. */
+  kind?: 'browser';
+}
+
+export const BROWSER_TAB_PREFIX = 'browser:';
+
+/** Id of the browser tab of a workspace (one per workspace). */
+export function browserTabId(cwd: string): string {
+  return `${BROWSER_TAB_PREFIX}${cwd}`;
+}
+
+export function isBrowserTab(tab: Pick<TerminalTab, 'kind'>): boolean {
+  return tab.kind === 'browser';
+}
+
+/** Adds (or just activates) the browser tab of `cwd`. */
+export function openBrowserTab(model: PanelModel, cwd: string): PanelModel {
+  return addTab(model, { id: browserTabId(cwd), cwd, state: 'running', kind: 'browser' });
+}
+
+/** Workspace a new browser tab opens for: the active tab's, else the last tab's. */
+export function browserTargetCwd(model: PanelModel): string | undefined {
+  return (activeTab(model) ?? model.tabs[model.tabs.length - 1])?.cwd;
+}
+
+/**
+ * The id the office should treat as the shown terminal: a browser tab is not a terminal, so the
+ * scene (Tech Lead highlight, bindings) sees none while it is shown.
+ */
+export function shownTerminalId(model: PanelModel): string | undefined {
+  if (model.tabs.length === 0 || model.collapsed) return undefined;
+  const tab = activeTab(model);
+  return tab && !isBrowserTab(tab) ? tab.id : undefined;
 }
 
 export type FocusOwner = 'player' | 'terminal';
@@ -91,6 +124,7 @@ export function stateLabel(tab: TerminalTab): string {
 
 /** Tab title: `projeto · estado`, plus the office state of the bound session while running. */
 export function tabTitle(tab: TerminalTab): string {
+  if (isBrowserTab(tab)) return `Navegador · ${projectName(tab.cwd)}`;
   const base = `${projectName(tab.cwd)} · ${stateLabel(tab)}`;
   return tab.state === 'running' && tab.activity ? `${base} · ${tab.activity}` : base;
 }
@@ -160,7 +194,8 @@ export function activeTab(model: PanelModel): TerminalTab | undefined {
 
 /** Closing a live session asks first; an ended one closes at once. */
 export function needsCloseConfirm(tab: TerminalTab): boolean {
-  return tab.state === 'running';
+  // Closing the browser tab only hides it: no session ends.
+  return !isBrowserTab(tab) && tab.state === 'running';
 }
 
 export function toggleCollapsed(model: PanelModel): PanelModel {
@@ -295,6 +330,16 @@ export function terminalBridgeOf(win: object): TerminalBridge | undefined {
   if (desktop?.desktop !== true) return undefined;
   const terminal = desktop.terminal;
   return terminal && typeof terminal.start === 'function' ? terminal : undefined;
+}
+
+/** The browser bridge of the desktop shell; undefined in a plain browser or an older shell. */
+export function browserBridgeOf(win: object): BrowserBridge | undefined {
+  const desktop = (win as { agentsOfficeDesktop?: unknown }).agentsOfficeDesktop as
+    | Partial<AgentsOfficeDesktop>
+    | undefined;
+  if (desktop?.desktop !== true) return undefined;
+  const browser = desktop.browser;
+  return browser && typeof browser.show === 'function' ? browser : undefined;
 }
 
 /** Turns a vertical wheel gesture into horizontal scroll; true when it consumed the event (there is overflow). */

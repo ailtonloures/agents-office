@@ -84,6 +84,48 @@ describe('cleanClaudeEnv', () => {
 });
 
 describe('SessionManager (fake pty)', () => {
+  it('injects instructions, model, MCP config and ids', async () => {
+    const issued: unknown[] = [];
+    const revoked: string[] = [];
+    const { manager, calls, ptys } = setup({
+      agentBus: {
+        issue: (s) => {
+          issued.push(s);
+          return { url: 'http://127.0.0.1:1/mcp', token: 'tok' };
+        },
+        revoke: (id) => revoked.push(id),
+      },
+    });
+    await manager.start({
+      cwd: '/work',
+      instructions: 'be nice',
+      model: 'opus',
+      profileId: 'p1',
+      projectId: '/work',
+    });
+    const args = calls[0]?.args ?? [];
+    expect(args.slice(0, 4)).toEqual(['--append-system-prompt', 'be nice', '--model', 'opus']);
+    expect(args).not.toContain('--system-prompt');
+    const cfg = JSON.parse(args[args.indexOf('--mcp-config') + 1] ?? '');
+    expect(cfg.mcpServers['agent-bus']).toEqual({
+      type: 'http',
+      url: 'http://127.0.0.1:1/mcp',
+      headers: { Authorization: 'Bearer tok' },
+    });
+    expect(calls[0]?.env.AGENTS_OFFICE_PROFILE_ID).toBe('p1');
+    expect(calls[0]?.env.AGENTS_OFFICE_PROJECT_ID).toBe('/work');
+    expect(issued).toEqual([{ sessionId: 't1', entryId: 'p1', cwd: '/work', role: 'padrao' }]);
+    ptys[0]?.exit();
+    expect(revoked).toEqual(['t1']);
+  });
+
+  it('adds no injection arguments when nothing was given', async () => {
+    const { manager, calls } = setup();
+    await manager.start({ cwd: '/work' });
+    expect(calls[0]?.args).toEqual([]);
+    expect(calls[0]?.env.AGENTS_OFFICE_PROFILE_ID).toBeUndefined();
+  });
+
   it('starts claude with the cleaned env, login PATH and the terminal id', async () => {
     const { manager, calls } = setup({
       baseEnv: { PATH: '/usr/bin', CLAUDECODE: '1', CLAUDE_CODE_CHILD_SESSION: '1', FOO: 'bar' },

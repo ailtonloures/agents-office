@@ -86,6 +86,25 @@ port, with a per-session bearer token that is revoked when the session ends. Its
 `save_notes`, lets the agent keep notes that come back on the next start. Profiles, rosters and
 notes are stored under the app's user data folder; nothing leaves your machine.
 
+## Embedded browser
+
+In the desktop app, the **Navegador** button opens a browser tab in the terminal dock, one browser
+per workspace (its own cookies and storage, kept between sessions; "Limpar dados" wipes them). The
+page is a native view, so dialogs drawn by the office are hidden behind it.
+
+Managed agents can drive that browser through the Agent Bus tools `browser_navigate`,
+`browser_click`, `browser_type`, `browser_press_key`, `browser_wait_for`, `browser_snapshot`,
+`browser_screenshot`, `browser_console` and `browser_eval`. While an agent uses it the toolbar says
+who is driving, actions of different agents are queued, and the avatar stays at its computer
+looking at the monitor. Safety rules:
+
+- Page content is treated as untrusted data and is never executed as instructions.
+- Only `http(s)` and `about:blank` open; downloads, site permissions and `browser_eval` each ask
+  for **Permitir / Negar** on a card (denied on timeout, nothing is remembered).
+- **Pausar agentes** stops every browser tool of the workspace at once.
+- **Selecionar elemento** lets you click an element on the page and send its selector, text and
+  HTML to a running terminal after you review it; nothing is sent without your click.
+
 ## License
 
 [MIT](LICENSE). Logo and default skin assets: CC0 1.0.

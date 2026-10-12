@@ -312,3 +312,134 @@ test('installs and removes the hooks from the UI, in a temporary settings file',
     rmSync(home, { recursive: true, force: true });
   }
 });
+
+test('embedded browser: shows a local page, navigates, keeps state per workspace and hides', async () => {
+  const box = await sandbox();
+  const workspace = mkdtempSync(join(tmpdir(), 'ao-desktop-browser-'));
+  let hits = 0;
+  const site = createHttpServer((req, res) => {
+    hits += 1;
+    res.setHeader('content-type', 'text/html');
+    const second = req.url === '/second';
+    res.end(
+      `<!doctype html><title>${second ? 'Segunda' : 'Primeira'}</title>` +
+        `<h1 id="h">${second ? 'segunda pagina' : 'primeira pagina'}</h1><a href="/second">next</a>`,
+    );
+  });
+  await new Promise<void>((resolve) => site.listen(0, '127.0.0.1', resolve));
+  const base = `http://127.0.0.1:${(site.address() as { port: number }).port}`;
+  const app = await launch(box);
+  try {
+    await until(async () => (await windowState(app))?.url === officeUrl(box), 'office URL');
+    const page = await app.firstWindow();
+    await expect(page.locator('canvas')).toBeVisible();
+    type State = { url: string; title: string; canGoBack: boolean; paused?: boolean };
+    type Result = { ok: true; state: State } | { ok: false; message: string };
+    type BrowserWindow = {
+      agentsOfficeDesktop: {
+        browser?: {
+          show(cwd: string, bounds: object): Promise<Result>;
+          navigate(cwd: string, address: string): Promise<Result>;
+          back(cwd: string): Promise<Result>;
+          setPaused(cwd: string, paused: boolean): Promise<Result>;
+          hide(): Promise<void>;
+        };
+      };
+    };
+    expect(
+      await page.evaluate(() => !!(window as unknown as BrowserWindow).agentsOfficeDesktop.browser),
+    ).toBe(true);
+
+    const shown = await page.evaluate(
+      ([cwd]) =>
+        (window as unknown as BrowserWindow).agentsOfficeDesktop.browser?.show(cwd as string, {
+          x: 0,
+          y: 100,
+          width: 600,
+          height: 400,
+        }),
+      [workspace],
+    );
+    expect(shown?.ok).toBe(true);
+
+    // Navigate to the local page: the real view loads it (checked from the main process).
+    const nav = await page.evaluate(
+      ([cwd, url]) =>
+        (window as unknown as BrowserWindow).agentsOfficeDesktop.browser?.navigate(
+          cwd as string,
+          url as string,
+        ),
+      [workspace, `${base}/`],
+    );
+    expect(nav?.ok).toBe(true);
+    const pageTitle = () =>
+      app.evaluate(
+        ({ webContents }) =>
+          webContents
+            .getAllWebContents()
+            .map((contents) => contents.getTitle())
+            .find((title) => title === 'Primeira' || title === 'Segunda') ?? '',
+      );
+    await until(async () => (await pageTitle()) === 'Primeira', 'local page loaded');
+    expect(hits).toBeGreaterThan(0);
+
+    // A second address, then back.
+    await page.evaluate(
+      ([cwd, url]) =>
+        (window as unknown as BrowserWindow).agentsOfficeDesktop.browser?.navigate(
+          cwd as string,
+          url as string,
+        ),
+      [workspace, `${base}/second`],
+    );
+    await until(
+      async () =>
+        app.evaluate(({ webContents }) =>
+          webContents.getAllWebContents().some((contents) => contents.getTitle() === 'Segunda'),
+        ),
+      'second page loaded',
+    );
+    const back = await page.evaluate(
+      ([cwd]) =>
+        (window as unknown as BrowserWindow).agentsOfficeDesktop.browser?.back(cwd as string),
+      [workspace],
+    );
+    expect(back?.ok).toBe(true);
+    await until(async () => (await pageTitle()) === 'Primeira', 'back to the first page');
+
+    // Non-web addresses never navigate to file:/javascript: (they become a search or an error).
+    const bad = await page.evaluate(
+      ([cwd]) =>
+        (window as unknown as BrowserWindow).agentsOfficeDesktop.browser?.navigate(
+          cwd as string,
+          'javascript:alert(1)',
+        ),
+      [workspace],
+    );
+    if (bad?.ok) expect(bad.state.url.startsWith('javascript:')).toBe(false);
+
+    // Pausing is reflected in the state; hiding keeps the page alive.
+    const paused = await page.evaluate(
+      ([cwd]) =>
+        (window as unknown as BrowserWindow).agentsOfficeDesktop.browser?.setPaused(
+          cwd as string,
+          true,
+        ),
+      [workspace],
+    );
+    expect(paused?.ok).toBe(true);
+    await page.evaluate(() =>
+      (window as unknown as BrowserWindow).agentsOfficeDesktop.browser?.hide(),
+    );
+    expect(
+      await app.evaluate(({ webContents }) =>
+        webContents.getAllWebContents().some((contents) => contents.getTitle() === 'Primeira'),
+      ),
+    ).toBe(true);
+  } finally {
+    await app.close().catch(() => {});
+    await new Promise<void>((resolve) => site.close(() => resolve()));
+    cleanup(box);
+    rmSync(workspace, { recursive: true, force: true });
+  }
+});

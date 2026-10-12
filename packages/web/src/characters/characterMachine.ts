@@ -22,6 +22,7 @@ export const PHASES = [
   'at-desk',
   'walking-to-poi',
   'at-poi',
+  'visiting',
   'delivering',
   'leaving',
   'gone',
@@ -29,7 +30,7 @@ export const PHASES = [
 export type Phase = (typeof PHASES)[number];
 
 /** Where an activity is performed besides the desk: a layout POI or the room's door. */
-export type Target = Extract<PoiType, 'server-rack' | 'phone' | 'window'> | 'door';
+export type Target = Extract<PoiType, 'server-rack' | 'phone' | 'window' | 'whiteboard'> | 'door';
 
 /** Minimum time an activity stays on screen before the next one replaces it. */
 export const MIN_DWELL_MS = 600;
@@ -37,6 +38,9 @@ export const MIN_DWELL_MS = 600;
 export const SUMMON_HOLD_MS = 3000;
 /** Celebration (report delivered from the desk) duration before the agent heads for the door. */
 export const DELIVER_MS = 1400;
+
+/** Safety net: a visitor goes back to its desk this long after the visit began, answered or not. */
+export const VISIT_TIMEOUT_MS = 60_000;
 
 export interface ToolRule {
   activity: Activity;
@@ -78,8 +82,24 @@ export const ROAMING_TOOL_TABLE: ToolTable = {
 
 const FALLBACK_RULE: ToolRule = { activity: 'typing' };
 
+/** The agent-bus tools that draw on the shared whiteboard (`mcp__<server>__board_add_elements`...). */
+const BOARD_DRAW_TOOL = /(?:^|__)board_(?:add_elements|add_mermaid|clear)$/;
+const BOARD_RULE: ToolRule = { activity: 'typing', target: 'whiteboard' };
+
+/**
+ * The agent-bus tools that drive the embedded browser (`mcp__<server>__browser_navigate`...): the
+ * character stays at its computer looking at the monitor (`web`), never walking to a POI (spec 085).
+ */
+const BROWSER_TOOL =
+  /(?:^|__)browser_(?:navigate|click|type|press_key|eval|wait_for|snapshot|screenshot|console)$/;
+const BROWSER_RULE: ToolRule = { activity: 'web' };
+
+/** Drawing on the board always walks to it (spec 078), whatever the table says. */
 export function ruleForTool(tool: string, table: ToolTable = DEFAULT_TOOL_TABLE): ToolRule {
-  return table[tool] ?? FALLBACK_RULE;
+  const known = table[tool];
+  if (known) return known;
+  if (BOARD_DRAW_TOOL.test(tool)) return BOARD_RULE;
+  return BROWSER_TOOL.test(tool) ? BROWSER_RULE : FALLBACK_RULE;
 }
 
 export interface VisualState {
@@ -93,6 +113,17 @@ export interface VisualState {
   summonDone: boolean;
   /** When the report was handed over (`delivering` only). */
   deliveredAt: number | undefined;
+  /** Message being delivered in person (`visiting` only): the character is at the recipient's desk. */
+  visitId: string | undefined;
+  /** Last visit that ended by the safety timeout (ignored if the host still offers it). */
+  visitTimedOut: string | undefined;
+}
+
+/** A visit the host wants this character to make: it lasts until the host stops offering it. */
+export interface VisitRequest {
+  id: string;
+  /** When the visit began (ms, same clock as `now`): the safety timeout counts from here. */
+  startedAt: number;
 }
 
 /** The part of the model the machine looks at. */
@@ -114,6 +145,8 @@ export interface MachineContext {
   hasLead: boolean;
   /** Somebody is still entering (keeps the Tech Lead calling at the door). */
   holdSummon?: boolean;
+  /** The visit this character should be making now (undefined: none). */
+  visit?: VisitRequest | undefined;
   tools?: ToolTable;
 }
 
@@ -121,6 +154,7 @@ export type Goal =
   | { kind: 'stay' }
   | { kind: 'desk' }
   | { kind: 'poi'; target: Target }
+  | { kind: 'visit'; visitId: string }
   | { kind: 'exit' };
 
 export interface VisualIntent {
@@ -136,6 +170,8 @@ export function initialState(phase: 'entering' | 'at-desk', now: number): Visual
     since: now,
     summonDone: false,
     deliveredAt: undefined,
+    visitId: undefined,
+    visitTimedOut: undefined,
   };
 }
 
@@ -148,6 +184,10 @@ export function goalFor(state: VisualState): Goal {
     case 'walking-to-poi':
     case 'at-poi':
       return state.target ? { kind: 'poi', target: state.target } : { kind: 'desk' };
+    case 'visiting':
+      return state.visitId !== undefined
+        ? { kind: 'visit', visitId: state.visitId }
+        : { kind: 'desk' };
     case 'delivering':
       return { kind: 'stay' };
     case 'leaving':
@@ -210,6 +250,9 @@ const WORK_PHASES: readonly Phase[] = [
  *    roaming tool table), then delivering at the desk (finished agents) -> leaving -> gone;
  *  - an activity stays at least {@link MIN_DWELL_MS} (except `waiting`/`error`, shown at once, and
  *    while walking to a POI: a tool that ends on the way sends the character straight back);
+ *  - a visit (`ctx.visit`) takes the character from its desk (or a point of interest) to the
+ *    recipient's desk and keeps it there until the host stops offering the visit (the reply
+ *    arrived) or {@link VISIT_TIMEOUT_MS} passes; then it walks back and resumes its activity;
  *  - `waiting` is never displaced by `thinking` before its dwell time.
  */
 export function nextVisualState(
@@ -223,7 +266,13 @@ export function nextVisualState(
     return intent(ctx.arrived ? { ...current, phase: 'gone', since: now } : current);
   }
   if (!actor || actor.status === 'ended') {
-    return intent({ ...current, phase: 'leaving', since: now, deliveredAt: undefined });
+    return intent({
+      ...current,
+      phase: 'leaving',
+      since: now,
+      deliveredAt: undefined,
+      visitId: undefined,
+    });
   }
 
   if (current.phase === 'delivering' || (actor.role === 'agent' && actor.status === 'finished')) {
@@ -238,7 +287,28 @@ export function nextVisualState(
     return intent(current);
   }
 
+  if (current.phase === 'visiting') {
+    const visit = ctx.visit;
+    const back = { ...current, phase: 'walking-to-desk' as const, since: now, visitId: undefined };
+    if (!visit) return intent(back);
+    if (now - visit.startedAt >= VISIT_TIMEOUT_MS) {
+      return intent({ ...back, visitTimedOut: visit.id });
+    }
+    // The next recipient of a broadcast: go straight there, without passing by the desk.
+    if (visit.id !== current.visitId) return intent({ ...current, since: now, visitId: visit.id });
+    return intent(current);
+  }
   if (!WORK_PHASES.includes(current.phase)) return intent(current);
+
+  const visit = ctx.visit;
+  if (
+    visit &&
+    current.phase !== 'entering' &&
+    visit.id !== current.visitTimedOut &&
+    now - visit.startedAt < VISIT_TIMEOUT_MS
+  ) {
+    return intent({ ...current, phase: 'visiting', since: now, visitId: visit.id });
+  }
 
   let state = current;
   if (state.phase === 'entering' && (ctx.insideRoom || ctx.arrived)) {

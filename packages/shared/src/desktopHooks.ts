@@ -1,5 +1,12 @@
+import type { BoardBridge } from './desktopBoard';
+import type { BrowserBridge } from './desktopBrowser';
+import type { BrowserApprovalBridge } from './desktopBrowserApproval';
+import type { CommsBridge } from './desktopComms';
 import type { ExternalBridge } from './desktopExternal';
+import type { ManagedBridge } from './desktopManaged';
+import type { ProfilesBridge } from './desktopProfiles';
 import type { ProjectsBridge } from './desktopProjects';
+import type { SpawnApprovalBridge } from './desktopSpawnApproval';
 import type { TerminalBridge } from './desktopTerminal';
 import type { UpdaterBridge } from './desktopUpdater';
 
@@ -52,6 +59,15 @@ export interface AgentsOfficeDesktop {
   hooks: HooksBridge;
   terminal: TerminalBridge;
   projects: ProjectsBridge;
+  profiles: ProfilesBridge;
+  managed: ManagedBridge;
+  comms: CommsBridge;
+  board: BoardBridge;
+  /** Absent on shells without the embedded browser. */
+  browser?: BrowserBridge;
+  /** Absent on shells without the embedded browser. */
+  browserApproval?: BrowserApprovalBridge;
+  spawnApproval: SpawnApprovalBridge;
   external: ExternalBridge;
   /** Absent on shells without auto-update. */
   updater?: UpdaterBridge;

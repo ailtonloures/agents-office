@@ -942,3 +942,111 @@ test('update banner: hidden without bridge, follows available/ready, Depois dism
   await push({ state: 'ready', version: '10.0.0' });
   await expect(banner).toBeVisible();
 });
+
+test('message visit: the sender walks to the recipient desk and only goes back with the reply', async ({
+  page,
+}) => {
+  // Simulated shell: two managed Tech Leads of the same project and a comms event feeder.
+  await page.addInitScript(() => {
+    const sessions = [
+      ['term-a', 'entry-a', 'Ana'],
+      ['term-b', 'entry-b', 'Beto'],
+    ].map(([terminalId, entryId, name]) => ({
+      terminalId,
+      cwd: '/work/team',
+      entryId,
+      name,
+      appearance: null,
+      profession: 'developer',
+      startedAt: '2026-01-01T00:00:00Z',
+    }));
+    type Listener = (event: unknown) => void;
+    const listeners: Listener[] = [];
+    (window as unknown as Record<string, unknown>).__emitComm = (event: unknown) => {
+      for (const l of [...listeners]) l(event);
+    };
+    (window as unknown as Record<string, unknown>).agentsOfficeDesktop = {
+      managed: {
+        list: async () => ({ sessions, failures: [] }),
+        onChange: () => () => {},
+        onReopen: () => () => {},
+        reopenReport: async () => null,
+      },
+      comms: {
+        history: async () => [],
+        onEvent: (l: Listener) => {
+          listeners.push(l);
+          return () => listeners.splice(listeners.indexOf(l), 1);
+        },
+      },
+    };
+  });
+  await openOffice(page, daemon.url);
+  for (const [id, terminalId] of [
+    ['lead-a', 'term-a'],
+    ['lead-b', 'term-b'],
+  ]) {
+    const response = await fetch(`${daemon.url}/hook`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        hook_event_name: 'SessionStart',
+        session_id: id,
+        cwd: '/work/team',
+        terminalId,
+      }),
+    });
+    expect(response.status).toBe(204);
+  }
+  await expect
+    .poll(
+      async () => {
+        const all = await characters(page);
+        return all.length === 2 && all.every((c) => c.phase === 'at-desk');
+      },
+      { timeout: 30_000 },
+    )
+    .toBe(true);
+
+  const message = (extra: Record<string, unknown> = {}) => ({
+    id: 'm1',
+    cwd: '/work/team',
+    fromEntryId: 'entry-a',
+    fromName: 'Ana',
+    toEntryId: 'entry-b',
+    toName: 'Beto',
+    text: 'Pode revisar o PR 42?',
+    status: 'na-fila',
+    createdAt: '2026-01-01T00:00:00Z',
+    ...extra,
+  });
+  const emit = (type: string, extra: Record<string, unknown> = {}) =>
+    page.evaluate(
+      (event) => (window as unknown as { __emitComm(e: unknown): void }).__emitComm(event),
+      { type, message: message(extra), at: '2026-01-01T00:00:01Z' },
+    );
+  const phaseOf = async (id: string) => (await characters(page)).find((c) => c.id === id)?.phase;
+  const lead = async (id: string) => (await characters(page)).find((c) => c.id === id);
+
+  await emit('iniciada');
+  await expect.poll(() => phaseOf('lead-a'), { timeout: 30_000 }).toBe('visiting');
+  expect(await phaseOf('lead-b')).toBe('at-desk');
+  // Next to the recipient, not on top of it.
+  const a = await lead('lead-a');
+  const b = await lead('lead-b');
+  await expect
+    .poll(async () => {
+      const [pa, pb] = [await lead('lead-a'), await lead('lead-b')];
+      return Math.abs((pa?.x ?? 0) - (pb?.x ?? 0)) + Math.abs((pa?.y ?? 0) - (pb?.y ?? 0));
+    })
+    .toBeLessThanOrEqual(2);
+  expect(a && b && (a.x !== b.x || a.y !== b.y)).toBe(true);
+
+  // Delivery alone does not send the sender back.
+  await emit('entregue', { status: 'entregue' });
+  await page.waitForTimeout(1500);
+  expect(await phaseOf('lead-a')).toBe('visiting');
+
+  await emit('respondida', { status: 'respondida' });
+  await expect.poll(() => phaseOf('lead-a'), { timeout: 30_000 }).toBe('at-desk');
+});

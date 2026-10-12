@@ -69,7 +69,7 @@ export interface Desk {
   facing: Direction;
 }
 
-export type PoiType = 'server-rack' | 'phone' | 'window' | 'hall-of-fame';
+export type PoiType = 'server-rack' | 'phone' | 'window' | 'hall-of-fame' | 'whiteboard';
 
 export interface Poi {
   type: PoiType;
@@ -529,7 +529,10 @@ export function layoutBuilding(projects: readonly LayoutProjectInput[]): Buildin
       setCell(b.walls, x, 0, 'window-top');
       setCell(b.walls, x, 1, 'window');
     }
-    b.prop(index % 2 === 0 ? 'whiteboard' : 'art-wide', x0 + 10, 1);
+    // Exactly one interactive whiteboard per workspace (spec 076).
+    b.prop('whiteboard', x0 + 10, 1);
+    // Where an agent stands to draw on it (spec 078): the corridor tile just below the board.
+    b.pois.push({ type: 'whiteboard', tile: { x: x0 + 10, y: WALL_ROWS }, roomId: project.id });
     setCell(b.walls, x0 + 13, 1, index % 2 === 0 ? 'clock' : 'poster');
     b.prop('plant-tall', x0 + 1, WALL_ROWS);
     b.prop(index % 2 === 0 ? 'plant' : 'plant-fig', x0 + 14, WALL_ROWS);
