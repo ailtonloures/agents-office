@@ -44,6 +44,7 @@ const roster = (...ids: string[]): ProjectRoster => ({
     createdBy: null,
     connections: [],
     notes: `notes ${profileId}`,
+    reopen: true,
   })),
 });
 
@@ -159,6 +160,7 @@ describe('cast rows', () => {
           createdBy: null,
           connections: [],
           notes: '',
+          reopen: true,
         },
       ],
     };
@@ -228,6 +230,7 @@ describe('agents created by orchestrators', () => {
         createdBy: null,
         connections: [],
         notes: '',
+        reopen: true,
       },
       {
         kind: 'inline',
@@ -239,6 +242,7 @@ describe('agents created by orchestrators', () => {
         createdBy: 'designer',
         connections: [],
         notes: '',
+        reopen: true,
       },
     ],
   };

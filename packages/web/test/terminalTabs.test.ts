@@ -39,21 +39,17 @@ import {
 const tab = (id: string, cwd = `/work/${id}`): TerminalTab => ({ id, cwd, state: 'running' });
 
 describe('titles', () => {
-  it('uses the last folder and the state', () => {
+  it('uses the last folder', () => {
     expect(projectName('/home/a/proj/')).toBe('proj');
     expect(projectName('C:\\Users\\a\\proj')).toBe('proj');
     expect(projectName('/')).toBe('/');
-    expect(tabTitle(tab('1', '/x/api'))).toBe('api · ativa');
-    expect(tabTitle({ ...tab('1', '/x/api'), state: 'exited' })).toBe('api · encerrada');
+    expect(tabTitle(tab('1', '/x/api'))).toBe('api');
+    expect(tabTitle({ ...tab('1', '/x/api'), state: 'exited' })).toBe('api');
   });
 
-  it('shows the office state of the bound session while running', () => {
-    expect(tabTitle({ ...tab('1', '/x/api'), activity: 'pensando' })).toBe(
-      'api · ativa · pensando',
-    );
-    expect(tabTitle({ ...tab('1', '/x/api'), state: 'exited', activity: 'pensando' })).toBe(
-      'api · encerrada',
-    );
+  it('adds the profile name while running', () => {
+    expect(tabTitle({ ...tab('1', '/x/api'), activity: 'Designer' })).toBe('api · Designer');
+    expect(tabTitle({ ...tab('1', '/x/api'), state: 'exited', activity: 'Designer' })).toBe('api');
   });
 
   it('applyActivity sets, changes and clears the activity per tab, keeping identity when equal', () => {

@@ -97,6 +97,7 @@ const CSS = `${BROWSER_CSS}
 #ao-terminal .ao-term-ended span,#ao-terminal .ao-term-confirm span{flex:1}
 #ao-terminal .ao-term-confirm{flex:none;display:flex;gap:8px;align-items:center;padding:6px 10px;
   background:#3a2a2a;border-bottom:2px solid #ff7b7b}
+#ao-terminal .ao-term-confirm[hidden]{display:none}
 #ao-terminal .ao-term-ended button,#ao-terminal .ao-term-confirm button{font:12px monospace;
   padding:3px 10px;background:#1b1d2a;color:#f0e6b8;border:2px solid #f0c040;cursor:pointer}
 body[data-dock="left"] #game,body[data-dock="right"] #game{width:auto;min-width:0}

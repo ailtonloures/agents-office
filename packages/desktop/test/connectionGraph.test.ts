@@ -23,6 +23,7 @@ const entry = (id: string, createdBy: string | null = null) => ({
   createdBy,
   connections: [] as string[],
   notes: '',
+  reopen: true,
 });
 const roster = (...ids: string[]): ProjectRoster =>
   ProjectRosterSchema.parse({ entries: ids.map((id) => entry(id)) });

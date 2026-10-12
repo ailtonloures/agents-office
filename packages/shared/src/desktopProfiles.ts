@@ -62,6 +62,8 @@ export type AgentProfileInput = z.input<typeof AgentProfileSchema>;
 export type AgentProfileDraft = Omit<AgentProfileInput, 'id'>;
 
 const NotesSchema = z.string().max(AGENT_NOTES_MAX).default('');
+/** False once the user (or the agent itself) ended the session: it is not reopened on app start. */
+const ReopenSchema = z.boolean().default(true);
 const ConnectionsSchema = z.array(ProfileIdSchema).max(ROSTER_MAX_CONNECTIONS).default([]);
 
 /** Roster entry that references a profile of the global library. */
@@ -73,6 +75,7 @@ export const RosterProfileEntrySchema = z.object({
   /** Entry ids this agent may talk to. */
   connections: ConnectionsSchema,
   notes: NotesSchema,
+  reopen: ReopenSchema,
 });
 export type RosterProfileEntry = z.infer<typeof RosterProfileEntrySchema>;
 
@@ -88,6 +91,7 @@ export const RosterInlineEntrySchema = z.object({
   createdBy: ProfileIdSchema.nullable().default(null),
   connections: ConnectionsSchema,
   notes: NotesSchema,
+  reopen: ReopenSchema,
 });
 export type RosterInlineEntry = z.infer<typeof RosterInlineEntrySchema>;
 

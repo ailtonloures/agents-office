@@ -118,15 +118,11 @@ export function projectName(cwd: string): string {
   return parts[parts.length - 1] ?? cwd;
 }
 
-export function stateLabel(tab: TerminalTab): string {
-  return tab.state === 'running' ? 'ativa' : 'encerrada';
-}
-
-/** Tab title: `projeto · estado`, plus the office state of the bound session while running. */
+/** Tab title: `projeto`, plus the profile name (the tab's `activity`) of a managed session. */
 export function tabTitle(tab: TerminalTab): string {
   if (isBrowserTab(tab)) return `Navegador · ${projectName(tab.cwd)}`;
-  const base = `${projectName(tab.cwd)} · ${stateLabel(tab)}`;
-  return tab.state === 'running' && tab.activity ? `${base} · ${tab.activity}` : base;
+  const project = projectName(tab.cwd);
+  return tab.state === 'running' && tab.activity ? `${project} · ${tab.activity}` : project;
 }
 
 /** Sets the office activity of each tab from `activity` (by tab id); returns the same model if nothing changed. */

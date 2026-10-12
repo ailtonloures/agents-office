@@ -1,6 +1,5 @@
 import type { ManagedSessionInfo, OfficeModel } from '@agents-office/shared';
 import { type BuildingLayout, type Door, type Tile, WALL_ROWS } from '../world/roomLayout';
-import { STATUS_LABEL } from './dialogContent';
 
 // Pure helpers that tie the office model to the desktop shell: which terminal tab runs which
 // session (spec 023) and which room door starts a new one.
@@ -19,21 +18,15 @@ export function roomCwd(model: OfficeModel, roomId: string): string | undefined 
 }
 
 /**
- * Office state of each session started by the app, by terminal tab id (for the tab title). Tabs of
- * managed sessions lead with the profile name, even before the first hook binds the session.
+ * Profile name of each managed session, by terminal tab id (for the tab title), available even
+ * before the first hook binds the session.
  */
 export function activityByTerminal(
-  model: OfficeModel,
+  _model: OfficeModel,
   managed: readonly ManagedSessionInfo[] = [],
 ): Record<string, string> {
   const result: Record<string, string> = {};
-  for (const session of Object.values(model.sessions)) {
-    if (session.terminalId !== undefined) result[session.terminalId] = STATUS_LABEL[session.status];
-  }
-  for (const info of managed) {
-    const state = result[info.terminalId];
-    result[info.terminalId] = state === undefined ? info.name : `${info.name} · ${state}`;
-  }
+  for (const info of managed) result[info.terminalId] = info.name;
   return result;
 }
 

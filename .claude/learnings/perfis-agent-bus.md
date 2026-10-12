@@ -4,12 +4,13 @@ Resumo das specs 061-066 (PRD `perfis-sessoes-gerenciadas`).
 
 ## Modelo
 - Perfil (`AgentProfile`, `packages/shared/src/desktopProfiles.ts`): nome (unico, sem diferenciar maiuscula), descricao, aparencia, instrucoes, modo de permissao, modelo, papel (`padrao` | `orquestrador`). Biblioteca global em `<userData>/profiles/` (`ProfileLibrary`), com o perfil "Tech Lead" (`tech-lead`) semeado.
-- Elenco (roster) por projeto em `<userData>/rosters.json` (`RosterStore`): entradas `profile` (referencia por id) ou `inline` (specs 072/074), `createdBy`, `connections`, `notes` (ate 8000 chars) e `autoReopen` (padrao true).
+- Elenco (roster) por projeto em `<userData>/rosters.json` (`RosterStore`): entradas `profile` (referencia por id) ou `inline` (specs 072/074), `createdBy`, `connections`, `notes` (ate 8000 chars) `reopen` por entrada (padrao true; ver abaixo) e `autoReopen` por projeto (padrao true).
 - Escritas atomicas (`writeJsonAtomic`); arquivo corrompido vira backup (`backupCorrupt`) e recomeca vazio.
 
 ## Sessoes gerenciadas
 - `ManagedSessions` (main) inicia uma entrada do elenco: idempotente por (cwd, entryId), repassa instrucoes/modelo/permissionMode/profileId/projectId/role ao `SessionManager`, nunca usa `--resume`.
-- `reopenAll()` roda uma vez no `whenReady`, depois do `agentBus.start()`, respeita `autoReopen` e o limite de sessoes; falhas de uma entrada nao bloqueiam a proxima (`ReopenReport`).
+- `reopenAll()` roda uma vez no `whenReady`, depois do `agentBus.start()`, respeita `autoReopen`, o `reopen` de cada entrada e o limite de sessoes; falhas de uma entrada nao bloqueiam a proxima (`ReopenReport`).
+- `reopen`: `ManagedSessions` grava `reopen=false` quando a sessao termina fora do encerramento do app (fechar aba, `stop`, `/exit`) e `true` ao iniciar. No quit do app, `beginShutdown()` impede que os kills desmarquem as entradas. Assim so reabre o que estava aberto ao fechar o app (bug: sessao encerrada reabria em todo launch).
 - A injecao (`--append-system-prompt`, `--model`, `--mcp-config`) so ocorre quando `start.command` nao foi informado (claude real). Com claude falso o E2E enxerga os argumentos no eco do terminal.
 - Elo sessao <-> perfil = id do terminal (`managed.list`). Sessoes abertas pelo seletor continuam "externas" (Tech Lead).
 

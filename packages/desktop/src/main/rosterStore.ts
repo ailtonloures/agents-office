@@ -70,7 +70,14 @@ export class RosterStore {
     return this.mutate(cwd, (roster) => {
       if (roster.entries.some((e) => rosterEntryId(e) === profileId)) return;
       if (roster.entries.length >= ROSTER_MAX_ENTRIES) throw new Error('Roster is full.');
-      roster.entries.push({ kind: 'profile', profileId, createdBy, connections: [], notes: '' });
+      roster.entries.push({
+        kind: 'profile',
+        profileId,
+        createdBy,
+        connections: [],
+        notes: '',
+        reopen: true,
+      });
     });
   }
 
@@ -98,6 +105,7 @@ export class RosterStore {
         createdBy: input.createdBy,
         connections: [],
         notes: '',
+        reopen: true,
       });
     });
     return { roster, entryId };
@@ -130,6 +138,14 @@ export class RosterStore {
       if (!entry) throw new Error(`Unknown roster entry: ${entryId}`);
       entry.notes = notes;
     });
+  }
+
+  /** Remembers whether the entry's session was open (true) or ended (false) for the next launch. */
+  setReopen(cwd: string, entryId: string, reopen: boolean): void {
+    const entry = this.projects.get(cwd)?.entries.find((e) => rosterEntryId(e) === entryId);
+    if (!entry || entry.reopen === reopen) return;
+    entry.reopen = reopen;
+    this.persist();
   }
 
   setAutoReopen(cwd: string, autoReopen: boolean): ProjectRoster {

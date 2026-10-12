@@ -89,17 +89,31 @@ describe('managed binding', () => {
 
   it('puts the profile name in the tab title, even before the session is bound', () => {
     const tabs = activityByTerminal(model, [info(), info({ terminalId: 't9', name: 'Nova' })]);
-    expect(tabs.t1).toBe('Designer · trabalhando');
+    expect(tabs.t1).toBe('Designer');
     expect(tabs.t9).toBe('Nova');
-    expect(tabs.other).toBeDefined();
+    expect(tabs.other).toBeUndefined();
   });
 
   it('marks a roster entry without a running session as absent', () => {
     const roster: ProjectRoster = {
       autoReopen: true,
       entries: [
-        { kind: 'profile', profileId: 'designer', createdBy: null, connections: [], notes: '' },
-        { kind: 'profile', profileId: 'reviewer', createdBy: null, connections: [], notes: '' },
+        {
+          kind: 'profile',
+          profileId: 'designer',
+          createdBy: null,
+          connections: [],
+          notes: '',
+          reopen: true,
+        },
+        {
+          kind: 'profile',
+          profileId: 'reviewer',
+          createdBy: null,
+          connections: [],
+          notes: '',
+          reopen: true,
+        },
       ],
     };
     const presence = rosterPresence('/p', roster, [info()]);

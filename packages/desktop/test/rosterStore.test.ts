@@ -31,6 +31,15 @@ describe('RosterStore', () => {
     expect(() => store.setNotes('/p', 'nope', 'x')).toThrow();
   });
 
+  it('persists whether an entry session should reopen (default true)', () => {
+    const store = new RosterStore(path);
+    store.addProfile('/p', 'a');
+    expect(store.get('/p').entries[0]).toMatchObject({ reopen: true });
+    store.setReopen('/p', 'a', false);
+    store.setReopen('/p', 'unknown', false); // ignored
+    expect(new RosterStore(path).get('/p').entries[0]).toMatchObject({ reopen: false });
+  });
+
   it('removes entries and dangling connections', () => {
     const store = new RosterStore(path);
     store.addProfile('/p', 'a');

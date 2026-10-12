@@ -28,6 +28,7 @@ export interface ManagedSessionsOptions {
   roster: {
     get(cwd: string): ProjectRoster;
     projectCwds(): string[];
+    setReopen(cwd: string, entryId: string, reopen: boolean): void;
   };
   /** Simultaneous session limit (the same one the session manager enforces). */
   maxSessions?: () => number;
@@ -56,6 +57,7 @@ export class ManagedSessions {
   private readonly listeners = new Set<(change: ManagedChange) => void>();
   private readonly reopenListeners = new Set<(report: ReopenReport) => void>();
   private report: ReopenReport | null = null;
+  private shuttingDown = false;
 
   constructor(private readonly options: ManagedSessionsOptions) {
     options.host.onExit(({ id }) => this.handleExit(id));
@@ -135,6 +137,7 @@ export class ManagedSessions {
       };
       this.running.set(key, { info });
       this.byTerminal.set(id, key);
+      this.options.roster.setReopen(cwd, entryId, true);
       this.failures.delete(key);
       this.emit();
       return { ok: true, terminalId: id, alreadyRunning: false };
@@ -203,7 +206,17 @@ export class ManagedSessions {
     if (key === undefined) return; // not a managed session
     this.byTerminal.delete(terminalId);
     this.running.delete(key);
+    if (!this.shuttingDown) {
+      // Ended on purpose (tab closed, stop, /exit): do not bring it back on the next launch.
+      const [cwd = '', entryId = ''] = key.split('\u0000');
+      this.options.roster.setReopen(cwd, entryId, false);
+    }
     this.emit();
+  }
+
+  /** The app is quitting: the exits that follow keep their entries marked to reopen. */
+  beginShutdown(): void {
+    this.shuttingDown = true;
   }
 
   /** Terminal id -> managed session (null for any terminal this service did not start). */
@@ -233,6 +246,7 @@ export class ManagedSessions {
       const roster = this.options.roster.get(cwd);
       if (!roster.autoReopen) continue;
       for (const entry of roster.entries) {
+        if (!entry.reopen) continue;
         const entryId = rosterEntryId(entry);
         if (!limitReached) {
           const live = this.options.liveCount?.() ?? this.running.size;

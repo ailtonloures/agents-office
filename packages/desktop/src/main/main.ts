@@ -742,6 +742,7 @@ function main(): void {
       idleSource.stop();
       messaging.stop();
       commsLog.detach();
+      managedSessions.beginShutdown();
       await sessions.killAll();
       await agentBus.stop();
       await controller.stop();

@@ -621,9 +621,7 @@ test.describe(`desktop app (${mode})`, () => {
 
       const started = await startSession(cwd);
       expect(started.ok).toBe(true);
-      await expect
-        .poll(async () => (await panel((p) => p.tabs[0]?.title)) ?? '')
-        .toBe('demo-app · ativa');
+      await expect.poll(async () => (await panel((p) => p.tabs[0]?.title)) ?? '').toBe('demo-app');
       await expect.poll(text).toContain(`READY ${started.id}`);
       // The office keeps a whole zoom and sits above the panel.
       const geometry = () =>
@@ -1202,7 +1200,7 @@ test.describe(`desktop app (${mode})`, () => {
             alphaTab,
           ),
         )
-        .toBe('alpha-app · ativa · pensando');
+        .toBe('alpha-app');
 
       const handKeyboardToOffice = async () => {
         await page.mouse.click(10, 10);
@@ -1467,7 +1465,7 @@ test.describe(`desktop app (${mode})`, () => {
         .toBe(tab);
       await expect
         .poll(() => page.evaluate(() => window.__terminalPanel?.tabs[0]?.title ?? ''))
-        .toContain('flow-project · ativa');
+        .toContain('flow-project');
 
       // 4. A permission request of that session is pending in the office; the hook returns at once.
       const answer = fetch(`${box.url}hook`, {

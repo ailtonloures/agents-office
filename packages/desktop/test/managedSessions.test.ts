@@ -1,8 +1,9 @@
-import type {
-  AgentProfile,
-  ProjectRoster,
-  RosterEntry,
-  TerminalExitEvent,
+import {
+  type AgentProfile,
+  type ProjectRoster,
+  type RosterEntry,
+  rosterEntryId,
+  type TerminalExitEvent,
 } from '@agents-office/shared';
 import { describe, expect, it } from 'vitest';
 import { ManagedSessions } from '../src/main/managedSessions';
@@ -31,6 +32,7 @@ const entry = (profileId: string, notes = ''): RosterEntry => ({
   createdBy: null,
   connections: [],
   notes,
+  reopen: true,
 });
 
 function setup(
@@ -69,6 +71,10 @@ function setup(
     roster: {
       get: (cwd) => ({ autoReopen: true, ...rosters[cwd] }) as ProjectRoster,
       projectCwds: () => Object.keys(rosters),
+      setReopen: (cwd, entryId, reopen) => {
+        const e = rosters[cwd]?.entries.find((x) => rosterEntryId(x) === entryId);
+        if (e) e.reopen = reopen;
+      },
     },
     maxSessions: options.limit === undefined ? undefined : () => options.limit as number,
     liveCount: () => alive.size,
@@ -78,6 +84,20 @@ function setup(
 }
 
 describe('ManagedSessions', () => {
+  it('does not reopen a session that was ended, but reopens one open when the app quit', async () => {
+    const rosters = { '/p': { entries: [entry('a'), entry('b')] } };
+    const first = setup(rosters);
+    await first.managed.start('/p', 'a');
+    await first.managed.start('/p', 'b');
+    await first.managed.stop('/p', 'a'); // ended on purpose
+    first.managed.beginShutdown();
+    await first.host.kill('term-2'); // killed by the app quitting
+    expect(rosters['/p'].entries.map((e) => e.reopen)).toEqual([false, true]);
+    const second = setup(rosters);
+    const report = await second.managed.reopenAll();
+    expect(report.started.map((s) => s.entryId)).toEqual(['b']);
+  });
+
   it('starts an entry with the profile instructions, model and ids, never with --resume', async () => {
     const { managed, starts } = setup({ '/p': { entries: [entry('a', 'old notes')] } });
     const result = await managed.start('/p', 'a');

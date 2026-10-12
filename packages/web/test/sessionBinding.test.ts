@@ -50,11 +50,11 @@ describe('roomCwd / activityByTerminal', () => {
     expect(roomCwd(model, 'nope')).toBeUndefined();
   });
 
-  it('maps only the sessions bound to a terminal, with the office status label', () => {
+  it('has no activity without managed sessions (the tab title shows the profile only)', () => {
     const model = createEmptyModel();
     model.sessions.s1 = session('s1', { terminalId: 't1', status: 'thinking' });
     model.sessions.s2 = session('s2');
-    expect(activityByTerminal(model)).toEqual({ t1: 'pensando' });
+    expect(activityByTerminal(model)).toEqual({});
   });
 });
 
