@@ -1,0 +1,59 @@
+:root {
+  /* Surfaces */
+  --color-bg: #0d1020;
+  --color-bg-glow: #1a1e3a;
+  --color-panel: #2a2d44;
+  --color-panel-deep: #1b1d2a;
+  --color-panel-hover: #34385a;
+
+  /* Brand */
+  --color-gold: #f0c040;
+  --color-cream: #f0e6b8;
+  --color-violet-glow: rgba(139, 124, 246, 0.3);
+
+  /* Text */
+  --color-text: #eeecf6;
+  --color-text-muted: #a9a6c4;
+  --color-on-gold: #1b1d2a;
+
+  /* Focus */
+  --color-focus: #9ad1ff;
+
+  /* Role accents (match ROLE_COLOR in the app) */
+  --role-tech-lead: #f2c94c;
+  --role-analyst: #5fa8f0;
+  --role-architect: #b49cff;
+  --role-developer: #58d6c4;
+  --role-qa: #6fdc7e;
+  --role-support: #ff9f6b;
+
+  /* Spacing scale */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+  --space-8: 72px;
+  --space-9: 112px;
+
+  /* Layout */
+  --gutter: 16px;
+  --container-max: 1120px;
+  --container-narrow: 760px;
+
+  /* Elevation */
+  --shadow-press: 0 3px 0 #000a;
+  --shadow-panel: 6px 6px 0 #000a;
+
+  /* Type */
+  --font-pixel: "VT323", "Courier New", monospace;
+  --font-body: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+@media (min-width: 768px) {
+  :root {
+    --gutter: 24px;
+  }
+}

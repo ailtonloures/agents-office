@@ -6,7 +6,8 @@
   "license": "MIT",
   "type": "module",
   "scripts": {
-    "test": "playwright test --project=web",
+    "test": "playwright test --project=web --project=landing",
+    "test:landing": "playwright test --project=landing",
     "test:desktop": "playwright test --project=desktop",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },

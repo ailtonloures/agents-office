@@ -13,3 +13,4 @@ e2e/.artifacts/
 .playwright-mcp/
 packages/desktop/build/
 packages/desktop/release/
+.vercel/

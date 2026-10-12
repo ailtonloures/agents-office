@@ -14,6 +14,7 @@ pnpm monorepo (Node >= 20, pnpm 9). Agents Office mirrors Claude Code activity a
 | `packages/web` | Phaser game plus DOM UI (runs in a browser or the desktop window) |
 | `packages/desktop` | Electron shell: main, preload bridges, `node-pty` terminals, agent bus, updater |
 | `packages/cli` | Publishable npm package that bundles daemon and web |
+| `packages/landing` | Static commercial landing page (Vite + React, deployed on Vercel); standalone, not part of the app |
 | `e2e` | Playwright tests |
 | `.claude/` | PRDs, specs, learnings |
 

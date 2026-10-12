@@ -109,6 +109,16 @@ PRD: [agents-office.prd.md](../prds/agents-office.prd.md)
 | 103 | Migrar painel Elenco para i18n | medium | done | refactor, web, ui, i18n, cast, testing | 099 |
 | 104 | Migrar terminal, navegador, quadro e demais textos para i18n | medium | done | refactor, web, ui, i18n, testing | 099 |
 | 105 | i18n - testes e2e, regra no CLAUDE.md e documentação | medium | done | docs, testing, e2e, i18n | 100, 101, 102, 103, 104 |
+| 106 | Scaffold do pacote landing (Vite, React 19, Vercel) | high | done | feature, landing, infra, vercel | — |
+| 107 | Landing - tokens, estilos globais e componentes base pixel art | high | done | feature, landing, ui, design | 106 |
+| 108 | Landing - infraestrutura de i18n (en, pt-BR, es) | high | done | feature, landing, i18n, testing | 106 |
+| 109 | Landing - lógica pura da cena do escritório | high | done | feature, landing, logic, testing | 106 |
+| 110 | Landing - PixelOffice em canvas e sprites CC0 | high | done | feature, landing, canvas, assets | 107, 109 |
+| 111 | Landing - seções Hero, Como funciona, Recursos e Arquitetura | high | done | feature, landing, ui, content | 107, 108, 110 |
+| 112 | Landing - seções Segurança, Instalação, Open source e Rodapé | medium | done | feature, landing, ui, content | 107, 108 |
+| 113 | Landing - SEO, acessibilidade e desempenho | medium | done | enhancement, landing, seo, a11y, performance | 111, 112 |
+| 114 | Landing - testes e2e com Playwright | medium | done | testing, landing, e2e | 113 |
+| 115 | Landing - documentação e deploy de preview na Vercel | medium | in-progress | docs, landing, vercel, release | 113, 114 |
 
 Fases do PRD: 001–002 = Fase 0 (spike) · 003–011 = Fase 1 (MVP) · 006, 012 = parte da Fase 2. Replay, minimapa e Tauri (Fase 3) ficam fora deste lote.
 
@@ -157,3 +167,5 @@ PRD do Tech Lead fantasma: [tech-lead-fantasma-sessoes-ociosas.prd.md](../prds/t
 PRD do nome do elenco no balão de diálogo: [balao-dialogo-nome-do-elenco.prd.md](../prds/balao-dialogo-nome-do-elenco.prd.md) (098; independente).
 
 PRD do seletor de idioma: [locale-seletor-de-idioma.prd.md](../prds/locale-seletor-de-idioma.prd.md) (099–105; 100 a 104 dependem de 099, 105 de 100 a 104; 101 a 104 são independentes entre si).
+
+PRD da landing page comercial: [landing-page-comercial.prd.md](../prds/landing-page-comercial.prd.md) (106–115; 107, 108 e 109 dependem de 106 e são independentes entre si; 110 de 107 e 109; 111 de 107, 108 e 110; 112 de 107 e 108; 113 de 111 e 112; 114 de 113; 115 de 113 e 114).

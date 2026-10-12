@@ -10,6 +10,7 @@ Status legend used below: items marked **in progress** exist in the working tree
 - [Processes](#processes)
 - [Shared contracts](#shared-contracts)
 - [Flows](#flows)
+- [Landing page](#landing-page)
 - [Release, auto-update and CI](#release-auto-update-and-ci)
 - [Security](#security)
 - [Where does my change go?](#where-does-my-change-go)
@@ -25,7 +26,8 @@ The repository is a pnpm workspace (`packages/*` and `e2e`).
 | `packages/web` | `@agents-office/web` | Phaser 3 game plus DOM UI (panels, xterm.js terminal, Excalidraw whiteboard). Runs in a browser or inside the desktop window. |
 | `packages/desktop` | `@agents-office/desktop` | Electron shell: main process, preload bridges, embedded `node-pty` terminals, agent bus, updater. |
 | `packages/cli` | `agents-office` | The publishable npm package. Bundles the daemon and the built web app (`bin/agents-office.mjs`, `dist/cli.mjs`, `dist/hook.mjs`, `dist/web`). |
-| `e2e` | `@agents-office/e2e` | Playwright tests against the daemon and web build, and against the packaged desktop app. |
+| `packages/landing` | `@agents-office/landing` | Static commercial landing page (Vite + React 19), deployed on Vercel. |
+| `e2e` | `@agents-office/e2e` | Playwright tests against the daemon and web build, the built landing page, and the packaged desktop app. |
 
 ```mermaid
 flowchart TD
@@ -468,6 +470,17 @@ Specs 080 to 085 add a per-project browser to the window and browser tools for a
 - `BrowserDriver` drives the view over the Chrome DevTools Protocol (`webContents.debugger`) for the `browser_*` Agent Bus tools. `BrowserQueue` serializes actions per project so two agents never interleave, and the pane shows who is using the browser.
 - Everything read from a page is returned with a notice that it is untrusted data. Approval prompts for the browser (`browserApproval` bridge) are not complete yet.
 
+## Landing page
+
+`packages/landing` is an isolated static site. It has no dependency on the other workspace packages: it
+is not a dependency of `packages/cli`, is not shipped in the npm package or the desktop app, and does
+not touch the web skins. The pixel office on the page is drawn on a canvas by `src/pixel/officeRenderer.ts`
+from the pure scene logic in `src/pixel/officeLogic.ts`. Its sprites are copies of the web default skin
+in `public/sprites` (with their own CC0 `LICENSES.md`), so the skin generator and the landing never
+interact. It has its own small i18n (en, pt-BR, es; locale kept in `localStorage`), and
+`build/seoPlugin.ts` injects head tags and emits `robots.txt` and `sitemap.xml` from `VITE_SITE_URL`.
+The e2e `landing` project tests the built site. Setup and deploy are in [DEVELOPMENT.md](./DEVELOPMENT.md#landing-page).
+
 ## Release, auto-update and CI
 
 ```mermaid
@@ -529,4 +542,5 @@ The app runs on a developer machine next to their Claude Code credentials and fi
 | Change packaging or release | `packages/desktop/electron-builder.yml`, `.github/workflows/release.yml`, `scripts/release.mjs` |
 | Change visuals or UI conventions | see [DESIGN.md](./DESIGN.md) |
 | Add or change UI text, or add a language | `web/src/i18n/messages/en.ts` (keys), then `pt-BR.ts` and `es.ts`; see DESIGN.md section 6.7 |
+| Change the landing page | `packages/landing/src/sections`, text in `src/i18n/messages`, scene in `src/pixel` |
 | Run, build or test | see [DEVELOPMENT.md](./DEVELOPMENT.md) |

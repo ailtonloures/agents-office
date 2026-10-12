@@ -51,6 +51,46 @@ UI text lives in `packages/web/src/i18n/messages/`. Add a key to `en.ts` first, 
 restore it afterwards; Playwright specs run in English (the default) and pick another language by
 clicking the language button or by writing `agents-office.locale` into `localStorage`.
 
+## Landing page
+
+`packages/landing` is the static marketing site (Vite 7 + React 19). It does not need the daemon and
+is not bundled into the npm package.
+
+```bash
+pnpm --filter @agents-office/landing dev       # Vite with hot reload
+pnpm --filter @agents-office/landing build     # static site in packages/landing/dist
+pnpm --filter @agents-office/landing preview   # serve the build
+pnpm --filter @agents-office/landing test      # unit tests (also run by pnpm vitest run)
+```
+
+End-to-end tests run against the built site served by `vite preview` on port 4399, so build first:
+
+```bash
+pnpm build && pnpm --filter @agents-office/e2e exec playwright test --project=landing
+```
+
+`VITE_SITE_URL` sets the public origin used for the canonical link, Open Graph tags, JSON-LD,
+`robots.txt` and `sitemap.xml` (emitted into `dist` by `build/seoPlugin.ts`). It defaults to
+`https://agents-office.vercel.app`; set it to the real domain at build time, no source change needed.
+
+`public/og.png` and `public/apple-touch-icon.png` are generated, not drawn by hand. After changing the
+logo, font or office still, run `node packages/landing/scripts/generate-social-images.mjs` (it borrows
+Playwright and Chromium from the `e2e` package). Sprites in `public/sprites` are copies of the web skin
+(CC0, see its `LICENSES.md`); update them by copying again, never by editing them.
+
+### Deploying to Vercel
+
+The project must be created with **Root Directory** `packages/landing` and the environment variable
+`VITE_SITE_URL`. `packages/landing/vercel.json` does the rest: the install step runs
+`cd ../.. && pnpm install --frozen-lockfile` and the build step runs
+`cd ../.. && pnpm --filter @agents-office/landing build`, because the lockfile and workspace live at
+the repository root. Output is `dist`. Only `/assets/*` gets a long immutable cache (those files are
+content-hashed); `/fonts` and `/sprites` keep default caching because their names are not hashed.
+`.vercel/` is git-ignored. Deploy with the Vercel dashboard or `vercel deploy` (preview) from the
+repository root; use `--prod` only on purpose.
+
+The Download links point to the latest GitHub release and resolve only once a release exists.
+
 ## Optional Claude Code hooks
 
 The hooks make updates instant and show when an agent is waiting for you. Installing them keeps a
