@@ -40,3 +40,34 @@ jobs:
           pnpm exec electron-builder --config electron-builder.yml --linux AppImage --publish always
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # Runs only after the Linux job has created the release; attaches the .dmg to that same release.
+  macos:
+    needs: release
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Tag must match the desktop version
+        run: |
+          version="$(node -p "require('./packages/desktop/package.json').version")"
+          if [ "${GITHUB_REF_NAME}" != "v${version}" ]; then
+            echo "Tag ${GITHUB_REF_NAME} does not match packages/desktop version v${version}" >&2
+            exit 1
+          fi
+      - run: pnpm install --frozen-lockfile
+      - name: Build, package and publish the dmg
+        working-directory: packages/desktop
+        run: |
+          pnpm --workspace-root build
+          node scripts/stage-daemon.mjs
+          pnpm exec electron-builder --config electron-builder.yml --mac dmg --publish always
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Usage: pnpm release <patch|minor|major> [--dry-run]
 // Bumps packages/desktop/package.json, commits it and creates the vX.Y.Z tag.
-// It never pushes: the maintainer pushes the commit and the tag (see README, "Releases").
+// It never pushes: the maintainer pushes the commit and the tag (see DEVELOPMENT.md, "Releasing").
 import { execFileSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';

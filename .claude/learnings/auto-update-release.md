@@ -33,3 +33,8 @@
 ## Release script (spec 060)
 - `pnpm release <patch|minor|major> [--dry-run]` runs `scripts/release.mjs`: bumps only `packages/desktop/package.json`, commits `:bookmark: release vX.Y.Z`, creates an annotated tag, and never pushes (maintainer runs `git push origin HEAD vX.Y.Z`). Refuses a dirty tree or an existing tag; `--dry-run` skips the dirty check and writes nothing, which is what the tests use (`packages/desktop/test/releaseScript.test.ts`).
 - Limits: only the Linux AppImage self-updates (needs `APPIMAGE` env); `.deb` and macOS builds are manual installs. The manual 0.1.0 -> 0.1.1 end-to-end check could not be run here (needs a real published release).
+
+## macOS release job (spec 086)
+- `release.yml` has a second job `macos` (`macos-latest`, `needs: release`) so it only runs after the Linux job created the release. It repeats the tag/version check, install, `pnpm --workspace-root build` and `stage-daemon.mjs`, then `electron-builder --mac dmg --publish always` with `CSC_IDENTITY_AUTO_DISCOVERY=false` (no signing). The `.dmg` (`agents-office-<version>-mac-<arch>.dmg`, from the shared `artifactName`) is attached to the same release as the AppImage. The Linux job is unchanged.
+- Auto-update remains AppImage-only: macOS (and `.deb`) are manual installs. The mac build also emits `latest-mac.yml`, but the updater service stays disabled there (needs `APPIMAGE`).
+- This job is only truly validated on the first real tag push (cannot be run locally); watch that run, especially native `node-pty` packaging on the mac runner.

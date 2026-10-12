@@ -28,68 +28,63 @@ It works passively by reading the Claude Code transcripts in `~/.claude/projects
 Claude Code hooks make updates instant and show when an agent is waiting for you. Everything stays
 on your machine: the daemon binds `127.0.0.1` only, with no telemetry.
 
-## Run locally
+## Install
 
-Requires Node >= 20 and pnpm >= 9.
+Download the latest build from the [GitHub Releases page](https://github.com/ailtonloures/agents-office/releases).
+Files are named `agents-office-<version>-<os>-<arch>.<ext>`.
 
-```bash
-pnpm install
-pnpm --filter @agents-office/daemon dev   # terminal 1: the daemon (port 4777)
-pnpm --filter @agents-office/web dev      # terminal 2: Vite with hot reload, open the URL it prints
-```
+### Linux
 
-`pnpm dev` at the root starts all of them at once, the desktop app included.
+1. Download `agents-office-<version>-linux-x64.AppImage`.
+2. Make it executable: `chmod +x agents-office-*-linux-x64.AppImage`.
+3. Run it: `./agents-office-*-linux-x64.AppImage`.
 
-Or run the built app the way users get it, on `http://127.0.0.1:4777`:
+The app updates itself: when a new release is published, a banner offers to restart into it.
 
-```bash
-pnpm build
-pnpm --filter @agents-office/daemon exec agents-office start
-```
+### macOS
 
-Desktop app (Electron window with the daemon embedded, tray and terminal dock):
+1. Download `agents-office-<version>-mac-<arch>.dmg` (`arm64` for Apple Silicon, `x64` for Intel).
+2. Open it and drag **Agents Office** to **Applications**.
 
-```bash
-pnpm --filter @agents-office/desktop dev
-```
-
-Optional, for instant updates and "waiting for you" alerts, install the Claude Code hooks (a backup
-of `~/.claude/settings.json` is kept; `hooks uninstall` removes them):
+The app is not code-signed yet, so macOS blocks the first launch. Right-click the app and choose
+**Open** (then confirm), or remove the quarantine flag:
 
 ```bash
-pnpm --filter @agents-office/daemon exec agents-office hooks install
+xattr -dr com.apple.quarantine "/Applications/Agents Office.app"
 ```
 
-Checks:
+On macOS, updates are manual: download the new `.dmg` from the Releases page.
 
-```bash
-pnpm lint && pnpm typecheck && pnpm test
-```
+### Optional: Claude Code hooks
 
-## Releases
+For instant updates and "waiting for you" alerts, install the Claude Code hooks with
+the CLI (`npx agents-office hooks install`; a backup of `~/.claude/settings.json` is kept;
+`hooks uninstall` removes them). Without hooks the office still works by reading
+your transcripts.
 
-Releases are published by GitHub Actions (`.github/workflows/release.yml`) when a `v*` tag is
-pushed. The tag must equal the version in `packages/desktop/package.json`, otherwise the workflow
-fails. The workflow creates the GitHub release (generated notes) and attaches the AppImage plus
-`latest-linux.yml`, which installed apps use to update themselves.
+### Privacy
 
-To publish, from a clean `main`:
+Everything stays on your machine. The daemon binds `127.0.0.1` only and there is no telemetry.
 
-```bash
-pnpm release patch            # or minor / major; add --dry-run to only preview the new version
-git push origin HEAD vX.Y.Z   # the command prints the exact tag to push
-```
+## Documentation
 
-`pnpm release` bumps `packages/desktop/package.json`, commits it and creates the `vX.Y.Z` tag. It
-never pushes. If the workflow fails, delete the tag (`git push --delete origin vX.Y.Z`,
-`git tag -d vX.Y.Z`), fix the problem and release again.
+- [DEVELOPMENT.md](./DEVELOPMENT.md): run from source, tests and the release process
+- [DESIGN.md](./DESIGN.md): visual identity and design decisions
+- [ARCHITECTURE.md](./ARCHITECTURE.md): how the pieces fit together
 
-Auto-update only works for the Linux AppImage (the `APPIMAGE` variable is set by the AppImage
-runtime). The `.deb` build and macOS builds do not self-update: install the new release manually.
+## Agent profiles and the cast
 
-Manual end-to-end check: install the AppImage of a published `0.1.0`, publish `0.1.1` with
-`pnpm release patch`, then start the old app: the update banner should appear, and "Reiniciar para
-atualizar" should install `0.1.1` and relaunch.
+In the desktop app, the **Elenco** button opens the cast panel. A *profile* (name, appearance,
+instructions, permission mode, model) lives in a global library; a project's *cast* lists the
+profiles that run there. Starting a cast member opens a managed Claude Code session whose system
+prompt carries the profile instructions and its saved notes, and the agent shows up in the office
+with the profile's look. With **auto-reopen** on (the default), the cast is started again every
+time the app opens.
+
+Managed sessions get a local **Agent Bus**: an MCP server bound to `127.0.0.1` on an ephemeral
+port, with a per-session bearer token that is revoked when the session ends. Its first tool,
+`save_notes`, lets the agent keep notes that come back on the next start. Profiles, rosters and
+notes are stored under the app's user data folder; nothing leaves your machine.
 
 ## License
 
