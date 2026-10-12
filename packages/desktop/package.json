@@ -27,8 +27,13 @@
     "name": "Agents Office",
     "email": "noreply@agents-office.invalid"
   },
-  "homepage": "https://github.com/agents-office/agents-office",
+  "homepage": "https://github.com/ailtonloures/agents-office",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ailtonloures/agents-office.git"
+  },
   "dependencies": {
+    "electron-updater": "^6.8.9",
     "node-pty": "1.1.0",
     "zod": "4.6.5"
   }

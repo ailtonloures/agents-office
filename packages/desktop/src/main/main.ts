@@ -14,6 +14,7 @@ import {
   Tray,
   utilityProcess,
 } from 'electron';
+import { autoUpdater } from 'electron-updater';
 import { spawn as spawnPty } from 'node-pty';
 import { AppConfigStore } from './appConfig';
 import { BinaryResolver, realIsExecutable, realRunShell } from './binaries';
@@ -41,6 +42,8 @@ import { SessionManager } from './sessionManager';
 import { attachRegistry, SessionRegistry } from './sessionRegistry';
 import { Shell, type TrayLike } from './shell';
 import { renderTrayIcon } from './trayIcon';
+import { createUpdateService, type UpdateService, type UpdateState } from './updater';
+import { createUpdateStatusPusher, registerUpdaterIpc } from './updaterIpc';
 
 // Lets tests (and portable setups) isolate the single-instance lock and the profile.
 if (process.env.AGENTS_OFFICE_USER_DATA) {
@@ -56,13 +59,21 @@ function trayImage(pending: number): Electron.NativeImage {
  * Minimal application menu. Its "Sair" entry (Cmd+Q on macOS, Ctrl+Q elsewhere) is the keyboard
  * route to the same interactive quit as the tray; `edit` keeps copy/paste working in the UI.
  */
-function buildAppMenu(onQuit: () => void): Menu {
+function buildAppMenu(
+  onQuit: () => void,
+  update: { ready: boolean; check: () => void; install: () => void },
+): Menu {
   const quitItem: Electron.MenuItemConstructorOptions = {
     id: 'quit',
     label: 'Sair',
     accelerator: process.platform === 'darwin' ? 'Cmd+Q' : 'Ctrl+Q',
     click: onQuit,
   };
+  const updateItems: Electron.MenuItemConstructorOptions[] = [
+    ...(update.ready ? [{ label: 'Reiniciar para atualizar', click: update.install }] : []),
+    { label: 'Verificar atualizações', click: update.check },
+    { type: 'separator' },
+  ];
   return Menu.buildFromTemplate([
     process.platform === 'darwin'
       ? {
@@ -74,10 +85,11 @@ function buildAppMenu(onQuit: () => void): Menu {
             { role: 'hideOthers' },
             { role: 'unhide' },
             { type: 'separator' },
+            ...updateItems,
             quitItem,
           ],
         }
-      : { label: 'Arquivo', submenu: [quitItem] },
+      : { label: 'Arquivo', submenu: [...updateItems, quitItem] },
     { role: 'editMenu' },
   ]);
 }
@@ -94,6 +106,8 @@ function main(): void {
   let shellState: Shell | undefined;
   let watcher: PermissionWatcher | undefined;
   let tray: Tray | undefined;
+  let updater: UpdateService | undefined;
+  let updateState: UpdateState = { state: 'idle' };
   let showingApp = false;
   let quitDone = false;
   let interactiveQuit = false;
@@ -238,6 +252,35 @@ function main(): void {
   const notify = (title: string, body: string, onClick?: () => void): void =>
     notifications.notify(title, body, onClick);
 
+  const pushUpdate = createUpdateStatusPusher(() => window?.webContents);
+  // "Restart to update" goes through the same exit path as "Sair" (confirm if sessions are alive,
+  // end ptys, stop the daemon) and only the last step differs: quitAndInstall instead of quit.
+  const installUpdate = (): boolean => {
+    if (updateState.state !== 'ready' || quitDone) return false;
+    void quit.request('interactive', { installOnQuit: true });
+    return true;
+  };
+  const checkUpdates = (): void => void updater?.checkNow();
+  const applyAppMenu = (): void => {
+    Menu.setApplicationMenu(
+      buildAppMenu(() => (shellState ? shellState.requestQuit() : quitInteractively()), {
+        ready: updateState.state === 'ready',
+        check: checkUpdates,
+        install: () => void installUpdate(),
+      }),
+    );
+  };
+  registerUpdaterIpc({
+    ipcMain: { handle: (channel, listener) => ipcMain.handle(channel, listener) },
+    // Before whenReady `updater` is not built yet: the window cannot exist either.
+    service: {
+      getState: () => updater?.getState() ?? { state: 'idle' },
+      checkNow: async () => (await updater?.checkNow()) ?? { state: 'idle' },
+    },
+    install: installUpdate,
+    trusted,
+  });
+
   const trayAdapter: TrayLike = {
     setToolTip: (text) => tray?.setToolTip(text),
     setMenu: (items) => tray?.setContextMenu(Menu.buildFromTemplate(items)),
@@ -367,9 +410,11 @@ function main(): void {
       await sessions.killAll();
       await controller.stop();
     },
-    finish: () => {
+    finish: ({ install }) => {
       quitDone = true;
       tray?.destroy();
+      // quitDone releases the before-quit guard, so quitAndInstall's own quit cannot loop.
+      if (install && updater?.install()) return;
       app.quit();
     },
     cancelled: () => shellState?.cancelQuit(),
@@ -398,9 +443,6 @@ function main(): void {
       void quit.request('forced');
     });
     window = createWindow();
-    Menu.setApplicationMenu(
-      buildAppMenu(() => (shellState ? shellState.requestQuit() : quitInteractively())),
-    );
     tray = new Tray(trayImage(0));
     shellState = new Shell({
       window,
@@ -409,7 +451,31 @@ function main(): void {
         notifications.notifyPermission(notice.id, notice.title, notice.body, onClick),
       dismiss: (id) => notifications.dismiss(id),
       quit: quitInteractively,
+      checkUpdates,
+      installUpdate: () => void installUpdate(),
     });
+    applyAppMenu();
+    updater = createUpdateService({
+      autoUpdater,
+      isPackaged: app.isPackaged,
+      isAppImage: Boolean(process.env.APPIMAGE),
+      now: Date.now,
+      emit: (state) => {
+        const previous = updateState.state;
+        updateState = state;
+        pushUpdate(state);
+        shellState?.setUpdate(state);
+        if (state.state === 'ready' || previous === 'ready') applyAppMenu();
+        if (state.state === 'ready' && previous !== 'ready') {
+          notify(
+            'Atualização pronta',
+            `A versão ${state.version} foi baixada. Reinicie o Agents Office para atualizar.`,
+            () => shellState?.showWindow(),
+          );
+        }
+      },
+    });
+    updater.start();
     controller.onStatus(onDaemonStatus);
     void controller.start();
   });

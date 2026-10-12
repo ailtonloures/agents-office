@@ -34,7 +34,7 @@ describe('electron-builder configuration', () => {
   it('unpacks the native node-pty module out of the asar and keeps it external in the bundle', () => {
     expect(config).toMatch(/^asarUnpack:\s*\n\s*- "\*\*\/node_modules\/node-pty\/\*\*"/m);
     expect(readFileSync(join(desktop, 'scripts', 'build.mjs'), 'utf8')).toMatch(
-      /external: \['electron', 'node-pty'\]/,
+      /external: \['electron', 'electron-updater', 'node-pty'\]/,
     );
   });
 
@@ -44,6 +44,51 @@ describe('electron-builder configuration', () => {
     };
     expect(manifest.scripts.dist).toMatch(/^pnpm --workspace-root build && /);
     expect(manifest.scripts.dist).toContain('electron-builder');
+  });
+});
+
+describe('auto-update publishing', () => {
+  const workflow = readFileSync(
+    join(desktop, '..', '..', '.github', 'workflows', 'release.yml'),
+    'utf8',
+  );
+  const manifest = JSON.parse(readFileSync(join(desktop, 'package.json'), 'utf8')) as {
+    dependencies: Record<string, string>;
+    homepage: string;
+    repository: { url: string };
+  };
+
+  it('publishes to the GitHub repository', () => {
+    expect(config).toMatch(
+      /^publish:\s*\n\s+provider: github\s*\n\s+owner: ailtonloures\s*\n\s+repo: agents-office$/m,
+    );
+    expect(manifest.homepage).toBe('https://github.com/ailtonloures/agents-office');
+    expect(manifest.repository.url).toContain('ailtonloures/agents-office');
+  });
+
+  it('bundles electron-updater as an external runtime dependency', () => {
+    expect(manifest.dependencies['electron-updater']).toBeDefined();
+    expect(readFileSync(join(desktop, 'scripts', 'build.mjs'), 'utf8')).toMatch(
+      /external: \['electron', 'electron-updater', 'node-pty'\]/,
+    );
+  });
+
+  it('releases on v* tags with write permission, checking the tag against the version', () => {
+    expect(workflow).toMatch(/tags: \["v\*"\]/);
+    expect(workflow).toMatch(/permissions:\s*\n\s+contents: write/);
+    expect(workflow).toMatch(/runs-on: ubuntu-latest/);
+    expect(workflow).toMatch(/node-version: 22/);
+    expect(workflow).toMatch(/version: 9/);
+    expect(workflow).toContain('packages/desktop/package.json');
+    expect(workflow).toContain('GITHUB_REF_NAME');
+    expect(workflow).toMatch(/exit 1/);
+  });
+
+  it('builds, stages the daemon and publishes the AppImage with generated notes', () => {
+    expect(workflow).toContain('scripts/stage-daemon.mjs');
+    expect(workflow).toMatch(/electron-builder .*--linux AppImage --publish always/);
+    expect(workflow).toMatch(/GH_TOKEN: \$\{\{ secrets\.GITHUB_TOKEN \}\}/);
+    expect(workflow).toContain('--generate-notes');
   });
 });
 

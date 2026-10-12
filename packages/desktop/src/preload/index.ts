@@ -3,6 +3,15 @@ import { createHooksBridge } from './bridge';
 import { createExternalBridge } from './externalBridge';
 import { createProjectsBridge } from './projectsBridge';
 import { createTerminalBridge } from './terminalBridge';
+import { createUpdaterBridge } from './updaterBridge';
+
+const subscribe = (channel: string, listener: (payload: unknown) => void) => {
+  const handler = (_event: unknown, payload: unknown) => listener(payload);
+  ipcRenderer.on(channel, handler);
+  return () => {
+    ipcRenderer.removeListener(channel, handler);
+  };
+};
 
 const invoke = (channel: string, ...args: unknown[]) => ipcRenderer.invoke(channel, ...args);
 
@@ -13,11 +22,6 @@ contextBridge.exposeInMainWorld('agentsOfficeDesktop', {
   hooks: createHooksBridge(invoke),
   projects: createProjectsBridge(invoke),
   external: createExternalBridge(invoke),
-  terminal: createTerminalBridge(invoke, (channel, listener) => {
-    const handler = (_event: unknown, payload: unknown) => listener(payload);
-    ipcRenderer.on(channel, handler);
-    return () => {
-      ipcRenderer.removeListener(channel, handler);
-    };
-  }),
+  terminal: createTerminalBridge(invoke, subscribe),
+  updater: createUpdaterBridge(invoke, subscribe),
 });

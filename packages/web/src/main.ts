@@ -16,6 +16,8 @@ import { hooksBridgeOf } from './ui/settingsLogic';
 import { mountSettingsPanel } from './ui/settingsPanel';
 import { mountTerminalPanel } from './ui/terminalPanel';
 import { terminalBridgeOf } from './ui/terminalTabs';
+import { mountUpdateBanner } from './ui/updateBanner';
+import { updaterBridgeOf } from './ui/updateLogic';
 import { mountZoomControls } from './ui/zoomControls';
 import { REGISTRY_ACTIVE_TERMINAL, TERMINAL_ACTIVE_EVENT } from './zoom';
 
@@ -111,6 +113,10 @@ else if (!debugCharacters) client.start();
 // The Hooks screen only exists inside the desktop shell (it needs the IPC bridge).
 const hooksBridge = hooksBridgeOf(window);
 if (hooksBridge) mountSettingsPanel(hooksBridge, gameParent);
+
+// The update banner only exists inside the desktop shell with the updater bridge.
+const updaterBridge = updaterBridgeOf(window);
+if (updaterBridge) mountUpdateBanner(updaterBridge, gameParent);
 
 // The terminal panel only exists inside the desktop shell (it needs the pty bridge).
 const terminalBridge = terminalBridgeOf(window);

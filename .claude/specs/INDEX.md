@@ -58,6 +58,12 @@ PRD: [agents-office.prd.md](../prds/agents-office.prd.md)
 | 052 | Helpers de volume e contraste dos materiais | medium | done | refactor, web, art, skin-generator | — |
 | 053 | Redesenho dos móveis com volume | high | done | enhancement, web, art, props, lighting | 051, 052 |
 | 054 | Splash único "Carregando..." | medium | done | bugfix, desktop, ui, splash | — |
+| 055 | Config de publicação e workflow de release | high | done | enhancement, desktop, ci, release | — |
+| 056 | Serviço de update no processo principal e IPC | high | done | feature, desktop, updater, ipc | 055 |
+| 057 | Ponte tipada do updater (shared + preload) | medium | done | feature, desktop, shared, preload | 056 |
+| 058 | Banner de atualização na web | high | done | feature, web, ui, updater | 057 |
+| 059 | Reinício limpo integrado ao QuitCoordinator | high | done | feature, desktop, updater, quit | 056 |
+| 060 | Script de release e documentação | low | done | docs, release, tooling | 055 |
 
 Fases do PRD: 001–002 = Fase 0 (spike) · 003–011 = Fase 1 (MVP) · 006, 012 = parte da Fase 2. Replay, minimapa e Tauri (Fase 3) ficam fora deste lote.
 
@@ -84,3 +90,5 @@ PRD do terminal sem corte e scrollbars: [terminal-sem-corte-scrollbars.prd.md](.
 PRD do cenário com volume: [cenario-volume-portas-moveis.prd.md](../prds/cenario-volume-portas-moveis.prd.md) (050–053; 051 depende de 050, 053 de 051 e 052; 052 é independente).
 
 PRD do splash único: [splash-unico-carregando.prd.md](../prds/splash-unico-carregando.prd.md) (054; independente).
+
+PRD de auto-update e releases: [auto-update-releases.prd.md](../prds/auto-update-releases.prd.md) (055–060; 056 depende de 055, 057 de 056, 058 de 057, 059 de 056, 060 de 055).

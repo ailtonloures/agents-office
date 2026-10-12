@@ -888,3 +888,57 @@ async function holdUntil(
     await page.keyboard.up(key);
   }
 }
+
+test('update banner: hidden without bridge, follows available/ready, Depois dismisses', async ({
+  page,
+}) => {
+  await openOffice(page, daemon.url);
+  await expect(page.getByTestId('update-banner')).toHaveCount(0);
+
+  const withBridge = await page.context().newPage();
+  await withBridge.addInitScript(() => {
+    type Listener = (state: unknown) => void;
+    const listeners: Listener[] = [];
+    const w = window as unknown as Record<string, unknown>;
+    w.__installs = 0;
+    w.__pushUpdate = (state: unknown) => {
+      for (const l of listeners) l(state);
+    };
+    w.agentsOfficeDesktop = {
+      desktop: true,
+      updater: {
+        getState: async () => ({ state: 'idle' }),
+        checkNow: async () => ({ state: 'idle' }),
+        install: async () => {
+          (w.__installs as number)++;
+          return true;
+        },
+        onStatus: (l: Listener) => {
+          listeners.push(l);
+          return () => listeners.splice(listeners.indexOf(l), 1);
+        },
+      },
+    };
+  });
+  await openOffice(withBridge, daemon.url);
+  const banner = withBridge.getByTestId('update-banner');
+  const push = (state: unknown) =>
+    withBridge.evaluate(
+      (s) => (window as unknown as { __pushUpdate(s: unknown): void }).__pushUpdate(s),
+      state,
+    );
+  await expect(banner).toBeHidden();
+  await push({ state: 'available', version: '9.9.9' });
+  await expect(banner).toBeVisible();
+  await expect(banner).toContainText('Nova versão 9.9.9 disponível — baixando…');
+  expect(await banner.evaluate((n) => !!n.closest('#game'))).toBe(true);
+  await push({ state: 'ready', version: '9.9.9' });
+  await withBridge.getByTestId('update-install').click();
+  expect(
+    await withBridge.evaluate(() => (window as unknown as { __installs: number }).__installs),
+  ).toBe(1);
+  await withBridge.getByTestId('update-later').click();
+  await expect(banner).toBeHidden();
+  await push({ state: 'ready', version: '10.0.0' });
+  await expect(banner).toBeVisible();
+});

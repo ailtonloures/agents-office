@@ -66,6 +66,31 @@ Checks:
 pnpm lint && pnpm typecheck && pnpm test
 ```
 
+## Releases
+
+Releases are published by GitHub Actions (`.github/workflows/release.yml`) when a `v*` tag is
+pushed. The tag must equal the version in `packages/desktop/package.json`, otherwise the workflow
+fails. The workflow creates the GitHub release (generated notes) and attaches the AppImage plus
+`latest-linux.yml`, which installed apps use to update themselves.
+
+To publish, from a clean `main`:
+
+```bash
+pnpm release patch            # or minor / major; add --dry-run to only preview the new version
+git push origin HEAD vX.Y.Z   # the command prints the exact tag to push
+```
+
+`pnpm release` bumps `packages/desktop/package.json`, commits it and creates the `vX.Y.Z` tag. It
+never pushes. If the workflow fails, delete the tag (`git push --delete origin vX.Y.Z`,
+`git tag -d vX.Y.Z`), fix the problem and release again.
+
+Auto-update only works for the Linux AppImage (the `APPIMAGE` variable is set by the AppImage
+runtime). The `.deb` build and macOS builds do not self-update: install the new release manually.
+
+Manual end-to-end check: install the AppImage of a published `0.1.0`, publish `0.1.1` with
+`pnpm release patch`, then start the old app: the update banner should appear, and "Reiniciar para
+atualizar" should install `0.1.1` and relaunch.
+
 ## License
 
 [MIT](LICENSE). Logo and default skin assets: CC0 1.0.

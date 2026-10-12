@@ -1,5 +1,6 @@
 import type { DaemonStatus } from './daemonProcess';
 import type { PermissionNotice } from './permissionWatcher';
+import type { UpdateState } from './updater';
 
 export interface WindowLike {
   show(): void;
@@ -31,6 +32,10 @@ export interface ShellDeps {
   dismiss(id: string): void;
   /** Asks the app to quit (`app.quit()`). */
   quit(): void;
+  /** Tray "Verificar atualizações"; the item is left out when absent. */
+  checkUpdates?(): void;
+  /** Tray "Reiniciar para atualizar" (shown only once an update is ready). */
+  installUpdate?(): void;
 }
 
 export function daemonStatusLabel(status: DaemonStatus): string {
@@ -58,6 +63,7 @@ export class Shell {
   private quitting = false;
   private pending = 0;
   private daemon: DaemonStatus = { state: 'idle' };
+  private update: UpdateState = { state: 'idle' };
 
   constructor(private readonly deps: ShellDeps) {
     deps.window.on('close', (event) => {
@@ -108,6 +114,11 @@ export class Shell {
     this.refresh();
   }
 
+  setUpdate(state: UpdateState): void {
+    this.update = state;
+    this.refresh();
+  }
+
   setPending(pending: number): void {
     this.pending = pending;
     this.refresh();
@@ -125,6 +136,23 @@ export class Shell {
     for (const id of ids) this.deps.dismiss(id);
   }
 
+  private updateItems(): MenuItemModel[] {
+    const { checkUpdates, installUpdate } = this.deps;
+    const items: MenuItemModel[] = [];
+    if (this.update.state === 'ready' && installUpdate) {
+      items.push({ label: 'Reiniciar para atualizar', click: () => installUpdate() });
+    }
+    if (checkUpdates) {
+      items.push({
+        label: 'Verificar atualizações',
+        enabled: this.update.state !== 'checking' && this.update.state !== 'downloading',
+        click: () => checkUpdates(),
+      });
+    }
+    if (items.length > 0) items.push({ type: 'separator' });
+    return items;
+  }
+
   private refresh(): void {
     const { tray } = this.deps;
     tray.setPending(this.pending);
@@ -138,6 +166,7 @@ export class Shell {
         ? [{ label: `${this.pending} pedido(s) pendente(s)`, enabled: false }]
         : []),
       { type: 'separator' as const },
+      ...this.updateItems(),
       { label: 'Sair', click: () => this.requestQuit() },
     ]);
   }

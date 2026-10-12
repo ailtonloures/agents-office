@@ -57,7 +57,7 @@ function setup(active: QuitSession[], confirmed = true) {
     shutdown: vi.fn(async ({ keepRecoverable }) => {
       calls.push(`shutdown:${keepRecoverable}`);
     }),
-    finish: vi.fn(() => calls.push('finish')),
+    finish: vi.fn((o: { install: boolean }) => calls.push(o.install ? 'finish:install' : 'finish')),
     cancelled: vi.fn(() => calls.push('cancelled')),
   };
   return { quit: new QuitCoordinator(deps), deps, calls };
@@ -116,5 +116,46 @@ describe('QuitCoordinator', () => {
     answer(false);
     expect(await Promise.all([first, forced])).toEqual(['quit', 'quit']);
     expect(calls).toEqual(['shutdown:true', 'finish']);
+  });
+
+  it('finishes with the installer after the end of the sessions when an update restart was asked', async () => {
+    const { quit, deps, calls } = setup([]);
+    expect(await quit.request('interactive', { installOnQuit: true })).toBe('quit');
+    expect(calls).toEqual(['shutdown:false', 'finish:install']);
+    expect(deps.finish).toHaveBeenCalledWith({ install: true });
+  });
+
+  it('asks before installing when sessions are alive', async () => {
+    const { quit, calls } = setup([session('a', '/w', '2026-01-01T00:00:00Z')]);
+    await quit.request('interactive', { installOnQuit: true });
+    expect(calls).toEqual(['confirm', 'shutdown:false', 'finish:install']);
+  });
+
+  it('cancelling keeps the app open and forgets the install request', async () => {
+    const { quit, deps, calls } = setup([session('a', '/w', '2026-01-01T00:00:00Z')], false);
+    expect(await quit.request('interactive', { installOnQuit: true })).toBe('cancelled');
+    expect(calls).toEqual(['confirm', 'cancelled']);
+    expect(deps.finish).not.toHaveBeenCalled();
+    vi.mocked(deps.confirm).mockResolvedValueOnce(true);
+    await quit.request('interactive');
+    expect(deps.finish).toHaveBeenLastCalledWith({ install: false });
+  });
+
+  it('a plain quit never installs', async () => {
+    const { quit, deps } = setup([]);
+    await quit.request('interactive');
+    expect(deps.finish).toHaveBeenCalledWith({ install: false });
+  });
+
+  it('does not re-enter: repeated requests share one run and one finish', async () => {
+    const { quit, deps } = setup([session('a', '/w', '2026-01-01T00:00:00Z')]);
+    await Promise.all([
+      quit.request('interactive', { installOnQuit: true }),
+      quit.request('interactive', { installOnQuit: true }),
+      quit.request('forced'),
+    ]);
+    expect(deps.shutdown).toHaveBeenCalledTimes(1);
+    expect(deps.finish).toHaveBeenCalledTimes(1);
+    expect(deps.finish).toHaveBeenCalledWith({ install: true });
   });
 });

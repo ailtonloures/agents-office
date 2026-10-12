@@ -53,8 +53,11 @@ export interface QuitDeps {
   confirm(sessions: QuitSession[]): Promise<boolean>;
   /** Ends the ptys, then the daemon. `keepRecoverable`: the sessions stay offered for resuming. */
   shutdown(options: { keepRecoverable: boolean }): Promise<void>;
-  /** Really exits (`app.quit()` with the guard released). */
-  finish(): void;
+  /**
+   * Really exits (`app.quit()` with the guard released). `install`: an update restart was asked,
+   * so the exit is `quitAndInstall` instead (sessions and daemon are already down by then).
+   */
+  finish(options: { install: boolean }): void;
   /** The user declined. */
   cancelled(): void;
 }
@@ -67,13 +70,21 @@ export interface QuitDeps {
 export class QuitCoordinator {
   private running: Promise<'quit' | 'cancelled'> | undefined;
   private forced = false;
+  private installOnQuit = false;
 
   constructor(private readonly deps: QuitDeps) {}
 
-  request(mode: QuitMode): Promise<'quit' | 'cancelled'> {
+  /** `installOnQuit`: finish with the update installer (restart to update) instead of a plain quit. */
+  request(
+    mode: QuitMode,
+    options: { installOnQuit?: boolean } = {},
+  ): Promise<'quit' | 'cancelled'> {
     if (mode === 'forced') this.forced = true;
+    if (options.installOnQuit) this.installOnQuit = true;
     this.running ??= this.run().finally(() => {
       this.running = undefined;
+      this.forced = false;
+      this.installOnQuit = false;
     });
     return this.running;
   }
@@ -88,7 +99,7 @@ export class QuitCoordinator {
       }
     }
     await this.deps.shutdown({ keepRecoverable: this.forced });
-    this.deps.finish();
+    this.deps.finish({ install: this.installOnQuit });
     return 'quit';
   }
 }

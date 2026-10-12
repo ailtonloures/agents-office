@@ -2,6 +2,7 @@ export * from './desktopExternal';
 export * from './desktopHooks';
 export * from './desktopProjects';
 export * from './desktopTerminal';
+export * from './desktopUpdater';
 export * from './events';
 export * from './model';
 export * from './permissions';

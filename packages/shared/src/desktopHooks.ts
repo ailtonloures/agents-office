@@ -1,6 +1,7 @@
 import type { ExternalBridge } from './desktopExternal';
 import type { ProjectsBridge } from './desktopProjects';
 import type { TerminalBridge } from './desktopTerminal';
+import type { UpdaterBridge } from './desktopUpdater';
 
 // Contract of the hooks bridge that the desktop shell exposes to the web app
 // (`window.agentsOfficeDesktop.hooks`). Plain types: the bridge is local IPC, not a network edge.
@@ -52,4 +53,6 @@ export interface AgentsOfficeDesktop {
   terminal: TerminalBridge;
   projects: ProjectsBridge;
   external: ExternalBridge;
+  /** Absent on shells without auto-update. */
+  updater?: UpdaterBridge;
 }
