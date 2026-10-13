@@ -94,7 +94,12 @@ let resizeQueued = false;
 function applyResize(): void {
   const area = areaSize();
   const next = computeViewport(area.width, area.height, window.devicePixelRatio);
-  if (!viewportChanged(applied, next)) return;
+  if (!viewportChanged(applied, next)) {
+    // Same game size, but the container may have moved: re-read its bounds so the canvas is
+    // re-centered (refresh does not clear the canvas).
+    game.scale.refresh();
+    return;
+  }
   applied = next;
   game.registry.set(REGISTRY_RENDER_SCALE, next.renderScale);
   game.scale.setZoom(next.zoom / next.renderScale);
@@ -113,6 +118,9 @@ function resize(): void {
   });
 }
 window.addEventListener('resize', resize);
+// The office area also changes without a window resize (terminal opened, closed, docked or
+// collapsed), so observe the container itself.
+if (typeof ResizeObserver !== 'undefined') new ResizeObserver(resize).observe(gameParent);
 
 // Ctrl + wheel over the game zooms the office, not the page (the terminal panel is outside the canvas).
 game.canvas.addEventListener(
