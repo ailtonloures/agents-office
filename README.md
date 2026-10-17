@@ -41,20 +41,6 @@ Files are named `agents-office-<version>-<os>-<arch>.<ext>`.
 
 The app updates itself: when a new release is published, a banner offers to restart into it.
 
-### macOS
-
-1. Download `agents-office-<version>-mac-<arch>.dmg` (`arm64` for Apple Silicon, `x64` for Intel).
-2. Open it and drag **Agents Office** to **Applications**.
-
-The app is not code-signed yet, so macOS blocks the first launch. Right-click the app and choose
-**Open** (then confirm), or remove the quarantine flag:
-
-```bash
-xattr -dr com.apple.quarantine "/Applications/Agents Office.app"
-```
-
-On macOS, updates are manual: download the new `.dmg` from the Releases page.
-
 ### Optional: Claude Code hooks
 
 For instant updates and "waiting for you" alerts, install the Claude Code hooks with

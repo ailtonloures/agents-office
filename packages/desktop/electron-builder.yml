@@ -28,7 +28,7 @@ linux:
   target: [AppImage, deb]
   category: Development
   icon: icon.png
-  maintainer: Agents Office <noreply@agents-office.invalid>
+  maintainer: Ailton Loures <dev.ailtonloures@proton.me>
   synopsis: Pixel art office that mirrors your Claude Code agents
 mac:
   target: dmg

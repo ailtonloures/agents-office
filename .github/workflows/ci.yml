@@ -60,23 +60,3 @@ jobs:
           path: |
             e2e/test-results
             e2e/playwright-report
-
-  desktop-macos:
-    runs-on: macos-latest
-    needs: verify
-    steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      # Unsigned build: no certificate, no notarization.
-      - run: pnpm --filter @agents-office/desktop dist
-        env:
-          CSC_IDENTITY_AUTO_DISCOVERY: "false"
-      - uses: actions/upload-artifact@v4
-        with:
-          name: desktop-macos
-          path: packages/desktop/release/*.dmg
