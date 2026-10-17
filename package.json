@@ -1,6 +1,6 @@
 {
   "name": "agents-office-monorepo",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "private": true,
   "description": "Pixel art office synchronized with Claude Code agents",
   "license": "MIT",
