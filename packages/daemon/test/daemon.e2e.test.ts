@@ -1,4 +1,4 @@
-import { cpSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { networkInterfaces, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -94,7 +94,11 @@ function installFixture(name: string): void {
   mkdirSync(slugDir, { recursive: true });
   const source = join(FIXTURES_DIR, name);
   // Sub-agent transcripts and metas first, the parent session last: it carries the `Agent` calls.
-  cpSync(join(source, info.sessionId), join(slugDir, info.sessionId), { recursive: true });
+  // Fixtures without sub-agents have no such directory (git does not keep empty ones).
+  const subagentsDir = join(source, info.sessionId);
+  if (existsSync(subagentsDir)) {
+    cpSync(subagentsDir, join(slugDir, info.sessionId), { recursive: true });
+  }
   cpSync(join(source, `${info.sessionId}.jsonl`), join(slugDir, `${info.sessionId}.jsonl`));
 }
 
