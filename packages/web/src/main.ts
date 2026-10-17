@@ -5,7 +5,7 @@ import { initLocale } from './i18n/i18n';
 import { startDemo } from './net/demo';
 import { OfficeClient } from './net/officeClient';
 import { REGISTRY_RENDER_SCALE } from './renderScale';
-import { computeViewport, type Viewport, viewportChanged } from './scale';
+import { type Viewport, viewportChanged, viewportForArea } from './scale';
 import { BootScene, EVENT_SCENE_READY, REGISTRY_START_SCENE } from './scenes/BootScene';
 import { CharactersDebugScene, DEBUG_CHARACTERS_SCENE } from './scenes/CharactersDebugScene';
 import { OfficeScene, REGISTRY_CLIENT } from './scenes/OfficeScene';
@@ -50,20 +50,31 @@ const areaSize = () => ({
   width: gameParent.clientWidth || window.innerWidth,
   height: gameParent.clientHeight || window.innerHeight,
 });
-const initial = computeViewport(areaSize().width, areaSize().height, window.devicePixelRatio);
+/** The zoom follows the whole window, the game size follows the office area. */
+const viewportNow = (): Viewport => {
+  const area = areaSize();
+  return viewportForArea(
+    area.width,
+    area.height,
+    window.innerWidth,
+    window.innerHeight,
+    window.devicePixelRatio,
+  );
+};
+const initial = viewportNow();
 const game = new Phaser.Game({
   type: Phaser.AUTO,
   parent: 'game',
   width: initial.width * initial.renderScale,
   height: initial.height * initial.renderScale,
-  backgroundColor: '#000000',
+  backgroundColor: '#0d1020',
   pixelArt: true,
   roundPixels: true,
   antialias: false,
   scale: {
     // FIT scales by a fractional factor: the game is resized to fill the window at an integer zoom.
     mode: Phaser.Scale.NONE,
-    autoCenter: Phaser.Scale.CENTER_BOTH,
+    autoCenter: Phaser.Scale.NO_CENTER,
     zoom: initial.zoom / initial.renderScale,
   },
   scene: [BootScene, OfficeScene, CharactersDebugScene],
@@ -92,8 +103,7 @@ let resizeQueued = false;
  * screen-fixed objects, so they have already run when the step renders.
  */
 function applyResize(): void {
-  const area = areaSize();
-  const next = computeViewport(area.width, area.height, window.devicePixelRatio);
+  const next = viewportNow();
   if (!viewportChanged(applied, next)) {
     // Same game size, but the container may have moved: re-read its bounds so the canvas is
     // re-centered (refresh does not clear the canvas).

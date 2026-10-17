@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { computeViewport, viewportChanged } from '../src/scale';
+import { computeViewport, viewportChanged, viewportForArea } from '../src/scale';
 
 describe('computeViewport', () => {
   it.each([
@@ -64,5 +64,27 @@ describe('viewportChanged', () => {
     ['height', { height: 241 }],
   ])('accepts a change of %s', (_name, patch) => {
     expect(viewportChanged(base, { ...base, ...patch })).toBe(true);
+  });
+});
+
+describe('viewportForArea', () => {
+  it('keeps the zoom of the whole window whatever the terminal takes', () => {
+    const full = computeViewport(1280, 720);
+    for (const [w, h] of [
+      [1280, 720],
+      [640, 720],
+      [1280, 300],
+      [300, 720],
+    ] as const) {
+      const v = viewportForArea(w, h, 1280, 720);
+      expect(v.zoom).toBe(full.zoom);
+      expect(v.renderScale).toBe(full.renderScale);
+      expect(v.width * v.zoom).toBeGreaterThanOrEqual(w);
+      expect(v.height * v.zoom).toBeGreaterThanOrEqual(h);
+    }
+  });
+
+  it('matches computeViewport when the area is the whole window', () => {
+    expect(viewportForArea(1366, 768, 1366, 768, 2)).toEqual(computeViewport(1366, 768, 2));
   });
 });

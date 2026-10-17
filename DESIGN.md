@@ -19,7 +19,10 @@ There are two independent zoom layers. Keeping them apart is the key to not brea
 
 ### 1.1 Window to canvas: integer zoom (`scale.ts`)
 
-The game always fills the window, with no letterbox. `computeViewport()` picks an **integer** zoom in
+The game always fills the office area, with no letterbox. The zoom comes from the whole window
+(`viewportForArea()`), never from the area left by the terminal panel, so opening the terminal does not
+change the scale: the canvas is anchored top-left and the camera bounds are widened to the view, so a
+view bigger than the building keeps it pinned to the left instead of centred. `computeViewport()` picks an **integer** zoom in
 device pixels and the logical game size that covers the window at that zoom:
 
 | Constant | Value | Meaning |

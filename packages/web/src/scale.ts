@@ -25,18 +25,35 @@ export interface Viewport {
  * (no letterbox). `zoom` is returned in CSS pixels per game pixel (so `1 / dpr` at the minimum).
  */
 export function computeViewport(viewportWidth: number, viewportHeight: number, dpr = 1): Viewport {
+  return viewportForArea(viewportWidth, viewportHeight, viewportWidth, viewportHeight, dpr);
+}
+
+/**
+ * Like {@link computeViewport}, but the zoom comes from the whole window while the game size fills
+ * only the office area (the window minus the terminal panel). Opening, closing or moving the
+ * terminal therefore never changes the scale: the office stays at the same size and the area just
+ * shows more or less of it.
+ */
+export function viewportForArea(
+  areaWidth: number,
+  areaHeight: number,
+  windowWidth: number,
+  windowHeight: number,
+  dpr = 1,
+): Viewport {
   const ratio = dpr > 0 ? dpr : 1;
-  const deviceW = Math.max(1, viewportWidth * ratio);
-  const deviceH = Math.max(1, viewportHeight * ratio);
   const device = Math.max(
     1,
-    Math.min(Math.floor(deviceH / TARGET_HEIGHT), Math.floor(deviceW / MIN_WIDTH)),
+    Math.min(
+      Math.floor(Math.max(1, windowHeight * ratio) / TARGET_HEIGHT),
+      Math.floor(Math.max(1, windowWidth * ratio) / MIN_WIDTH),
+    ),
   );
   return {
     zoom: device / ratio,
     renderScale: device,
-    width: Math.ceil(deviceW / device),
-    height: Math.ceil(deviceH / device),
+    width: Math.ceil(Math.max(1, areaWidth * ratio) / device),
+    height: Math.ceil(Math.max(1, areaHeight * ratio) / device),
   };
 }
 

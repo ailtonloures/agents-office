@@ -454,6 +454,8 @@ export class OfficeScene extends Phaser.Scene {
   /** Sets the main camera zoom (canvas pixels per texel) and the matching texture filter. */
   private setWorldZoom(effective: number): void {
     this.cameras.main.setZoom(effective);
+    // The bounds depend on how much world the view shows.
+    if (this.cameras.main.useBounds && !this.overview) this.setCameraBounds();
     const mode =
       textureFilterFor(effective) === 'linear'
         ? Phaser.Textures.FilterMode.LINEAR
@@ -1057,11 +1059,18 @@ export class OfficeScene extends Phaser.Scene {
 
   /**
    * The camera never leaves the building, except for a margin above it so the top wall (windows,
-   * Hall of Fame, wall art) is not hidden under the HUD.
+   * Hall of Fame, wall art) is not hidden under the HUD. A view bigger than the building keeps it
+   * pinned to the top-left corner (the bounds are widened to the view; Phaser would centre them).
    */
   private setCameraBounds(): void {
     const { width, height } = this.layout;
-    this.cameras.main.setBounds(0, -TOP_MARGIN, width * TILE, height * TILE + TOP_MARGIN);
+    const camera = this.cameras.main;
+    camera.setBounds(
+      0,
+      -TOP_MARGIN,
+      Math.max(width * TILE, camera.displayWidth),
+      Math.max(height * TILE + TOP_MARGIN, camera.displayHeight),
+    );
   }
 
   /** Zooms the camera out (in 1/8 steps) until the whole building fits on screen. */
