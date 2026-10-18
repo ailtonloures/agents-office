@@ -90,13 +90,41 @@ pnpm monorepo (Node >= 20, pnpm 9). Agents Office mirrors Claude Code activity a
 - Source is ESM. The Electron bundles (`dist/main.cjs`, `dist/preload.cjs`) are CommonJS because
   Electron loads `main` with `require`; `electron` stays external.
 
+## Test-driven development
+
+Work test-first. The test is written, and seen failing, before the code that makes it pass.
+
+- Follow Red → Green → Refactor: write one vitest test that fails for the right reason, run it and
+  watch it fail, write the minimum code to pass, then refactor with everything green — a test never
+  seen failing may prove nothing.
+- Start a bug fix with a regression test that reproduces the bug (use a fixture in
+  `packages/daemon/test/fixtures` when it comes from a real transcript or event) — so it cannot come back.
+- A new event starts with tests in `normalizer.*.test.ts` and `reducer.test.ts`, before the normalizer
+  and the `case` in `reducer.ts` — so daemon and web stay in sync.
+- A new contract in `shared` starts with a `safeParse` test using an unknown extra field and invalid
+  input (must not throw), before the schema.
+- A new desktop capability starts with a test of `<x>Ipc.ts` using fake `...Deps`, before the handler.
+- Approvals and other security paths start with the fail-closed test (timeout, missing data,
+  ambiguity → deny), before the implementation.
+- New game or UI logic is born in `xxxLogic.ts` with injected `now`, tested without Phaser or the DOM;
+  keep the Phaser/DOM layer thin and cover it with e2e only when needed.
+- Never weaken a test to make it pass (removing an assertion, `skip`, a committed `.only`, loosening
+  a snapshot). If the test is wrong, fix it and say why.
+- Keep tests small and deterministic: no real clock, network or sleeps, one behavior per test, and a
+  name that states that behavior.
+- Prefer unit tests (vitest); use Playwright e2e only for end-to-end flows.
+- When a change cannot be tested first (generated skin, docs, config), say so and why when handing
+  the work over, instead of silently skipping it.
+
 ## Tests
 
 - Unit tests are vitest files in each package's `test/` folder, next to the pure modules above.
+- While iterating, run the focused test (`pnpm vitest run packages/<pkg>/test/<file>`); it is faster
+  and keeps the Red → Green loop tight.
 - E2E is Playwright in `e2e/`. Build `web` and `cli` first (`pnpm build`); the packaged desktop e2e
   needs `xvfb-run` on Linux CI.
 - Before handing work over, run `pnpm typecheck && pnpm lint && pnpm vitest run` and fix every failure
-  you caused.
+  you caused. Report failures faithfully, with the output.
 - Never rely on assumed Claude Code behavior: run a spike first and record it in a learning (the
   permission hook premise was refuted this way; see `permission-hook-and-pty.md`).
 
@@ -105,6 +133,9 @@ pnpm monorepo (Node >= 20, pnpm 9). Agents Office mirrors Claude Code activity a
 - PRDs live in `.claude/prds/`, specs in `.claude/specs/` (numbered, with an `INDEX.md`), learnings only
   in `.claude/learnings/<topic>.md`. These are written in pt-BR. Update an existing learning before
   creating a new one. Never put learnings in `CLAUDE.md` or `~/.claude`.
+- Every spec lists the tests to write first (its acceptance criteria become tests), and each
+  spec-runner sub-agent follows Red → Green → Refactor — so a spec is done when its tests pass.
+- A commit holds the test together with the code it covers — never code without its test.
 - Commits: gitmoji as text (`:sparkles:`, `:bug:`, `:art:`), then an English message, with the spec
   number when there is one, e.g. `:sparkles: ... (spec 054)`.
 
