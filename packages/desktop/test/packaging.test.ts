@@ -48,6 +48,9 @@ describe('electron-builder configuration', () => {
 });
 
 describe('auto-update publishing', () => {
+  const rootManifest = JSON.parse(
+    readFileSync(join(desktop, '..', '..', 'package.json'), 'utf8'),
+  ) as { packageManager: string };
   const workflow = readFileSync(
     join(desktop, '..', '..', '.github', 'workflows', 'release.yml'),
     'utf8',
@@ -78,15 +81,20 @@ describe('auto-update publishing', () => {
     expect(workflow).toMatch(/permissions:\s*\n\s+contents: write/);
     expect(workflow).toMatch(/runs-on: ubuntu-latest/);
     expect(workflow).toMatch(/node-version: 22/);
-    expect(workflow).toMatch(/version: 9/);
+    // pnpm/action-setup reads the version from the root `packageManager` field.
+    expect(workflow).toContain('pnpm/action-setup@v4');
+    expect(rootManifest.packageManager).toMatch(/^pnpm@9\./);
     expect(workflow).toContain('packages/desktop/package.json');
     expect(workflow).toContain('GITHUB_REF_NAME');
     expect(workflow).toMatch(/exit 1/);
   });
 
-  it('builds, stages the daemon and publishes the AppImage with generated notes', () => {
+  it('builds the AppImage and deb, then creates the release with generated notes', () => {
     expect(workflow).toContain('scripts/stage-daemon.mjs');
-    expect(workflow).toMatch(/electron-builder .*--linux AppImage --publish always/);
+    expect(workflow).toMatch(/electron-builder .*--linux AppImage deb --publish never/);
+    expect(workflow).toContain('gh release create');
+    expect(workflow).toContain('latest-linux.yml');
+    expect(workflow).toContain('--verify-tag');
     expect(workflow).toMatch(/GH_TOKEN: \$\{\{ secrets\.GITHUB_TOKEN \}\}/);
     expect(workflow).toContain('--generate-notes');
   });
