@@ -643,6 +643,10 @@ function main(): void {
         sandbox: true,
       },
     });
+    // A window with no initial navigation (url "") that later loads the daemon URL never gets a
+    // `Page.frameNavigated` over CDP in Electron 44, so Playwright never reports it (`firstWindow`
+    // times out). A committed about:blank first is invisible and avoids that.
+    void win.loadURL('about:blank');
     const guard = (event: { preventDefault(): void }, url: string): void => {
       const action = classifyNavigation(url, origin);
       if (action === 'allow') return;

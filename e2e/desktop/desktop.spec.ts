@@ -632,13 +632,16 @@ test.describe(`desktop app (${mode})`, () => {
           return {
             zoom: rect.width / canvas.width,
             bottom: rect.bottom,
+            // The canvas is sized with ceil() to leave no letterbox, so it may overshoot by less
+            // than one zoom step; its overflow:hidden parent is what must sit above the panel.
+            containerBottom: canvas.parentElement?.getBoundingClientRect().bottom ?? rect.bottom,
             panelTop: panelRect?.top ?? window.innerHeight,
             panelHeight: panelRect?.height ?? 0,
           };
         });
       const open = await geometry();
       expect(Number.isInteger(open.zoom)).toBe(true);
-      expect(open.bottom).toBeLessThanOrEqual(open.panelTop + 1);
+      expect(open.containerBottom).toBeLessThanOrEqual(open.panelTop + 1);
       expect(open.panelHeight).toBeGreaterThan(100);
 
       // The new session has the keyboard: keys reach the terminal, not the player.
@@ -681,15 +684,20 @@ test.describe(`desktop app (${mode})`, () => {
       await expect.poll(() => panel((p) => p.collapsed)).toBe(false);
       await expect.poll(() => panel((p) => p.keyboard)).toBe('terminal');
 
-      // Clicking the office gives the keyboard back to the player.
+      // Clicking the empty office gives the keyboard back to the player and minimizes the panel
+      // (spec 041); the collapsed state survives the reload below.
       await page.mouse.click(40, 40);
       await expect.poll(() => panel((p) => p.keyboard)).toBe('player');
+      await expect.poll(() => panel((p) => p.collapsed)).toBe(true);
 
       // Reload the window: the history comes back before the live flow.
       await page.reload();
       await page.waitForFunction(() => window.__terminalPanel?.tabs.length === 1);
       await expect.poll(text).toContain('GOT wasd');
       expect(await text()).toContain(`READY ${started.id}`);
+      expect(await panel((p) => p.collapsed)).toBe(true);
+      await page.keyboard.press('Control+`');
+      await expect.poll(() => panel((p) => p.collapsed)).toBe(false);
       await page.locator('[data-testid^="terminal-view-"]').click();
       await page.keyboard.type('after', { delay: 20 });
       await page.keyboard.press('Enter');
@@ -702,7 +710,8 @@ test.describe(`desktop app (${mode})`, () => {
       await expect(page.locator('[data-testid="terminal-ended"]')).toContainText(
         'Process ended (code 3)',
       );
-      expect(await panel((p) => p.tabs[0]?.title)).toBe('demo-app · encerrada');
+      expect(await panel((p) => p.tabs[0]?.title)).toBe('demo-app');
+      expect(await panel((p) => p.tabs[0]?.state)).toBe('exited');
       await page.locator('[data-testid="terminal-restart"]').click();
       await expect
         .poll(async () => (await panel((p) => p.tabs.map((t) => t.state))) ?? [])
@@ -867,7 +876,7 @@ test.describe(`desktop app (${mode})`, () => {
       await expect(page.getByTestId('project-picker')).toHaveCount(0);
       await expect
         .poll(() => page.evaluate(() => window.__terminalPanel?.text() ?? ''))
-        .toContain('ARGS --permission-mode plan --continue');
+        .toMatch(/ARGS [\s\S]*--permission-mode\s+plan\s+--continue/);
 
       // Resume a chosen session with auto mode (labelled as not producing cards).
       await page.getByTestId('picker-open').click();
@@ -880,7 +889,7 @@ test.describe(`desktop app (${mode})`, () => {
       await expect.poll(() => page.evaluate(() => window.__terminalPanel?.tabs.length)).toBe(2);
       await expect
         .poll(() => page.evaluate(() => window.__terminalPanel?.text() ?? ''))
-        .toContain('ARGS --permission-mode auto --resume sess-one');
+        .toMatch(/ARGS [\s\S]*--permission-mode\s+auto\s+--resume\s+sess-one/);
 
       // Favorites and recents survive a restart.
       await app.close();
@@ -906,6 +915,9 @@ test.describe(`desktop app (${mode})`, () => {
     chmodSync(fake, 0o755);
     const project = join(box.home, 'cast-app');
     mkdirSync(project);
+    // No `claude` on the PATH (the app ignores a configured path that is not executable, so the
+    // PATH is what makes it missing, also on machines that have Claude Code installed).
+    box.env.PATH = '/usr/bin:/bin';
     const app = await launch(box);
     try {
       await until(async () => (await windowState(app))?.url === box.url, 'office URL');
@@ -1161,9 +1173,10 @@ test.describe(`desktop app (${mode})`, () => {
       await page.keyboard.press('r');
       const box2 = await overlay.locator('canvas.interactive').boundingBox();
       if (!box2) throw new Error('no canvas');
-      await page.mouse.move(box2.x + 200, box2.y + 200);
+      // Clear of the style panel Excalidraw opens on the left (about 220px wide) with the tool.
+      await page.mouse.move(box2.x + 420, box2.y + 200);
       await page.mouse.down();
-      await page.mouse.move(box2.x + 320, box2.y + 280, { steps: 5 });
+      await page.mouse.move(box2.x + 540, box2.y + 280, { steps: 5 });
       await page.mouse.up();
       await expect(page.getByTestId('board-status')).toHaveText('Saved', { timeout: 10_000 });
 
@@ -1635,7 +1648,7 @@ test.describe(`desktop app (${mode})`, () => {
       const tabs = await page.evaluate(() => window.__terminalPanel?.tabs ?? []);
       expect(tabs.map((t) => t.id)).toEqual([alpha, beta, gamma]);
       expect(tabs.map((t) => t.state)).toEqual(['running', 'exited', 'running']);
-      expect(tabs[1]?.title).toContain('encerrada');
+      expect(tabs[1]?.title).toBe('beta-app');
       await page.locator('.ao-term-tab').nth(0).click();
       expect(await page.evaluate(() => window.__terminalPanel?.activeId)).toBe(alpha);
       await expect
@@ -1814,14 +1827,14 @@ test.describe(`desktop app (${mode})`, () => {
       await expect.poll(() => page.evaluate(() => window.__terminalPanel?.tabs.length)).toBe(1);
       await expect
         .poll(() => page.evaluate(() => window.__terminalPanel?.text() ?? ''))
-        .toContain(`ARGS --permission-mode plan --resume app-${first}`);
+        .toMatch(new RegExp(`ARGS [\\s\\S]*--permission-mode\\s+plan\\s+--resume\\s+app-${first}`));
       await expect(page.getByTestId('lost-row')).toHaveCount(1);
       // The other one has no known id: `--continue`.
       await page.getByTestId('lost-resume').click();
       await expect.poll(() => page.evaluate(() => window.__terminalPanel?.tabs.length)).toBe(2);
       await expect
         .poll(() => page.evaluate(() => window.__terminalPanel?.text() ?? ''))
-        .toContain('ARGS --continue');
+        .toMatch(/ARGS [\s\S]*--continue/);
       await expect(page.getByTestId('lost-sessions')).toBeHidden();
 
       // Resumed offers are gone for good: a deliberate exit (Sair -> Encerrar tudo) and another start
