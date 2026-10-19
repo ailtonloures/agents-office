@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   DEFAULT_LOCALE,
@@ -71,6 +73,89 @@ describe('dictionaries', () => {
   });
 });
 
+describe('install copy', () => {
+  const codes = LOCALES.map((l) => l.code);
+  const installEntries = (code: (typeof codes)[number]) =>
+    Object.entries(DICTIONARIES[code]).filter(([key]) => key.startsWith('install.'));
+
+  it.each(codes)('%s does not offer macOS or the old file name', (code) => {
+    for (const [key, value] of installEntries(code)) {
+      expect(value, `${code}:${key}`).not.toMatch(/\.dmg|xattr|linux-x64/i);
+      // macOS may only be named where the page says it is not available.
+      if (!key.startsWith('install.unavailable')) {
+        expect(value, `${code}:${key}`).not.toMatch(/macos/i);
+      }
+    }
+    expect(Object.keys(DICTIONARIES[code]).filter((k) => k.startsWith('install.macos'))).toEqual(
+      [],
+    );
+  });
+
+  it.each(codes)('%s says macOS and Windows are unavailable', (code) => {
+    const text = DICTIONARIES[code]['install.unavailable.body' as never] as string;
+    expect(text).toMatch(/macOS/);
+    expect(text).toMatch(/Windows/);
+  });
+
+  it.each(codes)('%s uses the real release file names in the commands', (code) => {
+    const d = DICTIONARIES[code] as Record<string, string>;
+    expect(d['install.linux.chmod']).toContain('linux-x86_64.AppImage');
+    expect(d['install.linux.run']).toContain('linux-x86_64.AppImage');
+    expect(d['install.linux.debCommand']).toContain('linux-amd64.deb');
+    expect(d['install.linux.debCommand']).toMatch(/^sudo apt install \.\//);
+  });
+
+  it.each(codes)('%s says Linux (AppImage and .deb) in the hero platforms', (code) => {
+    const text = (DICTIONARIES[code] as Record<string, string>)['hero.platforms'] ?? '';
+    expect(text).toMatch(/Linux/);
+    expect(text).toMatch(/AppImage/);
+    expect(text).toMatch(/\.deb/);
+  });
+});
+
+describe('passive and active modes copy', () => {
+  const codes = LOCALES.map((l) => l.code);
+  const keys = [
+    'how.modes.passive.title',
+    'how.modes.passive.body',
+    'how.modes.active.title',
+    'how.modes.active.body',
+  ];
+
+  it.each(codes)('%s defines the passive and active mode cards', (code) => {
+    const d = DICTIONARIES[code] as Record<string, string>;
+    for (const key of keys) expect((d[key] ?? '').trim(), `${code}:${key}`).not.toBe('');
+  });
+
+  it('describes watching and orchestrating in the English meta description', () => {
+    expect(en['meta.description']).toMatch(/orchestrat/i);
+    expect(en['meta.description']).toMatch(/agents/i);
+    expect(en['meta.title']).toMatch(/orchestrat/i);
+  });
+
+  it('covers profiles, agent talk, board, terminal and watching in the English active card', () => {
+    const text = `${en['how.modes.active.body']} ${en['features.lead']}`;
+    for (const word of [/profile/i, /talk|communicat|message/i, /board|Excalidraw/i, /terminal/i]) {
+      expect(text).toMatch(word);
+    }
+  });
+
+  it('never presents the product as passive only', () => {
+    expect(en['hero.lead']).toMatch(/orchestrat|create|profile/i);
+    expect(en['how.lead']).toMatch(/passive/i);
+    expect(en['how.lead']).toMatch(/active/i);
+  });
+
+  it('keeps the embedded browser marked as beta in the copy', () => {
+    expect(en['features.browser.body']).toMatch(/beta/i);
+  });
+
+  it('keeps index.html title equal to the English meta title', () => {
+    const html = readFileSync(resolve(__dirname, '../index.html'), 'utf8');
+    expect(html).toContain(`<title>${en['meta.title']}</title>`);
+  });
+});
+
 describe('translate', () => {
   it('interpolates placeholders', () => {
     expect(translate('pt-BR', 'footer.copyright', { year: 2026 })).toBe('(c) 2026 Agents Office');
@@ -139,4 +224,16 @@ describe('parseLocale and storage', () => {
     stubStorage({ [LOCALE_STORAGE_KEY]: 'es' });
     expect(resolveInitialLocale(['pt-BR'])).toBe('es');
   });
+});
+
+describe('npm CLI command', () => {
+  it.each(LOCALES.map((l) => l.code))(
+    'is not advertised in %s: the CLI is not published to npm, hooks install from the app',
+    (code) => {
+      const offenders = Object.entries(DICTIONARIES[code]).filter(([, value]) =>
+        /npx\s+agents-office|hooks install/i.test(value),
+      );
+      expect(offenders).toEqual([]);
+    },
+  );
 });

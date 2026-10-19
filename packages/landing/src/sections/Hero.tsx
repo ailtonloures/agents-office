@@ -1,11 +1,4 @@
-import {
-  CommandSnippet,
-  Container,
-  PixelButton,
-  PixelOffice,
-  Reveal,
-  SectionHeading,
-} from '../components';
+import { Container, PixelButton, PixelOffice, Reveal, SectionHeading } from '../components';
 import { DOCS_URL, RELEASES_URL, REPO_URL } from '../config';
 import { useI18n } from '../i18n';
 import { SECTION_IDS } from './ids';
@@ -46,10 +39,6 @@ export function Hero() {
         </Reveal>
         <Reveal eager className="hero__scene">
           <PixelOffice />
-        </Reveal>
-        <Reveal eager className="hero__command">
-          <p className="hero__command-label">{t('hero.commandLabel')}</p>
-          <CommandSnippet command={t('install.hooks.command')} label={t('install.hooks.title')} />
         </Reveal>
       </Container>
     </section>

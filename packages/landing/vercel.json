@@ -1,7 +1,7 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "vite",
-  "installCommand": "cd ../.. && pnpm install --frozen-lockfile",
+  "installCommand": "cd ../.. && pnpm install --frozen-lockfile --filter @agents-office/landing...",
   "buildCommand": "cd ../.. && pnpm --filter @agents-office/landing build",
   "outputDirectory": "dist",
   "headers": [

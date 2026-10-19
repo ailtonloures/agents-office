@@ -35,11 +35,14 @@ Files are named `agents-office-<version>-<os>-<arch>.<ext>`.
 
 ### Linux
 
-1. Download `agents-office-<version>-linux-x64.AppImage`.
-2. Make it executable: `chmod +x agents-office-*-linux-x64.AppImage`.
-3. Run it: `./agents-office-*-linux-x64.AppImage`.
+1. Download `agents-office-<version>-linux-x86_64.AppImage`.
+2. Make it executable: `chmod +x agents-office-*-linux-x86_64.AppImage`.
+3. Run it: `./agents-office-*-linux-x86_64.AppImage`.
 
-The app updates itself: when a new release is published, a banner offers to restart into it.
+On Debian or Ubuntu you can install the `.deb` instead
+(`agents-office-<version>-linux-amd64.deb`): `sudo apt install ./agents-office-*-linux-amd64.deb`.
+
+The AppImage updates itself (the `.deb` does not): when a new release is published, a banner offers to restart into it.
 
 ### Optional: Claude Code hooks
 

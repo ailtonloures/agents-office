@@ -12,13 +12,11 @@ import { type MessageKey, useI18n } from '../i18n';
 import { nextTabIndex } from '../lib/tabsLogic';
 import { SECTION_IDS } from './ids';
 
-type TabKey = 'linux' | 'macos' | 'cli' | 'windows';
+type TabKey = 'linux' | 'unavailable';
 
 const TABS: { key: TabKey; label: MessageKey }[] = [
   { key: 'linux', label: 'install.linux.title' },
-  { key: 'macos', label: 'install.macos.title' },
-  { key: 'cli', label: 'install.cli.title' },
-  { key: 'windows', label: 'install.windows.title' },
+  { key: 'unavailable', label: 'install.unavailable.title' },
 ];
 
 function Download() {
@@ -47,41 +45,20 @@ function Panel({ tab }: { tab: TabKey }) {
             <CommandSnippet command={t('install.linux.run')} label={t('install.linux.runLabel')} />
           </div>
           <p className="card-body">{t('install.linux.deb')}</p>
-          <Download />
-        </>
-      );
-    case 'macos':
-      return (
-        <>
-          <p className="card-body">{t('install.macos.body')}</p>
-          <p className="card-body">{t('install.macos.note')}</p>
           <div className="install__commands">
             <CommandSnippet
-              command={t('install.macos.command')}
-              label={t('install.macos.commandLabel')}
+              command={t('install.linux.debCommand')}
+              label={t('install.linux.debLabel')}
             />
           </div>
           <Download />
         </>
       );
-    case 'cli':
-      return (
-        <>
-          <p className="card-body">{t('install.cli.body')}</p>
-          <div className="install__commands">
-            <CommandSnippet
-              command={t('install.hooks.command')}
-              label={t('install.hooks.commandLabel')}
-            />
-          </div>
-          <p className="card-body">{t('install.cli.note')}</p>
-        </>
-      );
-    case 'windows':
+    case 'unavailable':
       return (
         <>
           <p className="install__unavailable">{t('install.unavailable')}</p>
-          <p className="card-body">{t('install.windows.body')}</p>
+          <p className="card-body">{t('install.unavailable.body')}</p>
         </>
       );
   }

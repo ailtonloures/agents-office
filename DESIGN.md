@@ -21,9 +21,11 @@ There are two independent zoom layers. Keeping them apart is the key to not brea
 
 The game always fills the office area, with no letterbox. The zoom comes from the whole window
 (`viewportForArea()`), never from the area left by the terminal panel, so opening the terminal does not
-change the scale: the canvas is anchored top-left and the camera bounds are widened to the view, so a
-view bigger than the building keeps it pinned to the left instead of centred. `computeViewport()` picks an **integer** zoom in
-device pixels and the logical game size that covers the window at that zoom:
+change the scale. The canvas is anchored top-left and sized to the free area. When that view is
+bigger than the building, the building stays where it is (not centred) and the extra width or height
+is filled by the extended ground (see below), so there is never an empty strip. `computeViewport()`
+picks an **integer** zoom in device pixels and the logical game size that covers the window at that
+zoom (rounded up, so the canvas can overshoot the area by less than one zoom step; `#game` clips it):
 
 | Constant | Value | Meaning |
 | --- | --- | --- |
@@ -44,6 +46,25 @@ Consequences for UI code:
   unchanged, resizes are coalesced to one per animation frame, and the game is stepped once right
   after a resize so the cleared canvas is redrawn before the browser paints (no visible flash).
   Learning: `.claude/learnings/canvas-resize-flash.md`.
+- **Order of a resize** (`applyResize` in `main.ts`): (1) the zoom is assigned
+  (`game.scale.zoom = zoom / renderScale`, not `setZoom`, which would emit a `resize` with the old
+  game size); (2) `scale.resize` sets the game size and emits the single `resize` the scenes lay out
+  on; (3) `canvas.style` width and height are written from `canvasCssSize()` (logical size times
+  zoom). Phaser only rewrites the style when its zoom is not 1, so without step 3 the canvas would
+  stay one step behind and look stretched. The style is also rewritten when the viewport did not
+  change.
+- **Terminal-driven resize is synchronous**: opening, docking, dragging, collapsing or closing the
+  terminal goes through the same coalesced scheduler as a window resize, and the game is stepped right
+  after, so the first frame already has the final size. The `#game` `ResizeObserver` was removed as a
+  duplicate trigger.
+- **Camera size first**: `OfficeScene.onResize` gives the camera its new size before recomputing
+  zoom and bounds, and the bounds use `worldViewSize()` (logical size over user zoom) instead of
+  `camera.displayWidth`, so they never depend on whether the camera is already resized.
+- **Extended ground** (`world/groundLogic.ts`, `OfficeScene.updateGround`): a `TileSprite` at
+  `DEPTH.ground` (-10) repeats the `floor` tile under a dark wash, drawn at runtime (no skin file). It
+  covers the union of the building and the camera view plus a 2-tile margin, snapped to the 16 px
+  grid, and is refreshed on every resize, on user zoom and each frame, so it also covers the overview
+  (`M`) and ultra-wide windows.
 
 ### 1.2 User zoom (`zoom.ts`)
 

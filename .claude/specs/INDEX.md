@@ -119,6 +119,14 @@ PRD: [agents-office.prd.md](../prds/agents-office.prd.md)
 | 113 | Landing - SEO, acessibilidade e desempenho | medium | done | enhancement, landing, seo, a11y, performance | 111, 112 |
 | 114 | Landing - testes e2e com Playwright | medium | done | testing, landing, e2e | 113 |
 | 115 | Landing - documentação e deploy de preview na Vercel | medium | in-progress | docs, landing, vercel, release | 113, 114 |
+| 116 | Cenário - pipeline de resize sem esticar ao abrir o terminal | high | done | bugfix, web, phaser, layout, testing | — |
+| 117 | Cenário - chão estendido para preencher telas ultra wide | high | done | feature, web, phaser, world, testing | 116 |
+| 118 | Cenário - HUD e controles de canto em larguras extremas | medium | done | enhancement, web, ui, hud, testing | 116 |
+| 119 | Cenário - documentação e verificação final em várias resoluções | medium | in-progress | docs, web, qa, testing | 116, 117, 118 |
+| 120 | Landing - instalação só Linux (AppImage e .deb) e SEO | high | done | bugfix, landing, i18n, seo, testing | — |
+| 121 | Landing - copy dos modos passivo e ativo | high | done | enhancement, landing, i18n, content | 120 |
+| 122 | Landing - README e verificação final do modo ativo | medium | done | docs, landing, qa, testing | 120, 121 |
+| 123 | Clique no personagem - mapeamento do ponteiro após resize | high | done | bugfix, web, phaser, input, testing | 116 |
 
 Fases do PRD: 001–002 = Fase 0 (spike) · 003–011 = Fase 1 (MVP) · 006, 012 = parte da Fase 2. Replay, minimapa e Tauri (Fase 3) ficam fora deste lote.
 
@@ -169,3 +177,9 @@ PRD do nome do elenco no balão de diálogo: [balao-dialogo-nome-do-elenco.prd.m
 PRD do seletor de idioma: [locale-seletor-de-idioma.prd.md](../prds/locale-seletor-de-idioma.prd.md) (099–105; 100 a 104 dependem de 099, 105 de 100 a 104; 101 a 104 são independentes entre si).
 
 PRD da landing page comercial: [landing-page-comercial.prd.md](../prds/landing-page-comercial.prd.md) (106–115; 107, 108 e 109 dependem de 106 e são independentes entre si; 110 de 107 e 109; 111 de 107, 108 e 110; 112 de 107 e 108; 113 de 111 e 112; 114 de 113; 115 de 113 e 114).
+
+PRD do cenário responsivo (terminal e ultra wide): [cenario-responsivo-terminal-ultrawide.prd.md](../prds/cenario-responsivo-terminal-ultrawide.prd.md) (116–119; 117 e 118 dependem de 116 e são independentes entre si; 119 de 116 a 118).
+
+PRD da landing: modo ativo e instalação só Linux: [landing-modo-ativo-e-instalacao-linux.prd.md](../prds/landing-modo-ativo-e-instalacao-linux.prd.md) (120–122; 120 independente, 121 depende de 120, 122 de 120 e 121).
+
+PRD do clique no personagem: [clique-no-personagem-so-funciona-uma-vez.prd.md](../prds/clique-no-personagem-so-funciona-uma-vez.prd.md) (123; depende da 116).

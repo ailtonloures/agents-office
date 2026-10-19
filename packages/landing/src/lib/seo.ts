@@ -15,7 +15,7 @@ export function absoluteUrl(siteUrl: string, path: string): string {
   return `${siteUrl}/${path.replace(/^\/+/, '')}`;
 }
 
-/** schema.org SoftwareApplication data (free, MIT, Linux and macOS only). */
+/** schema.org SoftwareApplication data (free, MIT, Linux only). */
 export function buildJsonLd({ siteUrl, description, repoUrl }: SeoInput) {
   return {
     '@context': 'https://schema.org',
@@ -25,7 +25,7 @@ export function buildJsonLd({ siteUrl, description, repoUrl }: SeoInput) {
     url: absoluteUrl(siteUrl, ''),
     image: absoluteUrl(siteUrl, 'og.png'),
     applicationCategory: 'DeveloperApplication',
-    operatingSystem: 'Linux, macOS',
+    operatingSystem: 'Linux',
     license: 'https://opensource.org/licenses/MIT',
     isAccessibleForFree: true,
     codeRepository: repoUrl,

@@ -8,6 +8,7 @@ import type { OfficeClient } from '../net/officeClient';
 import { PlayerAvatar } from '../player/player';
 import { DirectionInput, directionBetween } from '../player/playerMotion';
 import { logicalSizeOf, renderScaleOf } from '../renderScale';
+import { worldViewSize } from '../scale';
 import { type Direction, type LoadedSkin, SKIN_KEYS, tileFrame } from '../skin';
 import { decideClick } from '../ui/clickDecision';
 import { commsBridgeOf } from '../ui/commsBinding';
@@ -50,6 +51,7 @@ import {
 } from '../world/boardProp';
 import { DeskScreens } from '../world/deskScreens';
 import { DoorAnimator } from '../world/doors';
+import { groundRect } from '../world/groundLogic';
 import { LayoutInputBuilder } from '../world/layoutInput';
 import { Lighting } from '../world/lighting';
 import { isWallProp, PROP_DEFS, type PropPlacement, propDepthBias } from '../world/props';
@@ -82,8 +84,16 @@ const FOLLOW_LERP = 0.14;
 const FOLLOW_OFFSET_Y = -14;
 /** World pixels the camera may show above the building (room for the HUD over the top wall). */
 const TOP_MARGIN = 22;
+/** Extra world pixels of ground past the camera view (the follow lerp can lag a frame). */
+const GROUND_MARGIN = 2 * TILE;
+/** Key of the darkened floor tile the decorative ground repeats. */
+const GROUND_TEXTURE = 'ground.tile';
+/** Opacity of the night-blue wash over the floor tile that makes the ground recede. */
+const GROUND_SHADE = 0.62;
 
 const DEPTH = {
+  /** Decorative ground, under every layer of the building. */
+  ground: -10,
   floor: 0,
   walls: 2,
   wallProps: 2.5,
@@ -176,6 +186,9 @@ export class OfficeScene extends Phaser.Scene {
   private userZoom = readStoredZoom();
   private textureMode = Phaser.Textures.FilterMode.NEAREST;
   private vignette!: Phaser.GameObjects.Image;
+  /** Decorative floor behind the building that always covers the camera view. */
+  private ground: Phaser.GameObjects.TileSprite | undefined;
+  private groundKey = '';
   private warningText: Phaser.GameObjects.BitmapText | undefined;
   private keys!: {
     cursors: Phaser.Types.Input.Keyboard.CursorKeys;
@@ -272,6 +285,7 @@ export class OfficeScene extends Phaser.Scene {
     });
 
     this.setupInput();
+    this.createGround();
     this.refreshLayout();
     this.built = true;
     this.player = new PlayerAvatar(this, this.factory, this.layout.spawn);
@@ -335,10 +349,14 @@ export class OfficeScene extends Phaser.Scene {
     this.warningText?.setPosition(4, height - 12).setMaxWidth(width - 8);
     if (this.overview) this.fitOverview();
     else {
+      // The camera must have the new size before the zoom and bounds are recomputed (the scene's
+      // listener may run before the camera manager's), and only then is it re-centred.
+      this.cameras.main.setSize(this.scale.width, this.scale.height);
       // The render scale may have changed with the window: the effective zoom depends on it.
       this.setWorldZoom(this.userZoom * renderScaleOf(this));
       this.centerCameraOnPlayer();
     }
+    this.updateGround();
   }
 
   /** Current generated building (desk ids are stable across regenerations). */
@@ -456,6 +474,7 @@ export class OfficeScene extends Phaser.Scene {
     this.cameras.main.setZoom(effective);
     // The bounds depend on how much world the view shows.
     if (this.cameras.main.useBounds && !this.overview) this.setCameraBounds();
+    this.updateGround();
     const mode =
       textureFilterFor(effective) === 'linear'
         ? Phaser.Textures.FilterMode.LINEAR
@@ -1065,12 +1084,71 @@ export class OfficeScene extends Phaser.Scene {
   private setCameraBounds(): void {
     const { width, height } = this.layout;
     const camera = this.cameras.main;
+    // From the logical size and the user zoom, not `camera.displayWidth`: the camera may not have
+    // been resized yet when the scale manager's `resize` reaches the scene.
+    const view = worldViewSize(logicalSizeOf(this), this.userZoom);
     camera.setBounds(
       0,
       -TOP_MARGIN,
-      Math.max(width * TILE, camera.displayWidth),
-      Math.max(height * TILE + TOP_MARGIN, camera.displayHeight),
+      Math.max(width * TILE, view.width),
+      Math.max(height * TILE + TOP_MARGIN, view.height),
     );
+  }
+
+  /** Builds the repeating ground texture (the floor tile under a dark wash) and its sprite. */
+  private createGround(): void {
+    const source = this.textures.get(SKIN_KEYS.tileset).getSourceImage() as CanvasImageSource;
+    if (!this.textures.exists(GROUND_TEXTURE)) {
+      const canvas = this.textures.createCanvas(GROUND_TEXTURE, TILE, TILE);
+      const context = canvas?.getContext();
+      if (!canvas || !context) return;
+      const columns = this.skin.tileset.columns;
+      const frame = tileFrame(this.skin, 'floor');
+      context.imageSmoothingEnabled = false;
+      context.drawImage(
+        source,
+        (frame % columns) * TILE,
+        Math.floor(frame / columns) * TILE,
+        TILE,
+        TILE,
+        0,
+        0,
+        TILE,
+        TILE,
+      );
+      context.fillStyle = `rgba(13, 16, 32, ${GROUND_SHADE})`;
+      context.fillRect(0, 0, TILE, TILE);
+      canvas.refresh();
+    }
+    this.ground = this.add
+      .tileSprite(0, 0, 1, 1, GROUND_TEXTURE)
+      .setOrigin(0)
+      .setDepth(DEPTH.ground);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      this.ground = undefined;
+      this.groundKey = '';
+    });
+  }
+
+  /** Keeps the ground covering the building and the whole camera view (including the overview). */
+  private updateGround(): void {
+    const ground = this.ground;
+    if (!ground) return;
+    const view = this.cameras.main.worldView;
+    const rect = groundRect(
+      { x: view.x, y: view.y, width: view.width, height: view.height },
+      { x: 0, y: 0, width: this.layout.width * TILE, height: this.layout.height * TILE },
+      GROUND_MARGIN,
+    );
+    // Snapped to the tile grid so the pattern lines up with the building's floor.
+    const x = Math.floor(rect.x / TILE) * TILE;
+    const y = Math.floor(rect.y / TILE) * TILE;
+    const width = Math.ceil((rect.x + rect.width - x) / TILE) * TILE;
+    const height = Math.ceil((rect.y + rect.height - y) / TILE) * TILE;
+    const key = `${x},${y},${width},${height}`;
+    if (key === this.groundKey) return;
+    this.groundKey = key;
+    ground.setPosition(x, y).setSize(width, height);
   }
 
   /** Zooms the camera out (in 1/8 steps) until the whole building fits on screen. */
@@ -1112,6 +1190,7 @@ export class OfficeScene extends Phaser.Scene {
   override update(_time: number, delta: number): void {
     this.clock += delta;
     this.updateReveals();
+    this.updateGround();
     if (this.overview && this.heldDirection()) this.toggleOverview();
     if (this.dirty) {
       this.dirty = false;

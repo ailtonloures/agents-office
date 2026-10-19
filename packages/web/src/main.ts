@@ -5,7 +5,8 @@ import { initLocale } from './i18n/i18n';
 import { startDemo } from './net/demo';
 import { OfficeClient } from './net/officeClient';
 import { REGISTRY_RENDER_SCALE } from './renderScale';
-import { type Viewport, viewportChanged, viewportForArea } from './scale';
+import { applyResizePipeline } from './resizePipeline';
+import { canvasCssSize, type Viewport, viewportForArea } from './scale';
 import { BootScene, EVENT_SCENE_READY, REGISTRY_START_SCENE } from './scenes/BootScene';
 import { CharactersDebugScene, DEBUG_CHARACTERS_SCENE } from './scenes/CharactersDebugScene';
 import { OfficeScene, REGISTRY_CLIENT } from './scenes/OfficeScene';
@@ -97,23 +98,40 @@ let applied: Viewport = initial;
 let resizeQueued = false;
 
 /**
+ * Writes the canvas CSS size from the viewport. Phaser's `resize` only rewrites `canvas.style` when
+ * it differs from the canvas size (never at zoom 1), so the style would stay one step behind and
+ * stretch the office (spike of spec 116).
+ */
+function applyCanvasStyle(viewport: Viewport): void {
+  const css = canvasCssSize(viewport);
+  const style = game.canvas.style;
+  style.width = `${css.width}px`;
+  style.height = `${css.height}px`;
+}
+
+/**
  * Applies the window/area size to the game. Resizing clears the canvas, so it is skipped when
  * nothing changed, and the game is rendered synchronously right after, before the browser paints.
- * Scenes listen to the scale manager's `resize` event (emitted by `scale.resize`) to lay out their
- * screen-fixed objects, so they have already run when the step renders.
+ * The order lives in `applyResizePipeline`: zoom (assigned, not `setZoom`, which would emit a
+ * `resize` with the old game size), game size (emits the single `resize` the scenes lay out on),
+ * canvas CSS size, then the re-measure that keeps the pointer mapping in step with the canvas.
  */
 function applyResize(): void {
-  const next = viewportNow();
-  if (!viewportChanged(applied, next)) {
-    // Same game size, but the container may have moved: re-read its bounds so the canvas is
-    // re-centered (refresh does not clear the canvas).
-    game.scale.refresh();
-    return;
-  }
-  applied = next;
-  game.registry.set(REGISTRY_RENDER_SCALE, next.renderScale);
-  game.scale.setZoom(next.zoom / next.renderScale);
-  game.scale.resize(next.width * next.renderScale, next.height * next.renderScale);
+  const before = applied;
+  applied = applyResizePipeline(
+    {
+      setZoom: (viewport) => {
+        game.registry.set(REGISTRY_RENDER_SCALE, viewport.renderScale);
+        game.scale.zoom = viewport.zoom / viewport.renderScale;
+      },
+      resize: (width, height) => game.scale.resize(width, height),
+      applyStyle: applyCanvasStyle,
+      refresh: () => game.scale.refresh(),
+    },
+    before,
+    viewportNow(),
+  );
+  if (applied === before) return;
   debug.resizes += 1;
   game.step(performance.now(), game.loop.delta);
 }
@@ -305,7 +323,6 @@ if (terminalBridge) {
       },
     });
   }
-  new ResizeObserver(() => resize()).observe(gameParent);
 }
 
 // Last item of the corner bar; it works in the browser and in the desktop shell.

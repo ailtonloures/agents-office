@@ -26,24 +26,6 @@ interface Feature {
 /** Desktop only means it needs the Electron shell (terminals, Agent Bus and what rides on it). */
 const FEATURES: Feature[] = [
   {
-    key: 'observability',
-    icon: 'monitor',
-    role: 'tech-lead',
-    title: 'features.observability.title',
-    body: 'features.observability.body',
-    points: ['features.observability.p1', 'features.observability.p2'],
-    desktop: false,
-  },
-  {
-    key: 'terminals',
-    icon: 'terminal',
-    role: 'developer',
-    title: 'features.terminals.title',
-    body: 'features.terminals.body',
-    points: ['features.terminals.p1', 'features.terminals.p2'],
-    desktop: true,
-  },
-  {
     key: 'cast',
     icon: 'cast',
     role: 'architect',
@@ -69,6 +51,24 @@ const FEATURES: Feature[] = [
     body: 'features.board.body',
     points: ['features.board.p1', 'features.board.p2'],
     desktop: true,
+  },
+  {
+    key: 'terminals',
+    icon: 'terminal',
+    role: 'developer',
+    title: 'features.terminals.title',
+    body: 'features.terminals.body',
+    points: ['features.terminals.p1', 'features.terminals.p2'],
+    desktop: true,
+  },
+  {
+    key: 'observability',
+    icon: 'monitor',
+    role: 'tech-lead',
+    title: 'features.observability.title',
+    body: 'features.observability.body',
+    points: ['features.observability.p1', 'features.observability.p2'],
+    desktop: false,
   },
   {
     key: 'browser',

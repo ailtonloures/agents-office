@@ -220,6 +220,11 @@ export function hintPanelX(screenWidth: number, panelWidth: number, margin: numb
   return Math.max(margin, screenWidth - margin - panelWidth);
 }
 
+/** Whether the shortcuts panel at `x0` clears the status pill; otherwise it is hidden. */
+export function hintsFit(x0: number, statusWidth: number, margin: number): boolean {
+  return x0 > margin + statusWidth + 8;
+}
+
 /** A rectangle in screen (game) pixels. */
 export interface Rect {
   x: number;

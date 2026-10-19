@@ -82,10 +82,15 @@ Playwright and Chromium from the `e2e` package). Sprites in `public/sprites` are
 
 The project must be created with **Root Directory** `packages/landing` and the environment variable
 `VITE_SITE_URL`. `packages/landing/vercel.json` does the rest: the install step runs
-`cd ../.. && pnpm install --frozen-lockfile` and the build step runs
-`cd ../.. && pnpm --filter @agents-office/landing build`, because the lockfile and workspace live at
-the repository root. Output is `dist`. Only `/assets/*` gets a long immutable cache (those files are
+`cd ../.. && pnpm install --frozen-lockfile --filter @agents-office/landing...` (only the landing
+and its workspace dependencies, so Electron and `node-pty` are never installed) and the build step
+runs `cd ../.. && pnpm --filter @agents-office/landing build`, because the lockfile and workspace
+live at the repository root. Output is `dist`. Only `/assets/*` gets a long immutable cache (those files are
 content-hashed); `/fonts` and `/sprites` keep default caching because their names are not hashed.
+For automatic deploys, import the GitHub repository in Vercel with Root Directory `packages/landing`
+(keep "Include source files outside of the Root Directory" on), Production Branch `main`, Node 20.x
+or 22.x, and `VITE_SITE_URL` set to the real domain. Pushes to `main` then deploy to production and
+other branches and pull requests get previews.
 `.vercel/` is git-ignored. Deploy with the Vercel dashboard or `vercel deploy` (preview) from the
 repository root; use `--prod` only on purpose.
 
@@ -105,8 +110,10 @@ pnpm --filter @agents-office/daemon exec agents-office hooks uninstall
 
 Releases are published by GitHub Actions (`.github/workflows/release.yml`) when a `v*` tag is
 pushed. The tag must equal the version in `packages/desktop/package.json`, otherwise the workflow
-fails. The workflow creates the GitHub release and attaches the AppImage plus `latest-linux.yml`,
-which installed apps use to update themselves.
+fails. The workflow runs typecheck and tests, builds the Linux AppImage and `.deb`, and only then
+creates the GitHub release (with generated notes), attaching the AppImage, the `.deb` and
+`latest-linux.yml`, which installed apps use to update themselves. A failed build leaves no release
+behind.
 
 From a clean `main`:
 
@@ -118,7 +125,8 @@ git push origin HEAD vX.Y.Z   # the command prints the exact tag to push
 `pnpm release` bumps `packages/desktop/package.json`, commits it and creates the `vX.Y.Z` tag. It
 never pushes.
 
-If the workflow fails, delete the tag remotely and locally, fix the problem and release again:
+If the workflow fails, no release is created; delete the tag remotely and locally, fix the problem
+and release again:
 
 ```bash
 git push --delete origin vX.Y.Z

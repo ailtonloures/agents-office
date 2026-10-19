@@ -31,11 +31,13 @@ describe('seo', () => {
     expect(html).not.toContain('agents-office.vercel.app');
   });
 
-  it('describes a free MIT application for Linux and macOS only', () => {
+  // The release only ships AppImage and .deb, so the structured data must not promise macOS.
+  it('describes a free MIT application for Linux only', () => {
     const ld = buildJsonLd(input);
     expect(ld['@type']).toBe('SoftwareApplication');
-    expect(ld.operatingSystem).toBe('Linux, macOS');
-    expect(ld.operatingSystem).not.toMatch(/windows/i);
+    expect(ld.operatingSystem).toBe('Linux');
+    expect(ld.operatingSystem).not.toMatch(/windows|macos/i);
+    expect(ld.description).not.toMatch(/macos/i);
     expect(ld.offers.price).toBe('0');
     expect(ld.license).toContain('MIT');
     expect(ld.url).toBe('https://example.com/landing/');

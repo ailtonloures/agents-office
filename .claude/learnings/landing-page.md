@@ -1,4 +1,4 @@
-# Landing page comercial (specs 106-115)
+# Landing page comercial (specs 106-115, 120-122)
 
 - Pacote `packages/landing`: Vite 7 + React 19, site estático. Não é dependência de `packages/cli` e não toca as skins do web.
 - i18n próprio (en/pt-BR/es), idioma salvo em `localStorage` na chave `agents-office-landing.locale`. Não reutiliza o i18n do web.
@@ -18,7 +18,18 @@
 ## Vercel no monorepo
 
 - Criar o projeto com Root Directory = `packages/landing` e a env `VITE_SITE_URL`.
-- Como o lockfile e o workspace ficam na raiz, `vercel.json` usa `cd ../.. && pnpm install --frozen-lockfile` e `cd ../.. && pnpm --filter @agents-office/landing build`; saída `dist`.
+- Como o lockfile e o workspace ficam na raiz, `vercel.json` usa `cd ../.. && pnpm install --frozen-lockfile --filter @agents-office/landing...` (só o landing; evita Electron/node-pty/Playwright, validado em cópia limpa: install em ~4s) e `cd ../.. && pnpm --filter @agents-office/landing build`; saída `dist`.
 - Cache imutável só em `/assets` (nomes com hash). `/fonts` e `/sprites` não têm hash, então ficam sem cache imutável.
+- Deploy automático via Git: importar o repo na Vercel, Root Directory `packages/landing`, "Include source files outside of the Root Directory" ligado, branch de produção `main`, Node 20.x/22.x, `VITE_SITE_URL` com o domínio real. `packages/landing/test/vercel.test.ts` protege o `vercel.json`.
 - `.vercel/` está no `.gitignore`. Deploy (preview ou produção) só por decisão explícita do usuário.
+- Vercel Web Analytics: `<Analytics />` de `@vercel/analytics/react` em `src/main.tsx` (o import `/next` é só para Next.js). Só reporta em deploy na Vercel (no `vite dev` não faz nada) e exige habilitar Analytics no dashboard do projeto. O script vem de `/_vercel/insights/script.js`, mesma origem, então não há CSP a ajustar.
 - Ainda não existe release no GitHub: os links de Download só resolvem depois que uma for publicada.
+
+## Release real e regra de conteúdo (specs 120-122)
+
+- A landing só promete o que a release publica. O workflow `release.yml` publica apenas Linux: AppImage, `.deb` e `latest-linux.yml`. Não há artefato de macOS; a landing não o menciona como suportado (instalação, JSON-LD `operatingSystem`, copy).
+- Nomes reais (`artifactName` = `agents-office-${version}-${os}-${arch}.${ext}`): `agents-office-<versão>-linux-x86_64.AppImage` e `agents-office-<versão>-linux-amd64.deb`. O `x86_64` (AppImage) e o `amd64` (deb) diferem por convenção do electron-builder; não normalizar.
+- Só o AppImage se atualiza sozinho; o `.deb` é instalação manual.
+- A landing explica os dois modos: passivo (lê os transcripts, sem hooks) e ativo (hooks instalados, `npx agents-office hooks install`).
+- Verificação final: `pnpm --filter @agents-office/landing build`, inspecionar `dist/index.html` (meta, canonical, JSON-LD só Linux) e rodar `pnpm exec playwright test --project=landing`.
+- `ARCHITECTURE.md` ainda cita um job de macOS que não existe no workflow (pendente de correção em spec própria).

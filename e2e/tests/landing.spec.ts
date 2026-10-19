@@ -1,13 +1,13 @@
 import { expect, type Locator, type Page, test } from '@playwright/test';
 
 const LOCALE_KEY = 'agents-office-landing.locale';
-const COMMAND = 'npx agents-office hooks install';
+const COMMAND = 'chmod +x agents-office-*-linux-x86_64.AppImage';
 const REPO_URL = 'https://github.com/ailtonloures/agents-office';
 
 const TITLES = {
-  en: 'Agents Office - your Claude Code agents in a pixel art office',
-  'pt-BR': 'Agents Office - seus agentes do Claude Code em um escritório pixel art',
-  es: 'Agents Office - tus agentes de Claude Code en una oficina pixel art',
+  en: 'Agents Office - watch and orchestrate your Claude Code agents',
+  'pt-BR': 'Agents Office - observe e orquestre seus agentes do Claude Code',
+  es: 'Agents Office - observa y orquesta tus agentes de Claude Code',
 } as const;
 
 const NAV_SELECT = { en: 'Choose the language', ptBR: 'Escolha o idioma' };
@@ -58,12 +58,12 @@ test('the nav language select is labelled and the footer one is distinct', async
   await expect(footerSelect(page)).toHaveCount(1);
 });
 
-test('copy button puts the hooks command on the clipboard and confirms', async ({
+test('copy button puts the install command on the clipboard and confirms', async ({
   page,
   context,
 }) => {
   await context.grantPermissions(['clipboard-read', 'clipboard-write']);
-  const snippet = page.locator('.hero__command .command-snippet');
+  const snippet = page.locator('#install .command-snippet').first();
   await expect(snippet.locator('code')).toContainText(COMMAND);
 
   await snippet.getByRole('button', { name: 'Copy the command' }).click();
@@ -72,7 +72,7 @@ test('copy button puts the hooks command on the clipboard and confirms', async (
 
   // The confirmation is translated too.
   await page.locator('select.lang-switch__select').last().selectOption('pt-BR');
-  await page.locator('.hero__command .command-snippet button').click();
+  await snippet.locator('button').click();
   await expect(snippet.getByRole('status')).toHaveText('Copiado');
 });
 
@@ -141,6 +141,23 @@ test.describe('phone viewport', () => {
       const size = await overflow();
       expect(size.scroll).toBeLessThanOrEqual(size.inner);
     }
+  });
+
+  test('the menu toggle button keeps its position when the menu opens and closes', async ({
+    page,
+  }) => {
+    const toggle = page.locator('.nav__toggle');
+    const y = async () => (await toggle.boundingBox())?.y;
+    const closedY = await y();
+    expect(closedY).toBeDefined();
+
+    await toggle.click();
+    await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    expect(await y()).toBe(closedY);
+
+    await toggle.click();
+    await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(await y()).toBe(closedY);
   });
 });
 

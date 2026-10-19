@@ -70,3 +70,22 @@ export function viewportChanged(last: Viewport | undefined, next: Viewport): boo
     last.height !== next.height
   );
 }
+
+/**
+ * CSS size of the canvas element for a viewport: the logical size times the zoom. Written to
+ * `canvas.style` explicitly so it never depends on the scale manager's own bookkeeping.
+ */
+export function canvasCssSize(viewport: Viewport): { width: number; height: number } {
+  return { width: viewport.width * viewport.zoom, height: viewport.height * viewport.zoom };
+}
+
+/**
+ * World pixels the camera shows at a user zoom, from the logical game size. Unlike
+ * `camera.displayWidth` it does not depend on whether the camera has already been resized.
+ */
+export function worldViewSize(
+  logical: { width: number; height: number },
+  userZoom: number,
+): { width: number; height: number } {
+  return { width: logical.width / userZoom, height: logical.height / userZoom };
+}

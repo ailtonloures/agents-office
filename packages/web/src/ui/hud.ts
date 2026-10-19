@@ -1,7 +1,7 @@
 import type Phaser from 'phaser';
 import { logicalSizeOf } from '../renderScale';
 import { SKIN_KEYS } from '../skin';
-import { type HudCounts, hintPanelX, hudHints, hudText, type Rect } from './hudLogic';
+import { type HudCounts, hintPanelX, hintsFit, hudHints, hudText, type Rect } from './hudLogic';
 import { HintRow } from './keyHints';
 import { DARK_PANEL, drawPanel } from './panel';
 import type { UiOverlay } from './uiOverlay';
@@ -77,7 +77,7 @@ export class Hud {
     const x0 = hintPanelX(width, w, MARGIN);
     this.hintRect = { x: x0, y: MARGIN, width: w, height: HUD_HEIGHT };
     // Hide the hints when they would collide with the status pill (narrow windows).
-    const visible = !this.hidden && x0 > MARGIN + this.statusWidth() + 8;
+    const visible = !this.hidden && hintsFit(x0, this.statusWidth(), MARGIN);
     drawPanel(g, x0, MARGIN, w, HUD_HEIGHT, DARK_PANEL);
     this.hints.container.setPosition(x0 + 6, MARGIN + 3);
     g.setVisible(visible);

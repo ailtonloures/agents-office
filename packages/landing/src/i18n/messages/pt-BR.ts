@@ -1,9 +1,9 @@
 import type { Messages } from './en';
 
 export const ptBR: Messages = {
-  'meta.title': 'Agents Office - seus agentes do Claude Code em um escritório pixel art',
+  'meta.title': 'Agents Office - observe e orquestre seus agentes do Claude Code',
   'meta.description':
-    'O Agents Office espelha a atividade do Claude Code como um escritório pixel art ao vivo. Veja os agentes trabalhando, use terminais, orquestre um Elenco e desenhe no Quadro. Código aberto, tudo local.',
+    'O Agents Office transforma o Claude Code em um escritório pixel art ao vivo. Observe suas sessões de forma passiva ou vá para o modo ativo: crie perfis de agentes, deixe os agentes conversarem entre si, desenhe no Quadro e use terminais. Código aberto, tudo local.',
 
   'lang.label': 'Idioma',
   'lang.menuLabel': 'Escolha o idioma',
@@ -28,12 +28,12 @@ export const ptBR: Messages = {
   'hero.eyebrow': 'Código aberto - MIT',
   'hero.title': 'Seus agentes do Claude Code, trabalhando em um escritório pixel art',
   'hero.lead':
-    'O Agents Office espelha o que o Claude Code está fazendo como um escritório vivo: cada projeto é uma sala, cada sessão um Tech Lead, cada subagente um funcionário na sua mesa.',
+    'Veja o que o Claude Code está fazendo como um escritório vivo, ou vá além: crie perfis de agentes, deixe que conversem entre si e orquestre o time. Cada projeto é uma sala, cada sessão um Tech Lead, cada subagente um funcionário na sua mesa.',
   'hero.ctaDownload': 'Baixar',
   'hero.ctaStar': 'Dar estrela no GitHub',
   'hero.note': 'Roda localmente. Sem conta, sem telemetria.',
-  'hero.commandLabel': 'Opcional: instale os hooks do Claude Code para eventos instantâneos',
-  'hero.platforms': 'App desktop para Linux e macOS. Windows ainda não é suportado.',
+  'hero.platforms':
+    'App desktop para Linux (AppImage e .deb). macOS e Windows ainda não estão disponíveis.',
   'hero.docs': 'Ler a documentação',
   'hero.statusIdle': 'Ocioso',
   'hero.statusWorking': 'Trabalhando',
@@ -42,7 +42,13 @@ export const ptBR: Messages = {
   'how.eyebrow': 'Como funciona',
   'how.title': 'Uma metáfora que você entende de relance',
   'how.lead':
-    'O Agents Office lê suas sessões do Claude Code de forma passiva e as transforma em um escritório. Nada para configurar antes de começar a acompanhar.',
+    'Duas formas de usar. O modo passivo só observa: continue usando o Claude Code como sempre e o escritório espelha. O modo ativo permite criar e orquestrar agentes. Comece pelo passivo, sem configurar nada.',
+  'how.modes.passive.title': 'Modo passivo: só observar',
+  'how.modes.passive.body':
+    'Continue usando o Claude Code como sempre. O escritório lê seus transcripts e mostra o que acontece, sem nada para configurar e com hooks opcionais.',
+  'how.modes.active.title': 'Modo ativo: criar e orquestrar',
+  'how.modes.active.body':
+    'Crie perfis de agentes e monte um Elenco, deixe os agentes conversarem pelo Agent Bus, desenhe planos no Quadro Excalidraw, abra terminais no app e veja os agentes trabalhando.',
   'how.project.title': 'Projeto vira sala',
   'how.project.body':
     'Cada pasta de projeto ganha a sua própria sala. Abra vários projetos e circule entre eles pelo mapa.',
@@ -58,13 +64,14 @@ export const ptBR: Messages = {
   'how.inspect.title': 'Chegue perto e inspecione',
   'how.inspect.body':
     'Caminhe até qualquer agente para ver a tarefa atual, a ferramenta em uso e o consumo de tokens em um painel de detalhes.',
-  'how.hooks.title': 'Os hooks são opcionais',
+  'how.hooks.title': 'Os hooks são opcionais (modo passivo)',
   'how.hooks.body':
-    'Os transcripts bastam para espelhar a atividade. Instale os hooks para receber eventos mais rápidos e alertas de atenção.',
+    'No modo passivo, os transcripts bastam para espelhar a atividade. Instale os hooks para receber eventos mais rápidos e alertas de atenção. Eles apenas notificam.',
 
   'features.eyebrow': 'Recursos',
   'features.title': 'Tudo para conduzir muitos agentes',
-  'features.lead': 'De acompanhar uma única sessão a orquestrar um time inteiro, em uma só janela.',
+  'features.lead':
+    'De acompanhar uma única sessão a criar perfis de agentes, deixá-los conversar, desenhar planos no Quadro e ver o time trabalhando, em uma só janela.',
   'features.badge.desktop': 'Desktop',
   'features.badge.beta': 'Beta',
   'features.observability.title': 'Observabilidade ao vivo',
@@ -124,7 +131,7 @@ export const ptBR: Messages = {
   'arch.step.client.desc': 'Navegador ou janela desktop',
   'arch.desktop.title': 'Extensões do desktop',
   'arch.desktop.body':
-    'O app desktop soma terminais reais, o Agent Bus entre agentes e atualizações automáticas ao mesmo pipeline.',
+    'O app desktop traz o modo ativo sobre o mesmo pipeline: terminais reais, o Agent Bus entre agentes, o Quadro Excalidraw e atualizações automáticas.',
   'arch.desktop.pty': 'Terminais node-pty',
   'arch.desktop.bus': 'Agent Bus',
   'arch.desktop.updater': 'Atualizador',
@@ -140,10 +147,10 @@ export const ptBR: Messages = {
     'Nada é enviado a nenhum servidor. A única chamada externa é a verificação de atualização no GitHub Releases, no AppImage do Linux.',
   'security.failClosed.title': 'Aprovações falham fechadas',
   'security.failClosed.body':
-    'Em caso de timeout, encerramento ou qualquer ambiguidade, a resposta é negar. Um agente nunca age sem um sim explícito.',
-  'security.passive.title': 'Hooks nunca decidem',
+    'Em caso de timeout, encerramento ou qualquer ambiguidade, a resposta é negar. Um agente nunca age sem um sim explícito, e criar um novo agente sempre exige a sua aprovação.',
+  'security.passive.title': 'Hooks só notificam',
   'security.passive.body':
-    'Os hooks são opcionais. O comando do hook nunca bloqueia o Claude Code e nunca responde a um pedido de permissão; isso fica no seu terminal.',
+    'Os hooks são opcionais e fazem parte do modo passivo. O comando do hook apenas notifica: nunca bloqueia o Claude Code e nunca responde a um pedido de permissão; isso fica no seu terminal.',
   'security.safeInput.title': 'Entrada segura no terminal',
   'security.safeInput.body':
     'Caracteres de controle são removidos do texto digitado nos terminais, e mensagens de outros agentes são marcadas como dados, não como instruções.',
@@ -156,37 +163,24 @@ export const ptBR: Messages = {
 
   'install.eyebrow': 'Instalação',
   'install.title': 'Rodando em minutos',
-  'install.lead': 'Baixe o app desktop ou instale os hooks com um único comando.',
+  'install.lead': 'Baixe o app desktop ou instale os hooks opcionais com um único comando.',
   'install.tabsLabel': 'Opções de instalação',
   'install.linux.title': 'Linux',
   'install.linux.body':
     'Baixe o AppImage na página de versões, torne-o executável e rode. O AppImage se atualiza sozinho.',
-  'install.linux.chmod': 'chmod +x agents-office-*-linux-x64.AppImage',
-  'install.linux.run': './agents-office-*-linux-x64.AppImage',
+  'install.linux.chmod': 'chmod +x agents-office-*-linux-x86_64.AppImage',
+  'install.linux.run': './agents-office-*-linux-x86_64.AppImage',
   'install.linux.chmodLabel': 'Tornar o AppImage executável',
   'install.linux.runLabel': 'Executar o AppImage',
   'install.linux.deb':
-    'Prefere um pacote .deb? Ele instala o mesmo app, mas as atualizações são manuais: baixe o novo pacote na página de versões.',
-  'install.macos.title': 'macOS',
-  'install.macos.body':
-    'Baixe o .dmg (arm64 para Apple Silicon, x64 para Intel), abra-o e arraste o Agents Office para Aplicativos. As atualizações são manuais.',
-  'install.macos.note':
-    'O app ainda não é assinado, então o macOS bloqueia a primeira abertura. Clique com o botão direito no app e escolha Abrir, ou remova a marca de quarentena:',
-  'install.macos.command': 'xattr -dr com.apple.quarantine "/Applications/Agents Office.app"',
-  'install.macos.commandLabel': 'Remover a marca de quarentena do macOS',
-  'install.cli.title': 'CLI',
-  'install.cli.body':
-    'Instale os hooks do Claude Code para atualizações instantâneas e alertas de "esperando por você". Um backup das suas configurações do Claude é mantido, e "hooks uninstall" os remove.',
-  'install.cli.note':
-    'Sem hooks o escritório continua funcionando lendo seus transcripts. Os hooks funcionam com o app desktop e com o daemon avulso.',
-  'install.windows.title': 'Windows',
-  'install.windows.body': 'Ainda não disponível. Hoje há suporte para Linux e macOS.',
+    'Prefere um pacote .deb? Instale-o com o gerenciador de pacotes. As atualizações são manuais: baixe o novo pacote na página de versões.',
+  'install.linux.debCommand': 'sudo apt install ./agents-office-*-linux-amd64.deb',
+  'install.linux.debLabel': 'Instalar o pacote .deb',
+  'install.unavailable.title': 'macOS e Windows',
+  'install.unavailable.body':
+    'Ainda não disponível. Hoje só há suporte para Linux (AppImage e .deb); não existem versões para macOS ou Windows.',
   'install.unavailable': 'Ainda não disponível',
   'install.download': 'Baixar a última versão',
-  'install.hooks.title': 'Instale os hooks',
-  'install.hooks.body': 'Opcional, mas traz eventos mais rápidos e alertas de atenção.',
-  'install.hooks.command': 'npx agents-office hooks install',
-  'install.hooks.commandLabel': 'Instalar os hooks do Claude Code',
   'install.copy': 'Copiar',
   'install.copied': 'Copiado',
   'install.copyFailed': 'Falha ao copiar',

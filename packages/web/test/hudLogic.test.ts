@@ -7,6 +7,7 @@ import {
   freeTileNear,
   helpControls,
   hintPanelX,
+  hintsFit,
   hudCounts,
   hudHints,
   hudText,
@@ -263,5 +264,38 @@ describe('hintPanelX', () => {
 
   it('never goes past the left margin on a narrow screen', () => {
     expect(hintPanelX(80, 100, 6)).toBe(6);
+  });
+});
+
+describe('hintPanelX at extreme widths', () => {
+  const margin = 6;
+  const panel = 140;
+  it.each([256, 480, 853])('right-aligns the panel against the margin at width %i', (width) => {
+    expect(hintPanelX(width, panel, margin)).toBe(width - margin - panel);
+  });
+
+  it('follows the narrower width after the terminal opens (no stale width)', () => {
+    expect(hintPanelX(853, panel, margin)).toBe(707);
+    expect(hintPanelX(420, panel, margin)).toBe(274);
+  });
+
+  it('keeps the panel right of the status pill when it fits', () => {
+    const status = 90;
+    expect(hintPanelX(256, panel, margin)).toBeGreaterThan(margin + status + 8);
+  });
+});
+
+describe('hintsFit', () => {
+  const margin = 6;
+  it('shows the shortcuts when they clear the status pill', () => {
+    expect(hintsFit(200, 90, margin)).toBe(true);
+  });
+
+  it('hides the shortcuts when they would touch the status pill', () => {
+    expect(hintsFit(margin + 90 + 8, 90, margin)).toBe(false);
+  });
+
+  it('hides the shortcuts when the panel is pushed to the left margin', () => {
+    expect(hintsFit(hintPanelX(100, 140, margin), 90, margin)).toBe(false);
   });
 });

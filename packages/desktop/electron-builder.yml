@@ -37,8 +37,9 @@ mac:
   identity: null
 dmg:
   title: Agents Office
-# Embeds app-update.yml in the app and, with --publish always, uploads the artifacts and latest-linux.yml
-# to the GitHub Release of the pushed tag (see .github/workflows/release.yml).
+# Embeds app-update.yml in the app and generates latest-linux.yml; the release workflow builds with
+# --publish never and attaches the AppImage, the deb and latest-linux.yml itself (see
+# .github/workflows/release.yml).
 publish:
   provider: github
   owner: ailtonloures
