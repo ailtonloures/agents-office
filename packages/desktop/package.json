@@ -13,8 +13,8 @@
     "test": "vitest run",
     "test:e2e": "playwright test -c playwright.config.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "dist": "pnpm --workspace-root build && node scripts/stage-daemon.mjs && electron-builder --config electron-builder.yml",
-    "dist:dir": "pnpm --workspace-root build && node scripts/stage-daemon.mjs && electron-builder --config electron-builder.yml --dir"
+    "dist": "pnpm --workspace-root build && node scripts/stage-daemon.mjs && electron-builder --config electron-builder.yml --publish never",
+    "dist:dir": "pnpm --workspace-root build && node scripts/stage-daemon.mjs && electron-builder --config electron-builder.yml --dir --publish never"
   },
   "devDependencies": {
     "@agents-office/shared": "workspace:*",
