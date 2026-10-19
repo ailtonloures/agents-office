@@ -862,17 +862,23 @@ test('17. the room door opens for the player walking through it and closes once 
   await holdUntil(page, 'ArrowDown', 'y', outside.y + 4);
   expect(await door()).toBe('open');
   await shot(page, '17-1-inside-the-room');
-  const crossing = (
-    await page.evaluate(
-      () => (window as unknown as { __doorSamples: { y: number; door?: string }[] }).__doorSamples,
-    )
-  ).filter((s) => s.y >= outside.y + 1 && s.y <= outside.y + 4);
+  // Samples taken while the player was inside the opening (strictly before the boundary tile).
+  const crossingSamples = async () =>
+    (
+      await page.evaluate(
+        () =>
+          (window as unknown as { __doorSamples: { y: number; door?: string }[] }).__doorSamples,
+      )
+    ).filter((s) => s.y >= outside.y + 1 && s.y <= outside.y + 4);
+  const crossing = await crossingSamples();
   expect(crossing.length).toBeGreaterThan(0);
   expect(crossing.filter((s) => s.door !== 'open')).toEqual([]);
 
-  // Walk back out to the corridor and away from the door: it closes.
+  // Walk back out to the corridor and away from the door: it closes. The door is checked on every
+  // frame: after the key is released the player may already be walking out of its reach, so its
+  // state at one instant afterwards is a race.
   await holdUntil(page, 'ArrowUp', 'y', outside.y);
-  expect(await door()).toBe('open');
+  expect((await crossingSamples()).filter((s) => s.door !== 'open')).toEqual([]);
   await expect.poll(async () => (await player()).moving).toBe(false);
   await holdUntil(page, 'ArrowLeft', 'x', outside.x - 3);
   await expect.poll(door, { timeout: 5_000 }).toBe('closed');
