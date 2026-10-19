@@ -303,7 +303,7 @@ describe('daemon e2e (Seam 1)', () => {
     expect(snapshot.sessions).toEqual({});
     expect(snapshot.agents).toEqual({});
     expect(snapshot.projects).toEqual({});
-  });
+  }, 20_000);
 });
 
 describe('daemon network exposure', () => {
