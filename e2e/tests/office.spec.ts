@@ -463,8 +463,14 @@ test('12. Hooks button and notice live inside #game and follow its rectangle', a
   await expect(banner).toBeVisible();
   for (const locator of [button, banner]) {
     expect(await locator.evaluate((node) => !!node.closest('#game'))).toBe(true);
-    expect(await locator.evaluate((node) => getComputedStyle(node).position)).toBe('absolute');
   }
+  // The button sits in the shared corner bar (`position: absolute` inside #game, never `fixed`).
+  expect(
+    await button.evaluate(
+      (node) => getComputedStyle(node.closest('.ao-corner-bar') as Element).position,
+    ),
+  ).toBe('absolute');
+  expect(await banner.evaluate((node) => getComputedStyle(node).position)).toBe('absolute');
   const game = await page.locator('#game').boundingBox();
   if (!game) throw new Error('#game has no box');
   for (const locator of [button, banner]) {
@@ -582,6 +588,8 @@ test('13. clicking a Tech Lead opens its terminal, empty space minimizes, extern
 test('14. terminal dock: left, right and bottom resize #game, keep controls inside it and persist', async ({
   page,
 }) => {
+  // Every dock switch and drag resizes the canvas, which headless software rendering draws slowly.
+  test.setTimeout(240_000);
   await page.addInitScript(() => {
     const noop = async () => {};
     const status = {
@@ -669,9 +677,10 @@ test('14. terminal dock: left, right and bottom resize #game, keep controls insi
 
   // Dragging the right edge resizes the panel.
   const before = panel.width;
-  await page.mouse.move(panel.x + panel.width, 400);
+  // The 6px resizer lives inside the panel edge; a press outside it hits the canvas (minimizes).
+  await page.mouse.move(panel.x + panel.width - 3, 400);
   await page.mouse.down();
-  await page.mouse.move(panel.x + panel.width + 100, 400, { steps: 4 });
+  await page.mouse.move(panel.x + panel.width - 3 + 100, 400, { steps: 4 });
   await page.mouse.up();
   await expect.poll(async () => (await rect('#ao-terminal')).width).toBeCloseTo(before + 100, -1);
   await checkControls();
@@ -972,7 +981,25 @@ test('message visit: the sender walks to the recipient desk and only goes back w
     (window as unknown as Record<string, unknown>).__emitComm = (event: unknown) => {
       for (const l of [...listeners]) l(event);
     };
+    const noop = async () => {};
     (window as unknown as Record<string, unknown>).agentsOfficeDesktop = {
+      desktop: true,
+      // The managed sessions are only bound once the terminal panel exists (it needs this bridge).
+      terminal: {
+        start: async () => ({ ok: false, code: 'spawn-failed', message: 'fake' }),
+        write: noop,
+        resize: noop,
+        kill: noop,
+        list: async () => [],
+        buffer: async () => '',
+        getConfig: async () => ({}),
+        setConfig: async () => ({ ok: true }),
+        lostSessions: async () => [],
+        dismissLost: noop,
+        noteSession: noop,
+        onData: () => () => {},
+        onExit: () => () => {},
+      },
       managed: {
         list: async () => ({ sessions, failures: [] }),
         onChange: () => () => {},
@@ -1042,10 +1069,14 @@ test('message visit: the sender walks to the recipient desk and only goes back w
   const a = await lead('lead-a');
   const b = await lead('lead-b');
   await expect
-    .poll(async () => {
-      const [pa, pb] = [await lead('lead-a'), await lead('lead-b')];
-      return Math.abs((pa?.x ?? 0) - (pb?.x ?? 0)) + Math.abs((pa?.y ?? 0) - (pb?.y ?? 0));
-    })
+    .poll(
+      async () => {
+        const [pa, pb] = [await lead('lead-a'), await lead('lead-b')];
+        return Math.abs((pa?.x ?? 0) - (pb?.x ?? 0)) + Math.abs((pa?.y ?? 0) - (pb?.y ?? 0));
+      },
+      // Headless software rendering walks slowly (see test 2).
+      { timeout: 45_000 },
+    )
     .toBeLessThanOrEqual(2);
   expect(a && b && (a.x !== b.x || a.y !== b.y)).toBe(true);
 
@@ -1082,6 +1113,8 @@ test('language button: opens in English, switches to PT and persists after reloa
 test('language switch: EN by default, PT and ES apply to the Hooks panel and persist after reload', async ({
   page,
 }) => {
+  // Each language change reloads the page and redraws the canvas, slow in headless software rendering.
+  test.setTimeout(240_000);
   // The Hooks panel needs the desktop bridge; a stub is enough to render it in the browser.
   await page.addInitScript(() => {
     const status = {
